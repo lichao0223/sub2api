@@ -299,12 +299,16 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 }
 
 func parseUserRankingLimit(raw string) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0
+	}
 	limit, err := strconv.Atoi(raw)
 	if err != nil || limit <= 0 {
-		return 50
+		return 0
 	}
-	if limit > 100 {
-		return 100
+	if limit > 10000 {
+		return 10000
 	}
 	return limit
 }
@@ -386,7 +390,7 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 	}
 
 	startTime, endTime := parseUserTimeRange(c)
-	limit := parseUserRankingLimit(c.DefaultQuery("limit", "50"))
+	limit := parseUserRankingLimit(c.Query("limit"))
 
 	ranking, err := h.usageService.GetUserTokenRanking(c.Request.Context(), startTime, endTime, limit)
 	if err != nil {

@@ -657,8 +657,7 @@ export default {
 
   tokenRanking: {
     title: 'Token Usage Ranking',
-    description: 'View all users ranked by requests, tokens, and actual spend in the selected time range.',
-    topThree: 'Top 3',
+    description: 'View all non-admin users ranked by requests, tokens, and actual spend in the selected time range, including users with no usage.',
     rankingList: 'Ranking Details',
     rank: 'Rank',
     user: 'User',
@@ -668,7 +667,13 @@ export default {
     totalTokens: 'Total Tokens',
     totalRequests: 'Total Requests',
     totalSpend: 'Total Spend',
-    noData: 'No usage data in the selected time range',
+    export: 'Export',
+    exporting: 'Exporting...',
+    exportExcel: 'Export Excel',
+    exportCsv: 'Export CSV',
+    exportSuccess: 'Token usage ranking exported',
+    exportFailed: 'Failed to export token usage ranking',
+    noData: 'No users to display',
     failedToLoad: 'Failed to load token usage ranking',
     userFallback: 'User #{id}'
   },

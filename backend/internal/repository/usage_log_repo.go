@@ -2434,23 +2434,19 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 
 // GetUserTokenRanking returns user ranking aggregated by token usage within the time range.
 func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserTokenRankingResponse, err error) {
-	if limit <= 0 {
-		limit = 50
-	}
-
 	query := `
 		WITH user_tokens AS (
 			SELECT
-				u.user_id,
+				us.id as user_id,
 				COALESCE(us.email, '') as email,
 				COALESCE(us.username, '') as username,
 				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
-				COUNT(*) as requests,
+				COALESCE(COUNT(u.id), 0) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
-			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
-			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email, us.username
+			FROM users us
+			LEFT JOIN usage_logs u ON u.user_id = us.id AND u.created_at >= $1 AND u.created_at < $2
+			WHERE us.deleted_at IS NULL AND us.role <> $3
+			GROUP BY us.id, us.email, us.username
 		),
 		ranked AS (
 			SELECT
@@ -2465,7 +2461,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
 			FROM user_tokens
 			ORDER BY tokens DESC, actual_cost DESC, user_id ASC
-			LIMIT $3
+			LIMIT NULLIF($4, 0)
 		)
 		SELECT
 			user_id,
@@ -2481,7 +2477,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 		ORDER BY tokens DESC, actual_cost DESC, user_id ASC
 	`
 
-	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, service.RoleAdmin, limit)
 	if err != nil {
 		return nil, err
 	}

@@ -656,8 +656,7 @@ export default {
 
   tokenRanking: {
     title: 'Token 使用排名',
-    description: '查看当前时间范围内所有用户的请求数、Token 数和实际消费排名。',
-    topThree: '前三名',
+    description: '查看当前时间范围内所有非管理员用户的请求数、Token 数和实际消费排名，包含暂无用量的用户。',
     rankingList: '排名明细',
     rank: '排名',
     user: '用户',
@@ -667,7 +666,13 @@ export default {
     totalTokens: '总 Token',
     totalRequests: '总请求数',
     totalSpend: '总消费',
-    noData: '当前时间范围内暂无使用数据',
+    export: '导出',
+    exporting: '导出中...',
+    exportExcel: '导出 Excel',
+    exportCsv: '导出 CSV',
+    exportSuccess: 'Token 使用排名导出成功',
+    exportFailed: 'Token 使用排名导出失败',
+    noData: '暂无可展示用户',
     failedToLoad: '加载 Token 使用排名失败',
     userFallback: '用户 #{id}'
   },

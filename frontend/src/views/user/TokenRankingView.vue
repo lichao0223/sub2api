@@ -6,13 +6,43 @@
           <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
             {{ t('tokenRanking.title') }}
           </h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('tokenRanking.description') }}
-          </p>
         </div>
-        <button class="btn btn-secondary self-start md:self-auto" :disabled="loading" @click="loadRanking">
-          {{ t('common.refresh') }}
-        </button>
+        <div class="flex items-center gap-2 self-start md:self-auto">
+          <button class="btn btn-secondary" :disabled="loading" @click="loadRanking">
+            {{ t('common.refresh') }}
+          </button>
+          <div ref="exportMenuRef" class="relative">
+            <button
+              type="button"
+              class="btn btn-secondary flex items-center gap-2"
+              :disabled="loading || exporting || !rankingItems.length"
+              @click.stop="exportMenuOpen = !exportMenuOpen"
+            >
+              <Icon name="download" size="sm" />
+              {{ exporting ? t('tokenRanking.exporting') : t('tokenRanking.export') }}
+              <Icon name="chevronDown" size="xs" />
+            </button>
+            <div
+              v-if="exportMenuOpen"
+              class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-900"
+            >
+              <button
+                type="button"
+                class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-800"
+                @click="exportRanking('xlsx')"
+              >
+                {{ t('tokenRanking.exportExcel') }}
+              </button>
+              <button
+                type="button"
+                class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-800"
+                @click="exportRanking('csv')"
+              >
+                {{ t('tokenRanking.exportCsv') }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="card p-4">
@@ -59,77 +89,17 @@
             </div>
           </div>
 
-          <div class="rounded-2xl bg-white p-6 shadow-lg shadow-slate-200/70 dark:bg-dark-900 dark:shadow-black/20 md:p-8">
-            <div class="flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-dark-700 md:flex-row md:items-center md:justify-between">
-              <div class="flex items-center gap-4">
-                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-2xl shadow-inner dark:bg-blue-950/40">
-                  🏆
-                </div>
-                <h2 class="text-3xl font-bold text-slate-950 dark:text-white">
-                  {{ t('tokenRanking.topThree') }}
-                </h2>
-              </div>
-              <span class="flex items-center gap-2 text-base font-medium text-slate-500 dark:text-slate-400">
-                <Icon name="calendar" size="md" />
-                {{ responseRange }}
-              </span>
-            </div>
-            <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3 md:items-end">
-              <div
-                v-for="entry in podiumItems"
-                :key="entry.rank"
-                class="relative flex flex-col overflow-hidden rounded-2xl border p-5 shadow-lg xl:p-6"
-                :class="[rankCardClass(entry.rank), entry.orderClass]"
-              >
-                <div class="absolute right-6 top-6 text-5xl opacity-20" aria-hidden="true">
-                  {{ rankWatermark(entry.rank) }}
-                </div>
-                <div class="flex justify-center">
-                  <div class="flex h-12 w-12 items-center justify-center rounded-full text-xl font-bold shadow-md xl:h-14 xl:w-14 xl:text-2xl" :class="rankBadgeClass(entry.rank)">
-                    #{{ entry.rank }}
-                  </div>
-                </div>
-                <div v-if="entry.rank === 1" class="mt-2 flex justify-center text-6xl leading-none xl:text-7xl" aria-hidden="true">
-                  🏆
-                </div>
-                <div class="flex flex-1 items-center justify-center py-5 xl:py-6">
-                  <div class="max-w-full truncate text-center text-3xl font-bold text-slate-950 dark:text-white xl:text-4xl" :title="userLabel(entry.item)">
-                    {{ userLabel(entry.item) }}
-                  </div>
-                </div>
-                <div class="mb-5 h-0.5 rounded-full xl:mb-6" :class="rankDividerClass(entry.rank)"></div>
-                <div class="grid grid-cols-3 divide-x text-center" :class="rankDivideClass(entry.rank)">
-                  <div class="min-w-0 px-1.5 xl:px-2">
-                    <div class="mb-2.5 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium" :class="rankMetricLabelClass(entry.rank)">
-                      <Icon name="database" size="sm" />
-                      <span class="truncate">{{ t('tokenRanking.tokens') }}</span>
-                    </div>
-                    <div class="whitespace-nowrap text-xl font-bold text-slate-950 dark:text-white xl:text-2xl">{{ formatTokens(entry.item.tokens) }}</div>
-                  </div>
-                  <div class="min-w-0 px-1.5 xl:px-2">
-                    <div class="mb-2.5 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium" :class="rankMetricLabelClass(entry.rank)">
-                      <Icon name="chartBar" size="sm" />
-                      <span class="truncate">{{ t('tokenRanking.requests') }}</span>
-                    </div>
-                    <div class="whitespace-nowrap text-xl font-bold text-slate-950 dark:text-white xl:text-2xl">{{ formatNumber(entry.item.requests) }}</div>
-                  </div>
-                  <div class="min-w-0 px-1.5 xl:px-2">
-                    <div class="mb-2.5 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium" :class="rankMetricLabelClass(entry.rank)">
-                      <Icon name="creditCard" size="sm" />
-                      <span class="truncate">{{ t('tokenRanking.spend') }}</span>
-                    </div>
-                    <div class="whitespace-nowrap text-xl font-bold text-slate-950 dark:text-white xl:text-2xl">${{ formatCost(entry.item.actual_cost) }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <div class="card overflow-hidden">
             <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-                {{ t('tokenRanking.rankingList') }}
-              </h2>
+              <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t('tokenRanking.rankingList') }}
+                </h2>
+                <span class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <Icon name="calendar" size="sm" />
+                  {{ responseRange }}
+                </span>
+              </div>
             </div>
             <div class="overflow-x-auto">
               <table class="w-full text-sm">
@@ -169,37 +139,39 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { saveAs } from 'file-saver'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
+import { useAppStore } from '@/stores/app'
 import type { UserTokenRankingItem } from '@/types'
 
 const { t } = useI18n()
+const appStore = useAppStore()
 
 const formatDate = (date: Date) => date.toISOString().split('T')[0]
 const startDate = ref(formatDate(new Date(Date.now() - 6 * 86400000)))
 const endDate = ref(formatDate(new Date()))
 const loading = ref(false)
+const exporting = ref(false)
+const exportMenuOpen = ref(false)
+const exportMenuRef = ref<HTMLElement | null>(null)
 const error = ref(false)
 const rankingItems = ref<UserTokenRankingItem[]>([])
 const totals = ref({ tokens: 0, requests: 0, actualCost: 0 })
 const responseStartDate = ref('')
 const responseEndDate = ref('')
 
-const topThree = computed(() => rankingItems.value.slice(0, 3))
-const podiumItems = computed(() => [
-  topThree.value[1] ? { rank: 2, item: topThree.value[1], orderClass: 'md:order-1 md:min-h-[245px] xl:min-h-[260px]' } : null,
-  topThree.value[0] ? { rank: 1, item: topThree.value[0], orderClass: 'md:order-2 md:min-h-[305px] xl:min-h-[330px]' } : null,
-  topThree.value[2] ? { rank: 3, item: topThree.value[2], orderClass: 'md:order-3 md:min-h-[245px] xl:min-h-[260px]' } : null
-].filter((entry): entry is { rank: number; item: UserTokenRankingItem; orderClass: string } => entry !== null))
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
   return `${responseStartDate.value} - ${responseEndDate.value}`
 })
+
+type ExportFormat = 'xlsx' | 'csv'
 
 function userLabel(item: UserTokenRankingItem): string {
   if (item.username?.trim()) return item.username.trim()
@@ -225,43 +197,80 @@ function formatCost(value: number): string {
   return value.toFixed(4)
 }
 
-function rankCardClass(rank: number): string {
-  if (rank === 1) {
-    return 'border-amber-300 bg-gradient-to-b from-amber-50 via-white to-amber-50/70 shadow-amber-200/70 dark:border-amber-700 dark:from-amber-950/30 dark:via-dark-900 dark:to-amber-950/20'
+function exportRows() {
+  return rankingItems.value.map((item, index) => ({
+    rank: index + 1,
+    user: userLabel(item),
+    email: item.email || '',
+    username: item.username || '',
+    requests: item.requests,
+    tokens: item.tokens,
+    actual_cost: item.actual_cost
+  }))
+}
+
+function exportFileName(format: ExportFormat): string {
+  return `token-ranking_${responseStartDate.value || startDate.value}_to_${responseEndDate.value || endDate.value}.${format === 'xlsx' ? 'xlsx' : 'csv'}`
+}
+
+async function exportRanking(format: ExportFormat) {
+  exportMenuOpen.value = false
+  if (exporting.value) return
+  if (!rankingItems.value.length) {
+    appStore.showWarning(t('usage.noDataToExport'))
+    return
   }
-  if (rank === 2) {
-    return 'border-slate-300 bg-gradient-to-b from-slate-50 via-white to-blue-50/40 shadow-slate-200/70 dark:border-slate-600 dark:from-slate-900/60 dark:via-dark-900 dark:to-blue-950/20'
+
+  exporting.value = true
+  try {
+    const rows = exportRows()
+    const header = [
+      t('tokenRanking.rank'),
+      t('tokenRanking.user'),
+      'Email',
+      'Username',
+      t('tokenRanking.requests'),
+      t('tokenRanking.tokens'),
+      t('tokenRanking.spend')
+    ]
+    const body = rows.map((row) => [
+      row.rank,
+      row.user,
+      row.email,
+      row.username,
+      row.requests,
+      row.tokens,
+      row.actual_cost
+    ])
+
+    if (format === 'xlsx') {
+      const XLSX = await import('xlsx')
+      const worksheet = XLSX.utils.aoa_to_sheet([header, ...body])
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Token Ranking')
+      const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+      saveAs(new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), exportFileName(format))
+    } else {
+      const XLSX = await import('xlsx')
+      const worksheet = XLSX.utils.aoa_to_sheet([header, ...body])
+      const csv = XLSX.utils.sheet_to_csv(worksheet)
+      saveAs(new Blob([csv], { type: 'text/csv;charset=utf-8' }), exportFileName(format))
+    }
+
+    appStore.showSuccess(t('tokenRanking.exportSuccess'))
+  } catch (err) {
+    console.error('Failed to export token ranking:', err)
+    appStore.showError(t('tokenRanking.exportFailed'))
+  } finally {
+    exporting.value = false
   }
-  return 'border-orange-300 bg-gradient-to-b from-orange-50 via-white to-orange-50/60 shadow-orange-200/60 dark:border-orange-800 dark:from-orange-950/30 dark:via-dark-900 dark:to-orange-950/20'
 }
 
-function rankBadgeClass(rank: number): string {
-  if (rank === 1) return 'bg-amber-200 text-amber-950 shadow-amber-200/80'
-  if (rank === 2) return 'bg-slate-200 text-slate-900 shadow-slate-200/80'
-  return 'bg-orange-200 text-orange-950 shadow-orange-200/80'
-}
-
-function rankDividerClass(rank: number): string {
-  if (rank === 1) return 'bg-amber-300'
-  if (rank === 2) return 'bg-slate-200'
-  return 'bg-orange-200'
-}
-
-function rankDivideClass(rank: number): string {
-  if (rank === 1) return 'divide-amber-200'
-  if (rank === 2) return 'divide-slate-200'
-  return 'divide-orange-200'
-}
-
-function rankMetricLabelClass(rank: number): string {
-  if (rank === 1) return 'text-amber-700 dark:text-amber-300'
-  if (rank === 2) return 'text-slate-600 dark:text-slate-300'
-  return 'text-orange-700 dark:text-orange-300'
-}
-
-function rankWatermark(rank: number): string {
-  if (rank === 1) return '★'
-  return '◎'
+function handleDocumentClick(event: MouseEvent) {
+  if (!exportMenuOpen.value) return
+  const target = event.target as Node | null
+  if (target && exportMenuRef.value?.contains(target)) return
+  exportMenuOpen.value = false
 }
 
 async function loadRanking() {
@@ -270,8 +279,7 @@ async function loadRanking() {
   try {
     const response = await usageAPI.getDashboardTokenRanking({
       start_date: startDate.value,
-      end_date: endDate.value,
-      limit: 50
+      end_date: endDate.value
     })
     rankingItems.value = response.ranking || []
     totals.value = {
@@ -291,5 +299,11 @@ async function loadRanking() {
   }
 }
 
-onMounted(loadRanking)
+onMounted(() => {
+  document.addEventListener('click', handleDocumentClick)
+  loadRanking()
+})
+onUnmounted(() => {
+  document.removeEventListener('click', handleDocumentClick)
+})
 </script>
