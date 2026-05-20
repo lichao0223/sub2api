@@ -59,45 +59,66 @@
             </div>
           </div>
 
-          <div class="card p-4">
-            <div class="mb-4 flex items-center justify-between">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
-                {{ t('tokenRanking.topThree') }}
-              </h2>
-              <span class="text-xs text-gray-500 dark:text-gray-400">
+          <div class="rounded-2xl bg-white p-6 shadow-lg shadow-slate-200/70 dark:bg-dark-900 dark:shadow-black/20 md:p-8">
+            <div class="flex flex-col gap-4 border-b border-slate-200 pb-6 dark:border-dark-700 md:flex-row md:items-center md:justify-between">
+              <div class="flex items-center gap-4">
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-2xl shadow-inner dark:bg-blue-950/40">
+                  🏆
+                </div>
+                <h2 class="text-3xl font-bold text-slate-950 dark:text-white">
+                  {{ t('tokenRanking.topThree') }}
+                </h2>
+              </div>
+              <span class="flex items-center gap-2 text-base font-medium text-slate-500 dark:text-slate-400">
+                <Icon name="calendar" size="md" />
                 {{ responseRange }}
               </span>
             </div>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-3 md:items-end">
+            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3 md:items-end">
               <div
                 v-for="entry in podiumItems"
                 :key="entry.rank"
-                class="flex flex-col justify-between rounded-lg border p-4"
+                class="relative flex flex-col overflow-hidden rounded-2xl border p-7 shadow-lg"
                 :class="[rankCardClass(entry.rank), entry.orderClass]"
               >
-                <div class="flex items-center justify-between">
-                  <div class="flex h-10 w-10 items-center justify-center rounded-full bg-white text-base font-bold shadow-sm dark:bg-dark-800">
+                <div class="absolute right-8 top-6 text-6xl opacity-20" aria-hidden="true">
+                  {{ rankWatermark(entry.rank) }}
+                </div>
+                <div class="flex justify-center">
+                  <div class="flex h-14 w-14 items-center justify-center rounded-full text-2xl font-bold shadow-md" :class="rankBadgeClass(entry.rank)">
                     #{{ entry.rank }}
                   </div>
-                  <div class="text-xs font-semibold">{{ t('tokenRanking.tokens') }}</div>
                 </div>
-                <div class="mt-5">
-                  <div class="truncate text-base font-semibold text-gray-900 dark:text-white" :title="userLabel(entry.item)">
+                <div v-if="entry.rank === 1" class="mt-2 flex justify-center text-7xl leading-none" aria-hidden="true">
+                  🏆
+                </div>
+                <div class="flex flex-1 items-center justify-center py-7">
+                  <div class="max-w-full truncate text-center text-4xl font-bold text-slate-950 dark:text-white" :title="userLabel(entry.item)">
                     {{ userLabel(entry.item) }}
                   </div>
                 </div>
-                <div class="mt-5 grid grid-cols-3 gap-2 text-center">
-                  <div>
-                    <div class="text-lg font-bold text-gray-900 dark:text-white">{{ formatTokens(entry.item.tokens) }}</div>
-                    <div class="text-[11px] text-gray-500 dark:text-gray-400">{{ t('tokenRanking.tokens') }}</div>
+                <div class="mb-7 h-0.5 rounded-full" :class="rankDividerClass(entry.rank)"></div>
+                <div class="grid grid-cols-3 divide-x text-center" :class="rankDivideClass(entry.rank)">
+                  <div class="px-3">
+                    <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium" :class="rankMetricLabelClass(entry.rank)">
+                      <Icon name="database" size="sm" />
+                      {{ t('tokenRanking.tokens') }}
+                    </div>
+                    <div class="text-3xl font-bold text-slate-950 dark:text-white">{{ formatTokens(entry.item.tokens) }}</div>
                   </div>
-                  <div>
-                    <div class="text-lg font-bold text-gray-900 dark:text-white">{{ formatNumber(entry.item.requests) }}</div>
-                    <div class="text-[11px] text-gray-500 dark:text-gray-400">{{ t('tokenRanking.requests') }}</div>
+                  <div class="px-3">
+                    <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium" :class="rankMetricLabelClass(entry.rank)">
+                      <Icon name="chartBar" size="sm" />
+                      {{ t('tokenRanking.requests') }}
+                    </div>
+                    <div class="text-3xl font-bold text-slate-950 dark:text-white">{{ formatNumber(entry.item.requests) }}</div>
                   </div>
-                  <div>
-                    <div class="text-lg font-bold text-gray-900 dark:text-white">${{ formatCost(entry.item.actual_cost) }}</div>
-                    <div class="text-[11px] text-gray-500 dark:text-gray-400">{{ t('tokenRanking.spend') }}</div>
+                  <div class="px-3">
+                    <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium" :class="rankMetricLabelClass(entry.rank)">
+                      <Icon name="creditCard" size="sm" />
+                      {{ t('tokenRanking.spend') }}
+                    </div>
+                    <div class="text-3xl font-bold text-slate-950 dark:text-white">${{ formatCost(entry.item.actual_cost) }}</div>
                   </div>
                 </div>
               </div>
@@ -153,6 +174,7 @@ import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import type { UserTokenRankingItem } from '@/types'
 
@@ -170,9 +192,9 @@ const responseEndDate = ref('')
 
 const topThree = computed(() => rankingItems.value.slice(0, 3))
 const podiumItems = computed(() => [
-  topThree.value[1] ? { rank: 2, item: topThree.value[1], orderClass: 'md:order-1 md:min-h-44' } : null,
-  topThree.value[0] ? { rank: 1, item: topThree.value[0], orderClass: 'md:order-2 md:min-h-56' } : null,
-  topThree.value[2] ? { rank: 3, item: topThree.value[2], orderClass: 'md:order-3 md:min-h-40' } : null
+  topThree.value[1] ? { rank: 2, item: topThree.value[1], orderClass: 'md:order-1 md:min-h-[260px]' } : null,
+  topThree.value[0] ? { rank: 1, item: topThree.value[0], orderClass: 'md:order-2 md:min-h-[330px]' } : null,
+  topThree.value[2] ? { rank: 3, item: topThree.value[2], orderClass: 'md:order-3 md:min-h-[260px]' } : null
 ].filter((entry): entry is { rank: number; item: UserTokenRankingItem; orderClass: string } => entry !== null))
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
@@ -205,12 +227,41 @@ function formatCost(value: number): string {
 
 function rankCardClass(rank: number): string {
   if (rank === 1) {
-    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300'
+    return 'border-amber-300 bg-gradient-to-b from-amber-50 via-white to-amber-50/70 shadow-amber-200/70 dark:border-amber-700 dark:from-amber-950/30 dark:via-dark-900 dark:to-amber-950/20'
   }
   if (rank === 2) {
-    return 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-200'
+    return 'border-slate-300 bg-gradient-to-b from-slate-50 via-white to-blue-50/40 shadow-slate-200/70 dark:border-slate-600 dark:from-slate-900/60 dark:via-dark-900 dark:to-blue-950/20'
   }
-  return 'border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900/60 dark:bg-orange-900/20 dark:text-orange-300'
+  return 'border-orange-300 bg-gradient-to-b from-orange-50 via-white to-orange-50/60 shadow-orange-200/60 dark:border-orange-800 dark:from-orange-950/30 dark:via-dark-900 dark:to-orange-950/20'
+}
+
+function rankBadgeClass(rank: number): string {
+  if (rank === 1) return 'bg-amber-200 text-amber-950 shadow-amber-200/80'
+  if (rank === 2) return 'bg-slate-200 text-slate-900 shadow-slate-200/80'
+  return 'bg-orange-200 text-orange-950 shadow-orange-200/80'
+}
+
+function rankDividerClass(rank: number): string {
+  if (rank === 1) return 'bg-amber-300'
+  if (rank === 2) return 'bg-slate-200'
+  return 'bg-orange-200'
+}
+
+function rankDivideClass(rank: number): string {
+  if (rank === 1) return 'divide-amber-200'
+  if (rank === 2) return 'divide-slate-200'
+  return 'divide-orange-200'
+}
+
+function rankMetricLabelClass(rank: number): string {
+  if (rank === 1) return 'text-amber-700 dark:text-amber-300'
+  if (rank === 2) return 'text-slate-600 dark:text-slate-300'
+  return 'text-orange-700 dark:text-orange-300'
+}
+
+function rankWatermark(rank: number): string {
+  if (rank === 1) return '★'
+  return '◎'
 }
 
 async function loadRanking() {
