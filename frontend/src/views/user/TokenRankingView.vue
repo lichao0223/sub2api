@@ -99,26 +99,26 @@
                 </div>
                 <div class="mb-5 h-0.5 rounded-full xl:mb-6" :class="rankDividerClass(entry.rank)"></div>
                 <div class="grid grid-cols-3 divide-x text-center" :class="rankDivideClass(entry.rank)">
-                  <div class="min-w-0 px-2">
-                    <div class="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium xl:text-sm" :class="rankMetricLabelClass(entry.rank)">
+                  <div class="min-w-0 px-1.5 xl:px-2">
+                    <div class="mb-2.5 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium" :class="rankMetricLabelClass(entry.rank)">
                       <Icon name="database" size="sm" />
                       <span class="truncate">{{ t('tokenRanking.tokens') }}</span>
                     </div>
-                    <div class="truncate text-2xl font-bold text-slate-950 dark:text-white xl:text-3xl">{{ formatTokens(entry.item.tokens) }}</div>
+                    <div class="whitespace-nowrap text-xl font-bold text-slate-950 dark:text-white xl:text-2xl">{{ formatTokens(entry.item.tokens) }}</div>
                   </div>
-                  <div class="min-w-0 px-2">
-                    <div class="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium xl:text-sm" :class="rankMetricLabelClass(entry.rank)">
+                  <div class="min-w-0 px-1.5 xl:px-2">
+                    <div class="mb-2.5 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium" :class="rankMetricLabelClass(entry.rank)">
                       <Icon name="chartBar" size="sm" />
                       <span class="truncate">{{ t('tokenRanking.requests') }}</span>
                     </div>
-                    <div class="truncate text-2xl font-bold text-slate-950 dark:text-white xl:text-3xl">{{ formatNumber(entry.item.requests) }}</div>
+                    <div class="whitespace-nowrap text-xl font-bold text-slate-950 dark:text-white xl:text-2xl">{{ formatNumber(entry.item.requests) }}</div>
                   </div>
-                  <div class="min-w-0 px-2">
-                    <div class="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium xl:text-sm" :class="rankMetricLabelClass(entry.rank)">
+                  <div class="min-w-0 px-1.5 xl:px-2">
+                    <div class="mb-2.5 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium" :class="rankMetricLabelClass(entry.rank)">
                       <Icon name="creditCard" size="sm" />
                       <span class="truncate">{{ t('tokenRanking.spend') }}</span>
                     </div>
-                    <div class="truncate text-2xl font-bold text-slate-950 dark:text-white xl:text-3xl">${{ formatCost(entry.item.actual_cost) }}</div>
+                    <div class="whitespace-nowrap text-xl font-bold text-slate-950 dark:text-white xl:text-2xl">${{ formatCost(entry.item.actual_cost) }}</div>
                   </div>
                 </div>
               </div>
