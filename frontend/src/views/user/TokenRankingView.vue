@@ -74,51 +74,51 @@
                 {{ responseRange }}
               </span>
             </div>
-            <div class="mt-8 grid grid-cols-1 gap-8 md:grid-cols-3 md:items-end">
+            <div class="mt-8 grid grid-cols-1 gap-6 md:grid-cols-3 md:items-end">
               <div
                 v-for="entry in podiumItems"
                 :key="entry.rank"
-                class="relative flex flex-col overflow-hidden rounded-2xl border p-7 shadow-lg"
+                class="relative flex flex-col overflow-hidden rounded-2xl border p-5 shadow-lg xl:p-6"
                 :class="[rankCardClass(entry.rank), entry.orderClass]"
               >
-                <div class="absolute right-8 top-6 text-6xl opacity-20" aria-hidden="true">
+                <div class="absolute right-6 top-6 text-5xl opacity-20" aria-hidden="true">
                   {{ rankWatermark(entry.rank) }}
                 </div>
                 <div class="flex justify-center">
-                  <div class="flex h-14 w-14 items-center justify-center rounded-full text-2xl font-bold shadow-md" :class="rankBadgeClass(entry.rank)">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-full text-xl font-bold shadow-md xl:h-14 xl:w-14 xl:text-2xl" :class="rankBadgeClass(entry.rank)">
                     #{{ entry.rank }}
                   </div>
                 </div>
-                <div v-if="entry.rank === 1" class="mt-2 flex justify-center text-7xl leading-none" aria-hidden="true">
+                <div v-if="entry.rank === 1" class="mt-2 flex justify-center text-6xl leading-none xl:text-7xl" aria-hidden="true">
                   🏆
                 </div>
-                <div class="flex flex-1 items-center justify-center py-7">
-                  <div class="max-w-full truncate text-center text-4xl font-bold text-slate-950 dark:text-white" :title="userLabel(entry.item)">
+                <div class="flex flex-1 items-center justify-center py-5 xl:py-6">
+                  <div class="max-w-full truncate text-center text-3xl font-bold text-slate-950 dark:text-white xl:text-4xl" :title="userLabel(entry.item)">
                     {{ userLabel(entry.item) }}
                   </div>
                 </div>
-                <div class="mb-7 h-0.5 rounded-full" :class="rankDividerClass(entry.rank)"></div>
+                <div class="mb-5 h-0.5 rounded-full xl:mb-6" :class="rankDividerClass(entry.rank)"></div>
                 <div class="grid grid-cols-3 divide-x text-center" :class="rankDivideClass(entry.rank)">
-                  <div class="px-3">
-                    <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium" :class="rankMetricLabelClass(entry.rank)">
+                  <div class="min-w-0 px-2">
+                    <div class="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium xl:text-sm" :class="rankMetricLabelClass(entry.rank)">
                       <Icon name="database" size="sm" />
-                      {{ t('tokenRanking.tokens') }}
+                      <span class="truncate">{{ t('tokenRanking.tokens') }}</span>
                     </div>
-                    <div class="text-3xl font-bold text-slate-950 dark:text-white">{{ formatTokens(entry.item.tokens) }}</div>
+                    <div class="truncate text-2xl font-bold text-slate-950 dark:text-white xl:text-3xl">{{ formatTokens(entry.item.tokens) }}</div>
                   </div>
-                  <div class="px-3">
-                    <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium" :class="rankMetricLabelClass(entry.rank)">
+                  <div class="min-w-0 px-2">
+                    <div class="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium xl:text-sm" :class="rankMetricLabelClass(entry.rank)">
                       <Icon name="chartBar" size="sm" />
-                      {{ t('tokenRanking.requests') }}
+                      <span class="truncate">{{ t('tokenRanking.requests') }}</span>
                     </div>
-                    <div class="text-3xl font-bold text-slate-950 dark:text-white">{{ formatNumber(entry.item.requests) }}</div>
+                    <div class="truncate text-2xl font-bold text-slate-950 dark:text-white xl:text-3xl">{{ formatNumber(entry.item.requests) }}</div>
                   </div>
-                  <div class="px-3">
-                    <div class="mb-3 flex items-center justify-center gap-2 text-sm font-medium" :class="rankMetricLabelClass(entry.rank)">
+                  <div class="min-w-0 px-2">
+                    <div class="mb-3 flex min-w-0 items-center justify-center gap-1.5 text-xs font-medium xl:text-sm" :class="rankMetricLabelClass(entry.rank)">
                       <Icon name="creditCard" size="sm" />
-                      {{ t('tokenRanking.spend') }}
+                      <span class="truncate">{{ t('tokenRanking.spend') }}</span>
                     </div>
-                    <div class="text-3xl font-bold text-slate-950 dark:text-white">${{ formatCost(entry.item.actual_cost) }}</div>
+                    <div class="truncate text-2xl font-bold text-slate-950 dark:text-white xl:text-3xl">${{ formatCost(entry.item.actual_cost) }}</div>
                   </div>
                 </div>
               </div>
@@ -192,9 +192,9 @@ const responseEndDate = ref('')
 
 const topThree = computed(() => rankingItems.value.slice(0, 3))
 const podiumItems = computed(() => [
-  topThree.value[1] ? { rank: 2, item: topThree.value[1], orderClass: 'md:order-1 md:min-h-[260px]' } : null,
-  topThree.value[0] ? { rank: 1, item: topThree.value[0], orderClass: 'md:order-2 md:min-h-[330px]' } : null,
-  topThree.value[2] ? { rank: 3, item: topThree.value[2], orderClass: 'md:order-3 md:min-h-[260px]' } : null
+  topThree.value[1] ? { rank: 2, item: topThree.value[1], orderClass: 'md:order-1 md:min-h-[245px] xl:min-h-[260px]' } : null,
+  topThree.value[0] ? { rank: 1, item: topThree.value[0], orderClass: 'md:order-2 md:min-h-[305px] xl:min-h-[330px]' } : null,
+  topThree.value[2] ? { rank: 3, item: topThree.value[2], orderClass: 'md:order-3 md:min-h-[245px] xl:min-h-[260px]' } : null
 ].filter((entry): entry is { rank: number; item: UserTokenRankingItem; orderClass: string } => entry !== null))
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
