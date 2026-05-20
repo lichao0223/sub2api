@@ -358,7 +358,7 @@ const rankingTotalTokens = ref(0)
 let chartLoadSeq = 0
 let usersTrendLoadSeq = 0
 let rankingLoadSeq = 0
-const rankingLimit = 12
+const rankingLimit = 50
 
 // Helper function to format date in local timezone
 const formatLocalDate = (date: Date): string => {

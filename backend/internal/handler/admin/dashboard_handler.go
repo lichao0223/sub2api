@@ -482,7 +482,7 @@ var dashboardBatchAPIKeysUsageCache = newSnapshotCache(30 * time.Second)
 func parseRankingLimit(raw string) int {
 	limit, err := strconv.Atoi(strings.TrimSpace(raw))
 	if err != nil || limit <= 0 {
-		return 12
+		return 50
 	}
 	if limit > 50 {
 		return 50
@@ -494,7 +494,7 @@ func parseRankingLimit(raw string) int {
 // GET /api/v1/admin/dashboard/users-ranking
 func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
-	limit := parseRankingLimit(c.DefaultQuery("limit", "12"))
+	limit := parseRankingLimit(c.DefaultQuery("limit", "50"))
 
 	keyRaw, _ := json.Marshal(struct {
 		Start string `json:"start"`
