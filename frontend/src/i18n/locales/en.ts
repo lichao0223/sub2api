@@ -345,6 +345,7 @@ export default {
     announcements: 'Announcements',
     apiKeys: 'API Keys',
     usage: 'Usage',
+    tokenRanking: 'Token Ranking',
     redeem: 'Redeem',
     affiliate: 'Affiliate Rebates',
     affiliateManagement: 'Affiliate Rebates',
@@ -652,6 +653,24 @@ export default {
     checkDetailedLogs: 'Check detailed usage logs',
     redeemCode: 'Redeem Code',
     addBalanceWithCode: 'Add balance with a code'
+  },
+
+  tokenRanking: {
+    title: 'Token Usage Ranking',
+    description: 'View all users ranked by requests, tokens, and actual spend in the selected time range.',
+    topThree: 'Top 3',
+    rankingList: 'Ranking Details',
+    rank: 'Rank',
+    user: 'User',
+    requests: 'Requests',
+    tokens: 'Tokens',
+    spend: 'Spend',
+    totalTokens: 'Total Tokens',
+    totalRequests: 'Total Requests',
+    totalSpend: 'Total Spend',
+    noData: 'No usage data in the selected time range',
+    failedToLoad: 'Failed to load token usage ranking',
+    userFallback: 'User #{id}'
   },
 
   // Groups (shared)

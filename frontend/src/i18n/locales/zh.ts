@@ -345,6 +345,7 @@ export default {
     announcements: '公告',
     apiKeys: 'API 密钥',
     usage: '使用记录',
+    tokenRanking: 'Token 使用排名',
     redeem: '兑换',
     affiliate: '邀请返利',
     affiliateManagement: '邀请返利',
@@ -651,6 +652,24 @@ export default {
     checkDetailedLogs: '查看详细的使用日志',
     redeemCode: '兑换码',
     addBalanceWithCode: '使用兑换码充值'
+  },
+
+  tokenRanking: {
+    title: 'Token 使用排名',
+    description: '查看当前时间范围内所有用户的请求数、Token 数和实际消费排名。',
+    topThree: '前三名',
+    rankingList: '排名明细',
+    rank: '排名',
+    user: '用户',
+    requests: '请求数',
+    tokens: 'Token 数',
+    spend: '消费',
+    totalTokens: '总 Token',
+    totalRequests: '总请求数',
+    totalSpend: '总消费',
+    noData: '当前时间范围内暂无使用数据',
+    failedToLoad: '加载 Token 使用排名失败',
+    userFallback: '用户 #{id}'
   },
 
   // Groups (shared)

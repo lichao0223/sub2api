@@ -2230,6 +2230,8 @@ type UserUsageTrendPoint = usagestats.UserUsageTrendPoint
 // UserSpendingRankingItem represents a user spending ranking row.
 type UserSpendingRankingItem = usagestats.UserSpendingRankingItem
 type UserSpendingRankingResponse = usagestats.UserSpendingRankingResponse
+type UserTokenRankingItem = usagestats.UserTokenRankingItem
+type UserTokenRankingResponse = usagestats.UserTokenRankingResponse
 
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
@@ -2423,6 +2425,89 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}
 
 	return &UserSpendingRankingResponse{
+		Ranking:         ranking,
+		TotalActualCost: totalActualCost,
+		TotalRequests:   totalRequests,
+		TotalTokens:     totalTokens,
+	}, nil
+}
+
+// GetUserTokenRanking returns user ranking aggregated by token usage within the time range.
+func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserTokenRankingResponse, err error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	query := `
+		WITH user_tokens AS (
+			SELECT
+				u.user_id,
+				COALESCE(us.email, '') as email,
+				COALESCE(us.username, '') as username,
+				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
+				COUNT(*) as requests,
+				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
+			FROM usage_logs u
+			LEFT JOIN users us ON u.user_id = us.id
+			WHERE u.created_at >= $1 AND u.created_at < $2
+			GROUP BY u.user_id, us.email, us.username
+		),
+		ranked AS (
+			SELECT
+				user_id,
+				email,
+				username,
+				actual_cost,
+				requests,
+				tokens,
+				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
+				COALESCE(SUM(requests) OVER (), 0) as total_requests,
+				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
+			FROM user_tokens
+			ORDER BY tokens DESC, actual_cost DESC, user_id ASC
+			LIMIT $3
+		)
+		SELECT
+			user_id,
+			email,
+			username,
+			actual_cost,
+			requests,
+			tokens,
+			total_actual_cost,
+			total_requests,
+			total_tokens
+		FROM ranked
+		ORDER BY tokens DESC, actual_cost DESC, user_id ASC
+	`
+
+	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	ranking := make([]UserTokenRankingItem, 0)
+	totalActualCost := 0.0
+	totalRequests := int64(0)
+	totalTokens := int64(0)
+	for rows.Next() {
+		var row UserTokenRankingItem
+		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+			return nil, err
+		}
+		ranking = append(ranking, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &UserTokenRankingResponse{
 		Ranking:         ranking,
 		TotalActualCost: totalActualCost,
 		TotalRequests:   totalRequests,

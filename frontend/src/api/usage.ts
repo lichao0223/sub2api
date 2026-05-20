@@ -10,7 +10,8 @@ import type {
   UsageStatsResponse,
   PaginatedResponse,
   TrendDataPoint,
-  ModelStat
+  ModelStat,
+  UserTokenRankingResponse
 } from '@/types'
 
 // ==================== Dashboard Types ====================
@@ -67,6 +68,12 @@ export interface ModelStatsResponse {
   models: ModelStat[]
   start_date: string
   end_date: string
+}
+
+export interface UserTokenRankingParams {
+  start_date?: string
+  end_date?: string
+  limit?: number
 }
 
 /**
@@ -234,6 +241,20 @@ export async function getDashboardModels(params?: {
   return data
 }
 
+/**
+ * Get cross-user token usage ranking for authenticated users.
+ * @param params - Query parameters for date range and limit
+ * @returns User token usage ranking
+ */
+export async function getDashboardTokenRanking(
+  params?: UserTokenRankingParams
+): Promise<UserTokenRankingResponse> {
+  const { data } = await apiClient.get<UserTokenRankingResponse>('/usage/dashboard/token-ranking', {
+    params
+  })
+  return data
+}
+
 export interface BatchApiKeyUsageStats {
   api_key_id: number
   today_actual_cost: number
@@ -279,6 +300,7 @@ export const usageAPI = {
   getDashboardStats,
   getDashboardTrend,
   getDashboardModels,
+  getDashboardTokenRanking,
   getDashboardApiKeysUsage
 }
 

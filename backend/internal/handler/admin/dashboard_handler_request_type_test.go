@@ -66,6 +66,14 @@ func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 	}, nil
 }
 
+func (s *dashboardUsageRepoCapture) GetUserTokenRanking(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	limit int,
+) (*usagestats.UserTokenRankingResponse, error) {
+	return &usagestats.UserTokenRankingResponse{}, nil
+}
+
 func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)

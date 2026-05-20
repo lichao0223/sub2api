@@ -315,6 +315,15 @@ func (s *UsageService) GetUserModelStats(ctx context.Context, userID int64, star
 	return stats, nil
 }
 
+// GetUserTokenRanking returns cross-user token usage ranking.
+func (s *UsageService) GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserTokenRankingResponse, error) {
+	ranking, err := s.usageRepo.GetUserTokenRanking(ctx, startTime, endTime, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get user token ranking: %w", err)
+	}
+	return ranking, nil
+}
+
 // GetAPIKeyModelStats returns per-model usage stats for a specific API Key.
 func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
 	stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, startTime, endTime, 0, apiKeyID, 0, 0, nil, nil, nil)
