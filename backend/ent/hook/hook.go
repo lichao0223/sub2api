@@ -153,6 +153,18 @@ func (f ErrorPassthroughRuleFunc) Mutate(ctx context.Context, m ent.Mutation) (e
 	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ErrorPassthroughRuleMutation", m)
 }
 
+// The ExternalUserMappingFunc type is an adapter to allow the use of ordinary
+// function as ExternalUserMapping mutator.
+type ExternalUserMappingFunc func(context.Context, *ent.ExternalUserMappingMutation) (ent.Value, error)
+
+// Mutate calls f(ctx, m).
+func (f ExternalUserMappingFunc) Mutate(ctx context.Context, m ent.Mutation) (ent.Value, error) {
+	if mv, ok := m.(*ent.ExternalUserMappingMutation); ok {
+		return f(ctx, mv)
+	}
+	return nil, fmt.Errorf("unexpected mutation type %T. expect *ent.ExternalUserMappingMutation", m)
+}
+
 // The GroupFunc type is an adapter to allow the use of ordinary
 // function as Group mutator.
 type GroupFunc func(context.Context, *ent.GroupMutation) (ent.Value, error)

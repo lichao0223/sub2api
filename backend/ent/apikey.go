@@ -78,11 +78,13 @@ type APIKeyEdges struct {
 	User *User `json:"user,omitempty"`
 	// Group holds the value of the group edge.
 	Group *Group `json:"group,omitempty"`
+	// ExternalUserMappings holds the value of the external_user_mappings edge.
+	ExternalUserMappings []*ExternalUserMapping `json:"external_user_mappings,omitempty"`
 	// UsageLogs holds the value of the usage_logs edge.
 	UsageLogs []*UsageLog `json:"usage_logs,omitempty"`
 	// loadedTypes holds the information for reporting if a
 	// type was loaded (or requested) in eager-loading or not.
-	loadedTypes [3]bool
+	loadedTypes [4]bool
 }
 
 // UserOrErr returns the User value or an error if the edge
@@ -107,10 +109,19 @@ func (e APIKeyEdges) GroupOrErr() (*Group, error) {
 	return nil, &NotLoadedError{edge: "group"}
 }
 
+// ExternalUserMappingsOrErr returns the ExternalUserMappings value or an error if the edge
+// was not loaded in eager-loading.
+func (e APIKeyEdges) ExternalUserMappingsOrErr() ([]*ExternalUserMapping, error) {
+	if e.loadedTypes[2] {
+		return e.ExternalUserMappings, nil
+	}
+	return nil, &NotLoadedError{edge: "external_user_mappings"}
+}
+
 // UsageLogsOrErr returns the UsageLogs value or an error if the edge
 // was not loaded in eager-loading.
 func (e APIKeyEdges) UsageLogsOrErr() ([]*UsageLog, error) {
-	if e.loadedTypes[2] {
+	if e.loadedTypes[3] {
 		return e.UsageLogs, nil
 	}
 	return nil, &NotLoadedError{edge: "usage_logs"}
@@ -322,6 +333,11 @@ func (_m *APIKey) QueryUser() *UserQuery {
 // QueryGroup queries the "group" edge of the APIKey entity.
 func (_m *APIKey) QueryGroup() *GroupQuery {
 	return NewAPIKeyClient(_m.config).QueryGroup(_m)
+}
+
+// QueryExternalUserMappings queries the "external_user_mappings" edge of the APIKey entity.
+func (_m *APIKey) QueryExternalUserMappings() *ExternalUserMappingQuery {
+	return NewAPIKeyClient(_m.config).QueryExternalUserMappings(_m)
 }
 
 // QueryUsageLogs queries the "usage_logs" edge of the APIKey entity.

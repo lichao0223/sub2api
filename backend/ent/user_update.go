@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/externalusermapping"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -576,6 +577,21 @@ func (_u *UserUpdate) AddAuthIdentities(v ...*AuthIdentity) *UserUpdate {
 	return _u.AddAuthIdentityIDs(ids...)
 }
 
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (_u *UserUpdate) AddExternalUserMappingIDs(ids ...int64) *UserUpdate {
+	_u.mutation.AddExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// AddExternalUserMappings adds the "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *UserUpdate) AddExternalUserMappings(v ...*ExternalUserMapping) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddExternalUserMappingIDs(ids...)
+}
+
 // AddPendingAuthSessionIDs adds the "pending_auth_sessions" edge to the PendingAuthSession entity by IDs.
 func (_u *UserUpdate) AddPendingAuthSessionIDs(ids ...int64) *UserUpdate {
 	_u.mutation.AddPendingAuthSessionIDs(ids...)
@@ -840,6 +856,27 @@ func (_u *UserUpdate) RemoveAuthIdentities(v ...*AuthIdentity) *UserUpdate {
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAuthIdentityIDs(ids...)
+}
+
+// ClearExternalUserMappings clears all "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *UserUpdate) ClearExternalUserMappings() *UserUpdate {
+	_u.mutation.ClearExternalUserMappings()
+	return _u
+}
+
+// RemoveExternalUserMappingIDs removes the "external_user_mappings" edge to ExternalUserMapping entities by IDs.
+func (_u *UserUpdate) RemoveExternalUserMappingIDs(ids ...int64) *UserUpdate {
+	_u.mutation.RemoveExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// RemoveExternalUserMappings removes "external_user_mappings" edges to ExternalUserMapping entities.
+func (_u *UserUpdate) RemoveExternalUserMappings(v ...*ExternalUserMapping) *UserUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveExternalUserMappingIDs(ids...)
 }
 
 // ClearPendingAuthSessions clears all "pending_auth_sessions" edges to the PendingAuthSession entity.
@@ -1579,6 +1616,51 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		}
 		_spec.Edges.Add = append(_spec.Edges.Add, edge)
 	}
+	if _u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedExternalUserMappingsIDs(); len(nodes) > 0 && !_u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ExternalUserMappingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
 	if _u.mutation.PendingAuthSessionsCleared() {
 		edge := &sqlgraph.EdgeSpec{
 			Rel:     sqlgraph.O2M,
@@ -2225,6 +2307,21 @@ func (_u *UserUpdateOne) AddAuthIdentities(v ...*AuthIdentity) *UserUpdateOne {
 	return _u.AddAuthIdentityIDs(ids...)
 }
 
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (_u *UserUpdateOne) AddExternalUserMappingIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.AddExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// AddExternalUserMappings adds the "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *UserUpdateOne) AddExternalUserMappings(v ...*ExternalUserMapping) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddExternalUserMappingIDs(ids...)
+}
+
 // AddPendingAuthSessionIDs adds the "pending_auth_sessions" edge to the PendingAuthSession entity by IDs.
 func (_u *UserUpdateOne) AddPendingAuthSessionIDs(ids ...int64) *UserUpdateOne {
 	_u.mutation.AddPendingAuthSessionIDs(ids...)
@@ -2489,6 +2586,27 @@ func (_u *UserUpdateOne) RemoveAuthIdentities(v ...*AuthIdentity) *UserUpdateOne
 		ids[i] = v[i].ID
 	}
 	return _u.RemoveAuthIdentityIDs(ids...)
+}
+
+// ClearExternalUserMappings clears all "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *UserUpdateOne) ClearExternalUserMappings() *UserUpdateOne {
+	_u.mutation.ClearExternalUserMappings()
+	return _u
+}
+
+// RemoveExternalUserMappingIDs removes the "external_user_mappings" edge to ExternalUserMapping entities by IDs.
+func (_u *UserUpdateOne) RemoveExternalUserMappingIDs(ids ...int64) *UserUpdateOne {
+	_u.mutation.RemoveExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// RemoveExternalUserMappings removes "external_user_mappings" edges to ExternalUserMapping entities.
+func (_u *UserUpdateOne) RemoveExternalUserMappings(v ...*ExternalUserMapping) *UserUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveExternalUserMappingIDs(ids...)
 }
 
 // ClearPendingAuthSessions clears all "pending_auth_sessions" edges to the PendingAuthSession entity.
@@ -3251,6 +3369,51 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(authidentity.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedExternalUserMappingsIDs(); len(nodes) > 0 && !_u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ExternalUserMappingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

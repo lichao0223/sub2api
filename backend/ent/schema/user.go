@@ -130,6 +130,7 @@ func (User) Edges() []ent.Edge {
 		edge.To("payment_orders", PaymentOrder.Type),
 		edge.To("auth_identities", AuthIdentity.Type).
 			Annotations(entsql.OnDelete(entsql.Cascade)),
+		edge.To("external_user_mappings", ExternalUserMapping.Type),
 		edge.To("pending_auth_sessions", PendingAuthSession.Type),
 		edge.To("platform_quotas", UserPlatformQuota.Type),
 	}

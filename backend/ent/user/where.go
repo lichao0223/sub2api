@@ -1593,6 +1593,29 @@ func HasAuthIdentitiesWith(preds ...predicate.AuthIdentity) predicate.User {
 	})
 }
 
+// HasExternalUserMappings applies the HasEdge predicate on the "external_user_mappings" edge.
+func HasExternalUserMappings() predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ExternalUserMappingsTable, ExternalUserMappingsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasExternalUserMappingsWith applies the HasEdge predicate on the "external_user_mappings" edge with a given conditions (other predicates).
+func HasExternalUserMappingsWith(preds ...predicate.ExternalUserMapping) predicate.User {
+	return predicate.User(func(s *sql.Selector) {
+		step := newExternalUserMappingsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasPendingAuthSessions applies the HasEdge predicate on the "pending_auth_sessions" edge.
 func HasPendingAuthSessions() predicate.User {
 	return predicate.User(func(s *sql.Selector) {

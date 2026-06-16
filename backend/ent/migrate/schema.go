@@ -634,6 +634,54 @@ var (
 			},
 		},
 	}
+	// ExternalUserMappingsColumns holds the columns for the "external_user_mappings" table.
+	ExternalUserMappingsColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
+		{Name: "external_user_id", Type: field.TypeString, Size: 255},
+		{Name: "username_snapshot", Type: field.TypeString, Size: 100, Default: ""},
+		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "user_id", Type: field.TypeInt64},
+	}
+	// ExternalUserMappingsTable holds the schema information for the "external_user_mappings" table.
+	ExternalUserMappingsTable = &schema.Table{
+		Name:       "external_user_mappings",
+		Columns:    ExternalUserMappingsColumns,
+		PrimaryKey: []*schema.Column{ExternalUserMappingsColumns[0]},
+		ForeignKeys: []*schema.ForeignKey{
+			{
+				Symbol:     "external_user_mappings_api_keys_external_user_mappings",
+				Columns:    []*schema.Column{ExternalUserMappingsColumns[6]},
+				RefColumns: []*schema.Column{APIKeysColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+			{
+				Symbol:     "external_user_mappings_users_external_user_mappings",
+				Columns:    []*schema.Column{ExternalUserMappingsColumns[7]},
+				RefColumns: []*schema.Column{UsersColumns[0]},
+				OnDelete:   schema.NoAction,
+			},
+		},
+		Indexes: []*schema.Index{
+			{
+				Name:    "externalusermapping_external_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{ExternalUserMappingsColumns[4]},
+			},
+			{
+				Name:    "externalusermapping_user_id",
+				Unique:  false,
+				Columns: []*schema.Column{ExternalUserMappingsColumns[7]},
+			},
+			{
+				Name:    "externalusermapping_api_key_id",
+				Unique:  false,
+				Columns: []*schema.Column{ExternalUserMappingsColumns[6]},
+			},
+		},
+	}
 	// GroupsColumns holds the columns for the "groups" table.
 	GroupsColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1786,6 +1834,7 @@ var (
 		ChannelMonitorHistoriesTable,
 		ChannelMonitorRequestTemplatesTable,
 		ErrorPassthroughRulesTable,
+		ExternalUserMappingsTable,
 		GroupsTable,
 		IdempotencyRecordsTable,
 		IdentityAdoptionDecisionsTable,
@@ -1860,6 +1909,11 @@ func init() {
 	}
 	ErrorPassthroughRulesTable.Annotation = &entsql.Annotation{
 		Table: "error_passthrough_rules",
+	}
+	ExternalUserMappingsTable.ForeignKeys[0].RefTable = APIKeysTable
+	ExternalUserMappingsTable.ForeignKeys[1].RefTable = UsersTable
+	ExternalUserMappingsTable.Annotation = &entsql.Annotation{
+		Table: "external_user_mappings",
 	}
 	GroupsTable.Annotation = &entsql.Annotation{
 		Table: "groups",

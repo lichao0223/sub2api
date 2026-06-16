@@ -1171,6 +1171,29 @@ func HasGroupWith(preds ...predicate.Group) predicate.APIKey {
 	})
 }
 
+// HasExternalUserMappings applies the HasEdge predicate on the "external_user_mappings" edge.
+func HasExternalUserMappings() predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := sqlgraph.NewStep(
+			sqlgraph.From(Table, FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, ExternalUserMappingsTable, ExternalUserMappingsColumn),
+		)
+		sqlgraph.HasNeighbors(s, step)
+	})
+}
+
+// HasExternalUserMappingsWith applies the HasEdge predicate on the "external_user_mappings" edge with a given conditions (other predicates).
+func HasExternalUserMappingsWith(preds ...predicate.ExternalUserMapping) predicate.APIKey {
+	return predicate.APIKey(func(s *sql.Selector) {
+		step := newExternalUserMappingsStep()
+		sqlgraph.HasNeighborsWith(s, step, func(s *sql.Selector) {
+			for _, p := range preds {
+				p(s)
+			}
+		})
+	})
+}
+
 // HasUsageLogs applies the HasEdge predicate on the "usage_logs" edge.
 func HasUsageLogs() predicate.APIKey {
 	return predicate.APIKey(func(s *sql.Selector) {

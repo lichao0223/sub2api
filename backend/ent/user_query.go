@@ -16,6 +16,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/externalusermapping"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -48,6 +49,7 @@ type UserQuery struct {
 	withPromoCodeUsages       *PromoCodeUsageQuery
 	withPaymentOrders         *PaymentOrderQuery
 	withAuthIdentities        *AuthIdentityQuery
+	withExternalUserMappings  *ExternalUserMappingQuery
 	withPendingAuthSessions   *PendingAuthSessionQuery
 	withPlatformQuotas        *UserPlatformQuotaQuery
 	withUserAllowedGroups     *UserAllowedGroupQuery
@@ -330,6 +332,28 @@ func (_q *UserQuery) QueryAuthIdentities() *AuthIdentityQuery {
 	return query
 }
 
+// QueryExternalUserMappings chains the current query on the "external_user_mappings" edge.
+func (_q *UserQuery) QueryExternalUserMappings() *ExternalUserMappingQuery {
+	query := (&ExternalUserMappingClient{config: _q.config}).Query()
+	query.path = func(ctx context.Context) (fromU *sql.Selector, err error) {
+		if err := _q.prepareQuery(ctx); err != nil {
+			return nil, err
+		}
+		selector := _q.sqlQuery(ctx)
+		if err := selector.Err(); err != nil {
+			return nil, err
+		}
+		step := sqlgraph.NewStep(
+			sqlgraph.From(user.Table, user.FieldID, selector),
+			sqlgraph.To(externalusermapping.Table, externalusermapping.FieldID),
+			sqlgraph.Edge(sqlgraph.O2M, false, user.ExternalUserMappingsTable, user.ExternalUserMappingsColumn),
+		)
+		fromU = sqlgraph.SetNeighbors(_q.driver.Dialect(), step)
+		return fromU, nil
+	}
+	return query
+}
+
 // QueryPendingAuthSessions chains the current query on the "pending_auth_sessions" edge.
 func (_q *UserQuery) QueryPendingAuthSessions() *PendingAuthSessionQuery {
 	query := (&PendingAuthSessionClient{config: _q.config}).Query()
@@ -599,6 +623,7 @@ func (_q *UserQuery) Clone() *UserQuery {
 		withPromoCodeUsages:       _q.withPromoCodeUsages.Clone(),
 		withPaymentOrders:         _q.withPaymentOrders.Clone(),
 		withAuthIdentities:        _q.withAuthIdentities.Clone(),
+		withExternalUserMappings:  _q.withExternalUserMappings.Clone(),
 		withPendingAuthSessions:   _q.withPendingAuthSessions.Clone(),
 		withPlatformQuotas:        _q.withPlatformQuotas.Clone(),
 		withUserAllowedGroups:     _q.withUserAllowedGroups.Clone(),
@@ -729,6 +754,17 @@ func (_q *UserQuery) WithAuthIdentities(opts ...func(*AuthIdentityQuery)) *UserQ
 	return _q
 }
 
+// WithExternalUserMappings tells the query-builder to eager-load the nodes that are connected to
+// the "external_user_mappings" edge. The optional arguments are used to configure the query builder of the edge.
+func (_q *UserQuery) WithExternalUserMappings(opts ...func(*ExternalUserMappingQuery)) *UserQuery {
+	query := (&ExternalUserMappingClient{config: _q.config}).Query()
+	for _, opt := range opts {
+		opt(query)
+	}
+	_q.withExternalUserMappings = query
+	return _q
+}
+
 // WithPendingAuthSessions tells the query-builder to eager-load the nodes that are connected to
 // the "pending_auth_sessions" edge. The optional arguments are used to configure the query builder of the edge.
 func (_q *UserQuery) WithPendingAuthSessions(opts ...func(*PendingAuthSessionQuery)) *UserQuery {
@@ -840,7 +876,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 	var (
 		nodes       = []*User{}
 		_spec       = _q.querySpec()
-		loadedTypes = [14]bool{
+		loadedTypes = [15]bool{
 			_q.withAPIKeys != nil,
 			_q.withRedeemCodes != nil,
 			_q.withSubscriptions != nil,
@@ -852,6 +888,7 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 			_q.withPromoCodeUsages != nil,
 			_q.withPaymentOrders != nil,
 			_q.withAuthIdentities != nil,
+			_q.withExternalUserMappings != nil,
 			_q.withPendingAuthSessions != nil,
 			_q.withPlatformQuotas != nil,
 			_q.withUserAllowedGroups != nil,
@@ -954,6 +991,15 @@ func (_q *UserQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*User, e
 		if err := _q.loadAuthIdentities(ctx, query, nodes,
 			func(n *User) { n.Edges.AuthIdentities = []*AuthIdentity{} },
 			func(n *User, e *AuthIdentity) { n.Edges.AuthIdentities = append(n.Edges.AuthIdentities, e) }); err != nil {
+			return nil, err
+		}
+	}
+	if query := _q.withExternalUserMappings; query != nil {
+		if err := _q.loadExternalUserMappings(ctx, query, nodes,
+			func(n *User) { n.Edges.ExternalUserMappings = []*ExternalUserMapping{} },
+			func(n *User, e *ExternalUserMapping) {
+				n.Edges.ExternalUserMappings = append(n.Edges.ExternalUserMappings, e)
+			}); err != nil {
 			return nil, err
 		}
 	}
@@ -1335,6 +1381,36 @@ func (_q *UserQuery) loadAuthIdentities(ctx context.Context, query *AuthIdentity
 	}
 	query.Where(predicate.AuthIdentity(func(s *sql.Selector) {
 		s.Where(sql.InValues(s.C(user.AuthIdentitiesColumn), fks...))
+	}))
+	neighbors, err := query.All(ctx)
+	if err != nil {
+		return err
+	}
+	for _, n := range neighbors {
+		fk := n.UserID
+		node, ok := nodeids[fk]
+		if !ok {
+			return fmt.Errorf(`unexpected referenced foreign-key "user_id" returned %v for node %v`, fk, n.ID)
+		}
+		assign(node, n)
+	}
+	return nil
+}
+func (_q *UserQuery) loadExternalUserMappings(ctx context.Context, query *ExternalUserMappingQuery, nodes []*User, init func(*User), assign func(*User, *ExternalUserMapping)) error {
+	fks := make([]driver.Value, 0, len(nodes))
+	nodeids := make(map[int64]*User)
+	for i := range nodes {
+		fks = append(fks, nodes[i].ID)
+		nodeids[nodes[i].ID] = nodes[i]
+		if init != nil {
+			init(nodes[i])
+		}
+	}
+	if len(query.ctx.Fields) > 0 {
+		query.ctx.AppendFieldOnce(externalusermapping.FieldUserID)
+	}
+	query.Where(predicate.ExternalUserMapping(func(s *sql.Selector) {
+		s.Where(sql.InValues(s.C(user.ExternalUserMappingsColumn), fks...))
 	}))
 	neighbors, err := query.All(ctx)
 	if err != nil {

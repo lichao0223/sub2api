@@ -14,6 +14,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/announcementread"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
+	"github.com/Wei-Shaw/sub2api/ent/externalusermapping"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/ent/pendingauthsession"
@@ -503,6 +504,21 @@ func (_c *UserCreate) AddAuthIdentities(v ...*AuthIdentity) *UserCreate {
 		ids[i] = v[i].ID
 	}
 	return _c.AddAuthIdentityIDs(ids...)
+}
+
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (_c *UserCreate) AddExternalUserMappingIDs(ids ...int64) *UserCreate {
+	_c.mutation.AddExternalUserMappingIDs(ids...)
+	return _c
+}
+
+// AddExternalUserMappings adds the "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_c *UserCreate) AddExternalUserMappings(v ...*ExternalUserMapping) *UserCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddExternalUserMappingIDs(ids...)
 }
 
 // AddPendingAuthSessionIDs adds the "pending_auth_sessions" edge to the PendingAuthSession entity by IDs.
@@ -1016,6 +1032,22 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(authidentity.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
+	if nodes := _c.mutation.ExternalUserMappingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   user.ExternalUserMappingsTable,
+			Columns: []string{user.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

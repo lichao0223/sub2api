@@ -83,6 +83,8 @@ const (
 	EdgePaymentOrders = "payment_orders"
 	// EdgeAuthIdentities holds the string denoting the auth_identities edge name in mutations.
 	EdgeAuthIdentities = "auth_identities"
+	// EdgeExternalUserMappings holds the string denoting the external_user_mappings edge name in mutations.
+	EdgeExternalUserMappings = "external_user_mappings"
 	// EdgePendingAuthSessions holds the string denoting the pending_auth_sessions edge name in mutations.
 	EdgePendingAuthSessions = "pending_auth_sessions"
 	// EdgePlatformQuotas holds the string denoting the platform_quotas edge name in mutations.
@@ -166,6 +168,13 @@ const (
 	AuthIdentitiesInverseTable = "auth_identities"
 	// AuthIdentitiesColumn is the table column denoting the auth_identities relation/edge.
 	AuthIdentitiesColumn = "user_id"
+	// ExternalUserMappingsTable is the table that holds the external_user_mappings relation/edge.
+	ExternalUserMappingsTable = "external_user_mappings"
+	// ExternalUserMappingsInverseTable is the table name for the ExternalUserMapping entity.
+	// It exists in this package in order to avoid circular dependency with the "externalusermapping" package.
+	ExternalUserMappingsInverseTable = "external_user_mappings"
+	// ExternalUserMappingsColumn is the table column denoting the external_user_mappings relation/edge.
+	ExternalUserMappingsColumn = "user_id"
 	// PendingAuthSessionsTable is the table that holds the pending_auth_sessions relation/edge.
 	PendingAuthSessionsTable = "pending_auth_sessions"
 	// PendingAuthSessionsInverseTable is the table name for the PendingAuthSession entity.
@@ -564,6 +573,20 @@ func ByAuthIdentities(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
 	}
 }
 
+// ByExternalUserMappingsCount orders the results by external_user_mappings count.
+func ByExternalUserMappingsCount(opts ...sql.OrderTermOption) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborsCount(s, newExternalUserMappingsStep(), opts...)
+	}
+}
+
+// ByExternalUserMappings orders the results by external_user_mappings terms.
+func ByExternalUserMappings(term sql.OrderTerm, terms ...sql.OrderTerm) OrderOption {
+	return func(s *sql.Selector) {
+		sqlgraph.OrderByNeighborTerms(s, newExternalUserMappingsStep(), append([]sql.OrderTerm{term}, terms...)...)
+	}
+}
+
 // ByPendingAuthSessionsCount orders the results by pending_auth_sessions count.
 func ByPendingAuthSessionsCount(opts ...sql.OrderTermOption) OrderOption {
 	return func(s *sql.Selector) {
@@ -680,6 +703,13 @@ func newAuthIdentitiesStep() *sqlgraph.Step {
 		sqlgraph.From(Table, FieldID),
 		sqlgraph.To(AuthIdentitiesInverseTable, FieldID),
 		sqlgraph.Edge(sqlgraph.O2M, false, AuthIdentitiesTable, AuthIdentitiesColumn),
+	)
+}
+func newExternalUserMappingsStep() *sqlgraph.Step {
+	return sqlgraph.NewStep(
+		sqlgraph.From(Table, FieldID),
+		sqlgraph.To(ExternalUserMappingsInverseTable, FieldID),
+		sqlgraph.Edge(sqlgraph.O2M, false, ExternalUserMappingsTable, ExternalUserMappingsColumn),
 	)
 }
 func newPendingAuthSessionsStep() *sqlgraph.Step {

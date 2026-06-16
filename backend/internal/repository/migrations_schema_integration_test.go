@@ -37,6 +37,21 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	// api_keys: key length should be 128
 	requireColumn(t, tx, "api_keys", "key", "character varying", 128, false)
 
+	// external_user_mappings: external system identity mapping
+	var externalUserMappingsRegclass sql.NullString
+	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.external_user_mappings')").Scan(&externalUserMappingsRegclass))
+	require.True(t, externalUserMappingsRegclass.Valid, "expected external_user_mappings table to exist")
+	requireColumn(t, tx, "external_user_mappings", "external_user_id", "character varying", 255, false)
+	requireColumn(t, tx, "external_user_mappings", "user_id", "bigint", 0, false)
+	requireColumn(t, tx, "external_user_mappings", "api_key_id", "bigint", 0, false)
+	requireColumn(t, tx, "external_user_mappings", "username_snapshot", "character varying", 100, false)
+	requireColumn(t, tx, "external_user_mappings", "deleted_at", "timestamp with time zone", 0, true)
+	requireForeignKeyOnDelete(t, tx, "external_user_mappings", "user_id", "users", "CASCADE")
+	requireForeignKeyOnDelete(t, tx, "external_user_mappings", "api_key_id", "api_keys", "CASCADE")
+	requirePartialUniqueIndexDefinition(t, tx, "external_user_mappings", "external_user_mappings_external_user_id_active_uidx", "external_user_id", "WHERE", "deleted_at IS NULL")
+	requireIndex(t, tx, "external_user_mappings", "external_user_mappings_user_id_idx")
+	requireIndex(t, tx, "external_user_mappings", "external_user_mappings_api_key_id_idx")
+
 	// redeem_codes: subscription fields
 	requireColumn(t, tx, "redeem_codes", "group_id", "bigint", 0, true)
 	requireColumn(t, tx, "redeem_codes", "validity_days", "integer", 0, false)

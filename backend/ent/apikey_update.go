@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
+	"github.com/Wei-Shaw/sub2api/ent/externalusermapping"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
@@ -448,6 +449,21 @@ func (_u *APIKeyUpdate) SetGroup(v *Group) *APIKeyUpdate {
 	return _u.SetGroupID(v.ID)
 }
 
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (_u *APIKeyUpdate) AddExternalUserMappingIDs(ids ...int64) *APIKeyUpdate {
+	_u.mutation.AddExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// AddExternalUserMappings adds the "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *APIKeyUpdate) AddExternalUserMappings(v ...*ExternalUserMapping) *APIKeyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddExternalUserMappingIDs(ids...)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *APIKeyUpdate) AddUsageLogIDs(ids ...int64) *APIKeyUpdate {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -478,6 +494,27 @@ func (_u *APIKeyUpdate) ClearUser() *APIKeyUpdate {
 func (_u *APIKeyUpdate) ClearGroup() *APIKeyUpdate {
 	_u.mutation.ClearGroup()
 	return _u
+}
+
+// ClearExternalUserMappings clears all "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *APIKeyUpdate) ClearExternalUserMappings() *APIKeyUpdate {
+	_u.mutation.ClearExternalUserMappings()
+	return _u
+}
+
+// RemoveExternalUserMappingIDs removes the "external_user_mappings" edge to ExternalUserMapping entities by IDs.
+func (_u *APIKeyUpdate) RemoveExternalUserMappingIDs(ids ...int64) *APIKeyUpdate {
+	_u.mutation.RemoveExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// RemoveExternalUserMappings removes "external_user_mappings" edges to ExternalUserMapping entities.
+func (_u *APIKeyUpdate) RemoveExternalUserMappings(v ...*ExternalUserMapping) *APIKeyUpdate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveExternalUserMappingIDs(ids...)
 }
 
 // ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
@@ -747,6 +784,51 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.ExternalUserMappingsTable,
+			Columns: []string{apikey.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedExternalUserMappingsIDs(); len(nodes) > 0 && !_u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.ExternalUserMappingsTable,
+			Columns: []string{apikey.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ExternalUserMappingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.ExternalUserMappingsTable,
+			Columns: []string{apikey.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {
@@ -1235,6 +1317,21 @@ func (_u *APIKeyUpdateOne) SetGroup(v *Group) *APIKeyUpdateOne {
 	return _u.SetGroupID(v.ID)
 }
 
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (_u *APIKeyUpdateOne) AddExternalUserMappingIDs(ids ...int64) *APIKeyUpdateOne {
+	_u.mutation.AddExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// AddExternalUserMappings adds the "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *APIKeyUpdateOne) AddExternalUserMappings(v ...*ExternalUserMapping) *APIKeyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.AddExternalUserMappingIDs(ids...)
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by IDs.
 func (_u *APIKeyUpdateOne) AddUsageLogIDs(ids ...int64) *APIKeyUpdateOne {
 	_u.mutation.AddUsageLogIDs(ids...)
@@ -1265,6 +1362,27 @@ func (_u *APIKeyUpdateOne) ClearUser() *APIKeyUpdateOne {
 func (_u *APIKeyUpdateOne) ClearGroup() *APIKeyUpdateOne {
 	_u.mutation.ClearGroup()
 	return _u
+}
+
+// ClearExternalUserMappings clears all "external_user_mappings" edges to the ExternalUserMapping entity.
+func (_u *APIKeyUpdateOne) ClearExternalUserMappings() *APIKeyUpdateOne {
+	_u.mutation.ClearExternalUserMappings()
+	return _u
+}
+
+// RemoveExternalUserMappingIDs removes the "external_user_mappings" edge to ExternalUserMapping entities by IDs.
+func (_u *APIKeyUpdateOne) RemoveExternalUserMappingIDs(ids ...int64) *APIKeyUpdateOne {
+	_u.mutation.RemoveExternalUserMappingIDs(ids...)
+	return _u
+}
+
+// RemoveExternalUserMappings removes "external_user_mappings" edges to ExternalUserMapping entities.
+func (_u *APIKeyUpdateOne) RemoveExternalUserMappings(v ...*ExternalUserMapping) *APIKeyUpdateOne {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _u.RemoveExternalUserMappingIDs(ids...)
 }
 
 // ClearUsageLogs clears all "usage_logs" edges to the UsageLog entity.
@@ -1564,6 +1682,51 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(group.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Add = append(_spec.Edges.Add, edge)
+	}
+	if _u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.ExternalUserMappingsTable,
+			Columns: []string{apikey.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.RemovedExternalUserMappingsIDs(); len(nodes) > 0 && !_u.mutation.ExternalUserMappingsCleared() {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.ExternalUserMappingsTable,
+			Columns: []string{apikey.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges.Clear = append(_spec.Edges.Clear, edge)
+	}
+	if nodes := _u.mutation.ExternalUserMappingsIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: false,
+			Table:   apikey.ExternalUserMappingsTable,
+			Columns: []string{apikey.ExternalUserMappingsColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(externalusermapping.FieldID, field.TypeInt64),
 			},
 		}
 		for _, k := range nodes {

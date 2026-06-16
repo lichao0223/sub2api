@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/externalusermapping"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
@@ -749,6 +750,49 @@ func init() {
 	errorpassthroughruleDescSkipMonitoring := errorpassthroughruleFields[11].Descriptor()
 	// errorpassthroughrule.DefaultSkipMonitoring holds the default value on creation for the skip_monitoring field.
 	errorpassthroughrule.DefaultSkipMonitoring = errorpassthroughruleDescSkipMonitoring.Default.(bool)
+	externalusermappingMixin := schema.ExternalUserMapping{}.Mixin()
+	externalusermappingMixinHooks1 := externalusermappingMixin[1].Hooks()
+	externalusermapping.Hooks[0] = externalusermappingMixinHooks1[0]
+	externalusermappingMixinInters1 := externalusermappingMixin[1].Interceptors()
+	externalusermapping.Interceptors[0] = externalusermappingMixinInters1[0]
+	externalusermappingMixinFields0 := externalusermappingMixin[0].Fields()
+	_ = externalusermappingMixinFields0
+	externalusermappingFields := schema.ExternalUserMapping{}.Fields()
+	_ = externalusermappingFields
+	// externalusermappingDescCreatedAt is the schema descriptor for created_at field.
+	externalusermappingDescCreatedAt := externalusermappingMixinFields0[0].Descriptor()
+	// externalusermapping.DefaultCreatedAt holds the default value on creation for the created_at field.
+	externalusermapping.DefaultCreatedAt = externalusermappingDescCreatedAt.Default.(func() time.Time)
+	// externalusermappingDescUpdatedAt is the schema descriptor for updated_at field.
+	externalusermappingDescUpdatedAt := externalusermappingMixinFields0[1].Descriptor()
+	// externalusermapping.DefaultUpdatedAt holds the default value on creation for the updated_at field.
+	externalusermapping.DefaultUpdatedAt = externalusermappingDescUpdatedAt.Default.(func() time.Time)
+	// externalusermapping.UpdateDefaultUpdatedAt holds the default value on update for the updated_at field.
+	externalusermapping.UpdateDefaultUpdatedAt = externalusermappingDescUpdatedAt.UpdateDefault.(func() time.Time)
+	// externalusermappingDescExternalUserID is the schema descriptor for external_user_id field.
+	externalusermappingDescExternalUserID := externalusermappingFields[0].Descriptor()
+	// externalusermapping.ExternalUserIDValidator is a validator for the "external_user_id" field. It is called by the builders before save.
+	externalusermapping.ExternalUserIDValidator = func() func(string) error {
+		validators := externalusermappingDescExternalUserID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(external_user_id string) error {
+			for _, fn := range fns {
+				if err := fn(external_user_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
+	// externalusermappingDescUsernameSnapshot is the schema descriptor for username_snapshot field.
+	externalusermappingDescUsernameSnapshot := externalusermappingFields[3].Descriptor()
+	// externalusermapping.DefaultUsernameSnapshot holds the default value on creation for the username_snapshot field.
+	externalusermapping.DefaultUsernameSnapshot = externalusermappingDescUsernameSnapshot.Default.(string)
+	// externalusermapping.UsernameSnapshotValidator is a validator for the "username_snapshot" field. It is called by the builders before save.
+	externalusermapping.UsernameSnapshotValidator = externalusermappingDescUsernameSnapshot.Validators[0].(func(string) error)
 	groupMixin := schema.Group{}.Mixin()
 	groupMixinHooks1 := groupMixin[1].Hooks()
 	group.Hooks[0] = groupMixinHooks1[0]

@@ -24,6 +24,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorrequesttemplate"
 	"github.com/Wei-Shaw/sub2api/ent/errorpassthroughrule"
+	"github.com/Wei-Shaw/sub2api/ent/externalusermapping"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/idempotencyrecord"
 	"github.com/Wei-Shaw/sub2api/ent/identityadoptiondecision"
@@ -72,6 +73,7 @@ const (
 	TypeChannelMonitorHistory         = "ChannelMonitorHistory"
 	TypeChannelMonitorRequestTemplate = "ChannelMonitorRequestTemplate"
 	TypeErrorPassthroughRule          = "ErrorPassthroughRule"
+	TypeExternalUserMapping           = "ExternalUserMapping"
 	TypeGroup                         = "Group"
 	TypeIdempotencyRecord             = "IdempotencyRecord"
 	TypeIdentityAdoptionDecision      = "IdentityAdoptionDecision"
@@ -100,51 +102,54 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                            Op
+	typ                           string
+	id                            *int64
+	created_at                    *time.Time
+	updated_at                    *time.Time
+	deleted_at                    *time.Time
+	key                           *string
+	name                          *string
+	status                        *string
+	last_used_at                  *time.Time
+	ip_whitelist                  *[]string
+	appendip_whitelist            []string
+	ip_blacklist                  *[]string
+	appendip_blacklist            []string
+	quota                         *float64
+	addquota                      *float64
+	quota_used                    *float64
+	addquota_used                 *float64
+	expires_at                    *time.Time
+	rate_limit_5h                 *float64
+	addrate_limit_5h              *float64
+	rate_limit_1d                 *float64
+	addrate_limit_1d              *float64
+	rate_limit_7d                 *float64
+	addrate_limit_7d              *float64
+	usage_5h                      *float64
+	addusage_5h                   *float64
+	usage_1d                      *float64
+	addusage_1d                   *float64
+	usage_7d                      *float64
+	addusage_7d                   *float64
+	window_5h_start               *time.Time
+	window_1d_start               *time.Time
+	window_7d_start               *time.Time
+	clearedFields                 map[string]struct{}
+	user                          *int64
+	cleareduser                   bool
+	group                         *int64
+	clearedgroup                  bool
+	external_user_mappings        map[int64]struct{}
+	removedexternal_user_mappings map[int64]struct{}
+	clearedexternal_user_mappings bool
+	usage_logs                    map[int64]struct{}
+	removedusage_logs             map[int64]struct{}
+	clearedusage_logs             bool
+	done                          bool
+	oldValue                      func(context.Context) (*APIKey, error)
+	predicates                    []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -1436,6 +1441,60 @@ func (m *APIKeyMutation) ResetGroup() {
 	m.clearedgroup = false
 }
 
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by ids.
+func (m *APIKeyMutation) AddExternalUserMappingIDs(ids ...int64) {
+	if m.external_user_mappings == nil {
+		m.external_user_mappings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.external_user_mappings[ids[i]] = struct{}{}
+	}
+}
+
+// ClearExternalUserMappings clears the "external_user_mappings" edge to the ExternalUserMapping entity.
+func (m *APIKeyMutation) ClearExternalUserMappings() {
+	m.clearedexternal_user_mappings = true
+}
+
+// ExternalUserMappingsCleared reports if the "external_user_mappings" edge to the ExternalUserMapping entity was cleared.
+func (m *APIKeyMutation) ExternalUserMappingsCleared() bool {
+	return m.clearedexternal_user_mappings
+}
+
+// RemoveExternalUserMappingIDs removes the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (m *APIKeyMutation) RemoveExternalUserMappingIDs(ids ...int64) {
+	if m.removedexternal_user_mappings == nil {
+		m.removedexternal_user_mappings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.external_user_mappings, ids[i])
+		m.removedexternal_user_mappings[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedExternalUserMappings returns the removed IDs of the "external_user_mappings" edge to the ExternalUserMapping entity.
+func (m *APIKeyMutation) RemovedExternalUserMappingsIDs() (ids []int64) {
+	for id := range m.removedexternal_user_mappings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ExternalUserMappingsIDs returns the "external_user_mappings" edge IDs in the mutation.
+func (m *APIKeyMutation) ExternalUserMappingsIDs() (ids []int64) {
+	for id := range m.external_user_mappings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetExternalUserMappings resets all changes to the "external_user_mappings" edge.
+func (m *APIKeyMutation) ResetExternalUserMappings() {
+	m.external_user_mappings = nil
+	m.clearedexternal_user_mappings = false
+	m.removedexternal_user_mappings = nil
+}
+
 // AddUsageLogIDs adds the "usage_logs" edge to the UsageLog entity by ids.
 func (m *APIKeyMutation) AddUsageLogIDs(ids ...int64) {
 	if m.usage_logs == nil {
@@ -2153,12 +2212,15 @@ func (m *APIKeyMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *APIKeyMutation) AddedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.user != nil {
 		edges = append(edges, apikey.EdgeUser)
 	}
 	if m.group != nil {
 		edges = append(edges, apikey.EdgeGroup)
+	}
+	if m.external_user_mappings != nil {
+		edges = append(edges, apikey.EdgeExternalUserMappings)
 	}
 	if m.usage_logs != nil {
 		edges = append(edges, apikey.EdgeUsageLogs)
@@ -2178,6 +2240,12 @@ func (m *APIKeyMutation) AddedIDs(name string) []ent.Value {
 		if id := m.group; id != nil {
 			return []ent.Value{*id}
 		}
+	case apikey.EdgeExternalUserMappings:
+		ids := make([]ent.Value, 0, len(m.external_user_mappings))
+		for id := range m.external_user_mappings {
+			ids = append(ids, id)
+		}
+		return ids
 	case apikey.EdgeUsageLogs:
 		ids := make([]ent.Value, 0, len(m.usage_logs))
 		for id := range m.usage_logs {
@@ -2190,7 +2258,10 @@ func (m *APIKeyMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *APIKeyMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
+	if m.removedexternal_user_mappings != nil {
+		edges = append(edges, apikey.EdgeExternalUserMappings)
+	}
 	if m.removedusage_logs != nil {
 		edges = append(edges, apikey.EdgeUsageLogs)
 	}
@@ -2201,6 +2272,12 @@ func (m *APIKeyMutation) RemovedEdges() []string {
 // the given name in this mutation.
 func (m *APIKeyMutation) RemovedIDs(name string) []ent.Value {
 	switch name {
+	case apikey.EdgeExternalUserMappings:
+		ids := make([]ent.Value, 0, len(m.removedexternal_user_mappings))
+		for id := range m.removedexternal_user_mappings {
+			ids = append(ids, id)
+		}
+		return ids
 	case apikey.EdgeUsageLogs:
 		ids := make([]ent.Value, 0, len(m.removedusage_logs))
 		for id := range m.removedusage_logs {
@@ -2213,12 +2290,15 @@ func (m *APIKeyMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *APIKeyMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 3)
+	edges := make([]string, 0, 4)
 	if m.cleareduser {
 		edges = append(edges, apikey.EdgeUser)
 	}
 	if m.clearedgroup {
 		edges = append(edges, apikey.EdgeGroup)
+	}
+	if m.clearedexternal_user_mappings {
+		edges = append(edges, apikey.EdgeExternalUserMappings)
 	}
 	if m.clearedusage_logs {
 		edges = append(edges, apikey.EdgeUsageLogs)
@@ -2234,6 +2314,8 @@ func (m *APIKeyMutation) EdgeCleared(name string) bool {
 		return m.cleareduser
 	case apikey.EdgeGroup:
 		return m.clearedgroup
+	case apikey.EdgeExternalUserMappings:
+		return m.clearedexternal_user_mappings
 	case apikey.EdgeUsageLogs:
 		return m.clearedusage_logs
 	}
@@ -2263,6 +2345,9 @@ func (m *APIKeyMutation) ResetEdge(name string) error {
 		return nil
 	case apikey.EdgeGroup:
 		m.ResetGroup()
+		return nil
+	case apikey.EdgeExternalUserMappings:
+		m.ResetExternalUserMappings()
 		return nil
 	case apikey.EdgeUsageLogs:
 		m.ResetUsageLogs()
@@ -14954,6 +15039,781 @@ func (m *ErrorPassthroughRuleMutation) ClearEdge(name string) error {
 // It returns an error if the edge is not defined in the schema.
 func (m *ErrorPassthroughRuleMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown ErrorPassthroughRule edge %s", name)
+}
+
+// ExternalUserMappingMutation represents an operation that mutates the ExternalUserMapping nodes in the graph.
+type ExternalUserMappingMutation struct {
+	config
+	op                Op
+	typ               string
+	id                *int64
+	created_at        *time.Time
+	updated_at        *time.Time
+	deleted_at        *time.Time
+	external_user_id  *string
+	username_snapshot *string
+	clearedFields     map[string]struct{}
+	user              *int64
+	cleareduser       bool
+	api_key           *int64
+	clearedapi_key    bool
+	done              bool
+	oldValue          func(context.Context) (*ExternalUserMapping, error)
+	predicates        []predicate.ExternalUserMapping
+}
+
+var _ ent.Mutation = (*ExternalUserMappingMutation)(nil)
+
+// externalusermappingOption allows management of the mutation configuration using functional options.
+type externalusermappingOption func(*ExternalUserMappingMutation)
+
+// newExternalUserMappingMutation creates new mutation for the ExternalUserMapping entity.
+func newExternalUserMappingMutation(c config, op Op, opts ...externalusermappingOption) *ExternalUserMappingMutation {
+	m := &ExternalUserMappingMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeExternalUserMapping,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withExternalUserMappingID sets the ID field of the mutation.
+func withExternalUserMappingID(id int64) externalusermappingOption {
+	return func(m *ExternalUserMappingMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ExternalUserMapping
+		)
+		m.oldValue = func(ctx context.Context) (*ExternalUserMapping, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ExternalUserMapping.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withExternalUserMapping sets the old ExternalUserMapping of the mutation.
+func withExternalUserMapping(node *ExternalUserMapping) externalusermappingOption {
+	return func(m *ExternalUserMappingMutation) {
+		m.oldValue = func(context.Context) (*ExternalUserMapping, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ExternalUserMappingMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ExternalUserMappingMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ExternalUserMappingMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ExternalUserMappingMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ExternalUserMapping.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetCreatedAt sets the "created_at" field.
+func (m *ExternalUserMappingMutation) SetCreatedAt(t time.Time) {
+	m.created_at = &t
+}
+
+// CreatedAt returns the value of the "created_at" field in the mutation.
+func (m *ExternalUserMappingMutation) CreatedAt() (r time.Time, exists bool) {
+	v := m.created_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCreatedAt returns the old "created_at" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldCreatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCreatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCreatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCreatedAt: %w", err)
+	}
+	return oldValue.CreatedAt, nil
+}
+
+// ResetCreatedAt resets all changes to the "created_at" field.
+func (m *ExternalUserMappingMutation) ResetCreatedAt() {
+	m.created_at = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ExternalUserMappingMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ExternalUserMappingMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ExternalUserMappingMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// SetDeletedAt sets the "deleted_at" field.
+func (m *ExternalUserMappingMutation) SetDeletedAt(t time.Time) {
+	m.deleted_at = &t
+}
+
+// DeletedAt returns the value of the "deleted_at" field in the mutation.
+func (m *ExternalUserMappingMutation) DeletedAt() (r time.Time, exists bool) {
+	v := m.deleted_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldDeletedAt returns the old "deleted_at" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldDeletedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldDeletedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldDeletedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldDeletedAt: %w", err)
+	}
+	return oldValue.DeletedAt, nil
+}
+
+// ClearDeletedAt clears the value of the "deleted_at" field.
+func (m *ExternalUserMappingMutation) ClearDeletedAt() {
+	m.deleted_at = nil
+	m.clearedFields[externalusermapping.FieldDeletedAt] = struct{}{}
+}
+
+// DeletedAtCleared returns if the "deleted_at" field was cleared in this mutation.
+func (m *ExternalUserMappingMutation) DeletedAtCleared() bool {
+	_, ok := m.clearedFields[externalusermapping.FieldDeletedAt]
+	return ok
+}
+
+// ResetDeletedAt resets all changes to the "deleted_at" field.
+func (m *ExternalUserMappingMutation) ResetDeletedAt() {
+	m.deleted_at = nil
+	delete(m.clearedFields, externalusermapping.FieldDeletedAt)
+}
+
+// SetExternalUserID sets the "external_user_id" field.
+func (m *ExternalUserMappingMutation) SetExternalUserID(s string) {
+	m.external_user_id = &s
+}
+
+// ExternalUserID returns the value of the "external_user_id" field in the mutation.
+func (m *ExternalUserMappingMutation) ExternalUserID() (r string, exists bool) {
+	v := m.external_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalUserID returns the old "external_user_id" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldExternalUserID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalUserID: %w", err)
+	}
+	return oldValue.ExternalUserID, nil
+}
+
+// ResetExternalUserID resets all changes to the "external_user_id" field.
+func (m *ExternalUserMappingMutation) ResetExternalUserID() {
+	m.external_user_id = nil
+}
+
+// SetUserID sets the "user_id" field.
+func (m *ExternalUserMappingMutation) SetUserID(i int64) {
+	m.user = &i
+}
+
+// UserID returns the value of the "user_id" field in the mutation.
+func (m *ExternalUserMappingMutation) UserID() (r int64, exists bool) {
+	v := m.user
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUserID returns the old "user_id" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldUserID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUserID: %w", err)
+	}
+	return oldValue.UserID, nil
+}
+
+// ResetUserID resets all changes to the "user_id" field.
+func (m *ExternalUserMappingMutation) ResetUserID() {
+	m.user = nil
+}
+
+// SetAPIKeyID sets the "api_key_id" field.
+func (m *ExternalUserMappingMutation) SetAPIKeyID(i int64) {
+	m.api_key = &i
+}
+
+// APIKeyID returns the value of the "api_key_id" field in the mutation.
+func (m *ExternalUserMappingMutation) APIKeyID() (r int64, exists bool) {
+	v := m.api_key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAPIKeyID returns the old "api_key_id" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAPIKeyID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAPIKeyID: %w", err)
+	}
+	return oldValue.APIKeyID, nil
+}
+
+// ResetAPIKeyID resets all changes to the "api_key_id" field.
+func (m *ExternalUserMappingMutation) ResetAPIKeyID() {
+	m.api_key = nil
+}
+
+// SetUsernameSnapshot sets the "username_snapshot" field.
+func (m *ExternalUserMappingMutation) SetUsernameSnapshot(s string) {
+	m.username_snapshot = &s
+}
+
+// UsernameSnapshot returns the value of the "username_snapshot" field in the mutation.
+func (m *ExternalUserMappingMutation) UsernameSnapshot() (r string, exists bool) {
+	v := m.username_snapshot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUsernameSnapshot returns the old "username_snapshot" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldUsernameSnapshot(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUsernameSnapshot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUsernameSnapshot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUsernameSnapshot: %w", err)
+	}
+	return oldValue.UsernameSnapshot, nil
+}
+
+// ResetUsernameSnapshot resets all changes to the "username_snapshot" field.
+func (m *ExternalUserMappingMutation) ResetUsernameSnapshot() {
+	m.username_snapshot = nil
+}
+
+// ClearUser clears the "user" edge to the User entity.
+func (m *ExternalUserMappingMutation) ClearUser() {
+	m.cleareduser = true
+	m.clearedFields[externalusermapping.FieldUserID] = struct{}{}
+}
+
+// UserCleared reports if the "user" edge to the User entity was cleared.
+func (m *ExternalUserMappingMutation) UserCleared() bool {
+	return m.cleareduser
+}
+
+// UserIDs returns the "user" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// UserID instead. It exists only for internal usage by the builders.
+func (m *ExternalUserMappingMutation) UserIDs() (ids []int64) {
+	if id := m.user; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetUser resets all changes to the "user" edge.
+func (m *ExternalUserMappingMutation) ResetUser() {
+	m.user = nil
+	m.cleareduser = false
+}
+
+// ClearAPIKey clears the "api_key" edge to the APIKey entity.
+func (m *ExternalUserMappingMutation) ClearAPIKey() {
+	m.clearedapi_key = true
+	m.clearedFields[externalusermapping.FieldAPIKeyID] = struct{}{}
+}
+
+// APIKeyCleared reports if the "api_key" edge to the APIKey entity was cleared.
+func (m *ExternalUserMappingMutation) APIKeyCleared() bool {
+	return m.clearedapi_key
+}
+
+// APIKeyIDs returns the "api_key" edge IDs in the mutation.
+// Note that IDs always returns len(IDs) <= 1 for unique edges, and you should use
+// APIKeyID instead. It exists only for internal usage by the builders.
+func (m *ExternalUserMappingMutation) APIKeyIDs() (ids []int64) {
+	if id := m.api_key; id != nil {
+		ids = append(ids, *id)
+	}
+	return
+}
+
+// ResetAPIKey resets all changes to the "api_key" edge.
+func (m *ExternalUserMappingMutation) ResetAPIKey() {
+	m.api_key = nil
+	m.clearedapi_key = false
+}
+
+// Where appends a list predicates to the ExternalUserMappingMutation builder.
+func (m *ExternalUserMappingMutation) Where(ps ...predicate.ExternalUserMapping) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ExternalUserMappingMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ExternalUserMappingMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ExternalUserMapping, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ExternalUserMappingMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ExternalUserMappingMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ExternalUserMapping).
+func (m *ExternalUserMappingMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ExternalUserMappingMutation) Fields() []string {
+	fields := make([]string, 0, 7)
+	if m.created_at != nil {
+		fields = append(fields, externalusermapping.FieldCreatedAt)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, externalusermapping.FieldUpdatedAt)
+	}
+	if m.deleted_at != nil {
+		fields = append(fields, externalusermapping.FieldDeletedAt)
+	}
+	if m.external_user_id != nil {
+		fields = append(fields, externalusermapping.FieldExternalUserID)
+	}
+	if m.user != nil {
+		fields = append(fields, externalusermapping.FieldUserID)
+	}
+	if m.api_key != nil {
+		fields = append(fields, externalusermapping.FieldAPIKeyID)
+	}
+	if m.username_snapshot != nil {
+		fields = append(fields, externalusermapping.FieldUsernameSnapshot)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ExternalUserMappingMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case externalusermapping.FieldCreatedAt:
+		return m.CreatedAt()
+	case externalusermapping.FieldUpdatedAt:
+		return m.UpdatedAt()
+	case externalusermapping.FieldDeletedAt:
+		return m.DeletedAt()
+	case externalusermapping.FieldExternalUserID:
+		return m.ExternalUserID()
+	case externalusermapping.FieldUserID:
+		return m.UserID()
+	case externalusermapping.FieldAPIKeyID:
+		return m.APIKeyID()
+	case externalusermapping.FieldUsernameSnapshot:
+		return m.UsernameSnapshot()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ExternalUserMappingMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case externalusermapping.FieldCreatedAt:
+		return m.OldCreatedAt(ctx)
+	case externalusermapping.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	case externalusermapping.FieldDeletedAt:
+		return m.OldDeletedAt(ctx)
+	case externalusermapping.FieldExternalUserID:
+		return m.OldExternalUserID(ctx)
+	case externalusermapping.FieldUserID:
+		return m.OldUserID(ctx)
+	case externalusermapping.FieldAPIKeyID:
+		return m.OldAPIKeyID(ctx)
+	case externalusermapping.FieldUsernameSnapshot:
+		return m.OldUsernameSnapshot(ctx)
+	}
+	return nil, fmt.Errorf("unknown ExternalUserMapping field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ExternalUserMappingMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case externalusermapping.FieldCreatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCreatedAt(v)
+		return nil
+	case externalusermapping.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	case externalusermapping.FieldDeletedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetDeletedAt(v)
+		return nil
+	case externalusermapping.FieldExternalUserID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalUserID(v)
+		return nil
+	case externalusermapping.FieldUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUserID(v)
+		return nil
+	case externalusermapping.FieldAPIKeyID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAPIKeyID(v)
+		return nil
+	case externalusermapping.FieldUsernameSnapshot:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUsernameSnapshot(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ExternalUserMapping field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ExternalUserMappingMutation) AddedFields() []string {
+	var fields []string
+	return fields
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ExternalUserMappingMutation) AddedField(name string) (ent.Value, bool) {
+	switch name {
+	}
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ExternalUserMappingMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ExternalUserMapping numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ExternalUserMappingMutation) ClearedFields() []string {
+	var fields []string
+	if m.FieldCleared(externalusermapping.FieldDeletedAt) {
+		fields = append(fields, externalusermapping.FieldDeletedAt)
+	}
+	return fields
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ExternalUserMappingMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ExternalUserMappingMutation) ClearField(name string) error {
+	switch name {
+	case externalusermapping.FieldDeletedAt:
+		m.ClearDeletedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ExternalUserMapping nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ExternalUserMappingMutation) ResetField(name string) error {
+	switch name {
+	case externalusermapping.FieldCreatedAt:
+		m.ResetCreatedAt()
+		return nil
+	case externalusermapping.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	case externalusermapping.FieldDeletedAt:
+		m.ResetDeletedAt()
+		return nil
+	case externalusermapping.FieldExternalUserID:
+		m.ResetExternalUserID()
+		return nil
+	case externalusermapping.FieldUserID:
+		m.ResetUserID()
+		return nil
+	case externalusermapping.FieldAPIKeyID:
+		m.ResetAPIKeyID()
+		return nil
+	case externalusermapping.FieldUsernameSnapshot:
+		m.ResetUsernameSnapshot()
+		return nil
+	}
+	return fmt.Errorf("unknown ExternalUserMapping field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ExternalUserMappingMutation) AddedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.user != nil {
+		edges = append(edges, externalusermapping.EdgeUser)
+	}
+	if m.api_key != nil {
+		edges = append(edges, externalusermapping.EdgeAPIKey)
+	}
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ExternalUserMappingMutation) AddedIDs(name string) []ent.Value {
+	switch name {
+	case externalusermapping.EdgeUser:
+		if id := m.user; id != nil {
+			return []ent.Value{*id}
+		}
+	case externalusermapping.EdgeAPIKey:
+		if id := m.api_key; id != nil {
+			return []ent.Value{*id}
+		}
+	}
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ExternalUserMappingMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 2)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ExternalUserMappingMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ExternalUserMappingMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 2)
+	if m.cleareduser {
+		edges = append(edges, externalusermapping.EdgeUser)
+	}
+	if m.clearedapi_key {
+		edges = append(edges, externalusermapping.EdgeAPIKey)
+	}
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ExternalUserMappingMutation) EdgeCleared(name string) bool {
+	switch name {
+	case externalusermapping.EdgeUser:
+		return m.cleareduser
+	case externalusermapping.EdgeAPIKey:
+		return m.clearedapi_key
+	}
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ExternalUserMappingMutation) ClearEdge(name string) error {
+	switch name {
+	case externalusermapping.EdgeUser:
+		m.ClearUser()
+		return nil
+	case externalusermapping.EdgeAPIKey:
+		m.ClearAPIKey()
+		return nil
+	}
+	return fmt.Errorf("unknown ExternalUserMapping unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ExternalUserMappingMutation) ResetEdge(name string) error {
+	switch name {
+	case externalusermapping.EdgeUser:
+		m.ResetUser()
+		return nil
+	case externalusermapping.EdgeAPIKey:
+		m.ResetAPIKey()
+		return nil
+	}
+	return fmt.Errorf("unknown ExternalUserMapping edge %s", name)
 }
 
 // GroupMutation represents an operation that mutates the Group nodes in the graph.
@@ -38653,6 +39513,9 @@ type UserMutation struct {
 	auth_identities               map[int64]struct{}
 	removedauth_identities        map[int64]struct{}
 	clearedauth_identities        bool
+	external_user_mappings        map[int64]struct{}
+	removedexternal_user_mappings map[int64]struct{}
+	clearedexternal_user_mappings bool
 	pending_auth_sessions         map[int64]struct{}
 	removedpending_auth_sessions  map[int64]struct{}
 	clearedpending_auth_sessions  bool
@@ -40363,6 +41226,60 @@ func (m *UserMutation) ResetAuthIdentities() {
 	m.removedauth_identities = nil
 }
 
+// AddExternalUserMappingIDs adds the "external_user_mappings" edge to the ExternalUserMapping entity by ids.
+func (m *UserMutation) AddExternalUserMappingIDs(ids ...int64) {
+	if m.external_user_mappings == nil {
+		m.external_user_mappings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		m.external_user_mappings[ids[i]] = struct{}{}
+	}
+}
+
+// ClearExternalUserMappings clears the "external_user_mappings" edge to the ExternalUserMapping entity.
+func (m *UserMutation) ClearExternalUserMappings() {
+	m.clearedexternal_user_mappings = true
+}
+
+// ExternalUserMappingsCleared reports if the "external_user_mappings" edge to the ExternalUserMapping entity was cleared.
+func (m *UserMutation) ExternalUserMappingsCleared() bool {
+	return m.clearedexternal_user_mappings
+}
+
+// RemoveExternalUserMappingIDs removes the "external_user_mappings" edge to the ExternalUserMapping entity by IDs.
+func (m *UserMutation) RemoveExternalUserMappingIDs(ids ...int64) {
+	if m.removedexternal_user_mappings == nil {
+		m.removedexternal_user_mappings = make(map[int64]struct{})
+	}
+	for i := range ids {
+		delete(m.external_user_mappings, ids[i])
+		m.removedexternal_user_mappings[ids[i]] = struct{}{}
+	}
+}
+
+// RemovedExternalUserMappings returns the removed IDs of the "external_user_mappings" edge to the ExternalUserMapping entity.
+func (m *UserMutation) RemovedExternalUserMappingsIDs() (ids []int64) {
+	for id := range m.removedexternal_user_mappings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ExternalUserMappingsIDs returns the "external_user_mappings" edge IDs in the mutation.
+func (m *UserMutation) ExternalUserMappingsIDs() (ids []int64) {
+	for id := range m.external_user_mappings {
+		ids = append(ids, id)
+	}
+	return
+}
+
+// ResetExternalUserMappings resets all changes to the "external_user_mappings" edge.
+func (m *UserMutation) ResetExternalUserMappings() {
+	m.external_user_mappings = nil
+	m.clearedexternal_user_mappings = false
+	m.removedexternal_user_mappings = nil
+}
+
 // AddPendingAuthSessionIDs adds the "pending_auth_sessions" edge to the PendingAuthSession entity by ids.
 func (m *UserMutation) AddPendingAuthSessionIDs(ids ...int64) {
 	if m.pending_auth_sessions == nil {
@@ -41080,7 +41997,7 @@ func (m *UserMutation) ResetField(name string) error {
 
 // AddedEdges returns all edge names that were set/added in this mutation.
 func (m *UserMutation) AddedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 14)
 	if m.api_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -41113,6 +42030,9 @@ func (m *UserMutation) AddedEdges() []string {
 	}
 	if m.auth_identities != nil {
 		edges = append(edges, user.EdgeAuthIdentities)
+	}
+	if m.external_user_mappings != nil {
+		edges = append(edges, user.EdgeExternalUserMappings)
 	}
 	if m.pending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
@@ -41193,6 +42113,12 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeExternalUserMappings:
+		ids := make([]ent.Value, 0, len(m.external_user_mappings))
+		for id := range m.external_user_mappings {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgePendingAuthSessions:
 		ids := make([]ent.Value, 0, len(m.pending_auth_sessions))
 		for id := range m.pending_auth_sessions {
@@ -41211,7 +42137,7 @@ func (m *UserMutation) AddedIDs(name string) []ent.Value {
 
 // RemovedEdges returns all edge names that were removed in this mutation.
 func (m *UserMutation) RemovedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 14)
 	if m.removedapi_keys != nil {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -41244,6 +42170,9 @@ func (m *UserMutation) RemovedEdges() []string {
 	}
 	if m.removedauth_identities != nil {
 		edges = append(edges, user.EdgeAuthIdentities)
+	}
+	if m.removedexternal_user_mappings != nil {
+		edges = append(edges, user.EdgeExternalUserMappings)
 	}
 	if m.removedpending_auth_sessions != nil {
 		edges = append(edges, user.EdgePendingAuthSessions)
@@ -41324,6 +42253,12 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 			ids = append(ids, id)
 		}
 		return ids
+	case user.EdgeExternalUserMappings:
+		ids := make([]ent.Value, 0, len(m.removedexternal_user_mappings))
+		for id := range m.removedexternal_user_mappings {
+			ids = append(ids, id)
+		}
+		return ids
 	case user.EdgePendingAuthSessions:
 		ids := make([]ent.Value, 0, len(m.removedpending_auth_sessions))
 		for id := range m.removedpending_auth_sessions {
@@ -41342,7 +42277,7 @@ func (m *UserMutation) RemovedIDs(name string) []ent.Value {
 
 // ClearedEdges returns all edge names that were cleared in this mutation.
 func (m *UserMutation) ClearedEdges() []string {
-	edges := make([]string, 0, 13)
+	edges := make([]string, 0, 14)
 	if m.clearedapi_keys {
 		edges = append(edges, user.EdgeAPIKeys)
 	}
@@ -41375,6 +42310,9 @@ func (m *UserMutation) ClearedEdges() []string {
 	}
 	if m.clearedauth_identities {
 		edges = append(edges, user.EdgeAuthIdentities)
+	}
+	if m.clearedexternal_user_mappings {
+		edges = append(edges, user.EdgeExternalUserMappings)
 	}
 	if m.clearedpending_auth_sessions {
 		edges = append(edges, user.EdgePendingAuthSessions)
@@ -41411,6 +42349,8 @@ func (m *UserMutation) EdgeCleared(name string) bool {
 		return m.clearedpayment_orders
 	case user.EdgeAuthIdentities:
 		return m.clearedauth_identities
+	case user.EdgeExternalUserMappings:
+		return m.clearedexternal_user_mappings
 	case user.EdgePendingAuthSessions:
 		return m.clearedpending_auth_sessions
 	case user.EdgePlatformQuotas:
@@ -41463,6 +42403,9 @@ func (m *UserMutation) ResetEdge(name string) error {
 		return nil
 	case user.EdgeAuthIdentities:
 		m.ResetAuthIdentities()
+		return nil
+	case user.EdgeExternalUserMappings:
+		m.ResetExternalUserMappings()
 		return nil
 	case user.EdgePendingAuthSessions:
 		m.ResetPendingAuthSessions()
