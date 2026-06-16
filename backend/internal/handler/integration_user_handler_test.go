@@ -67,7 +67,8 @@ func TestIntegrationUserHandler_CreateValidation(t *testing.T) {
 			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 			require.Equal(t, tt.wantReason, got["reason"])
 			if tt.wantField != "" {
-				metadata := got["metadata"].(map[string]any)
+				metadata, ok := got["metadata"].(map[string]any)
+				require.True(t, ok)
 				require.Equal(t, tt.wantField, metadata["field"])
 			}
 		})
