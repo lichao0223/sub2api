@@ -171,7 +171,7 @@ One-click installation script that downloads pre-built binaries from GitHub Rele
 #### Installation Steps
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/lichao0223/sub2api/main/deploy/install.sh | sudo bash
 ```
 
 The script will:
@@ -221,7 +221,7 @@ sudo journalctl -u sub2api -f
 sudo systemctl restart sub2api
 
 # Uninstall
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/lichao0223/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
@@ -244,7 +244,7 @@ Use the automated deployment script for easy setup:
 mkdir -p sub2api-deploy && cd sub2api-deploy
 
 # Download and run deployment preparation script
-curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/docker-deploy.sh | bash
+curl -sSL https://raw.githubusercontent.com/lichao0223/sub2api/main/deploy/docker-deploy.sh | bash
 
 # Start services
 docker compose up -d
@@ -266,7 +266,7 @@ If you prefer manual setup:
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/lichao0223/sub2api.git
 cd sub2api/deploy
 
 # 2. Copy environment configuration
@@ -405,7 +405,7 @@ Build and run from source code for development or customization.
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Wei-Shaw/sub2api.git
+git clone https://github.com/lichao0223/sub2api.git
 cd sub2api
 
 # 2. Install pnpm (if not already installed)
@@ -631,13 +631,80 @@ sub2api/
 
 ## Star History
 
-<a href="https://star-history.com/#Wei-Shaw/sub2api&Date">
+<a href="https://star-history.com/#lichao0223/sub2api&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Wei-Shaw/sub2api&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Wei-Shaw/sub2api&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Wei-Shaw/sub2api&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lichao0223/sub2api&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lichao0223/sub2api&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=lichao0223/sub2api&type=Date" />
  </picture>
 </a>
+
+---
+
+## Deployment Source Switch Script
+
+The repository includes [`deploy/switch-sub2api-source.sh`](deploy/switch-sub2api-source.sh), a helper script for Docker Compose deployments that lets you switch the `sub2api` service image between:
+
+- My fork image: `ghcr.io/lichao0223/sub2api:latest`
+- Official image: `weishaw/sub2api:latest`
+
+It is designed for an existing deployment directory that already contains `docker-compose.yml` and usually `.env`.
+
+### What It Can Do
+
+- Detect the current `sub2api` image source
+- Switch between fork and official images
+- Pull and restart with the latest image of the current source
+- Backup local deployment files and detected Docker named volumes
+- Restore from a previous backup
+- Reset an admin password directly in PostgreSQL
+- Show status and follow container logs
+
+### Usage
+
+Run it from your deployment directory:
+
+```bash
+bash deploy/switch-sub2api-source.sh --dir /path/to/sub2api-deploy
+```
+
+Or copy it into the deployment directory and run it there:
+
+```bash
+./switch-sub2api-source.sh
+```
+
+### Common Commands
+
+```bash
+# Show current image and compose status
+./switch-sub2api-source.sh status --dir /path/to/sub2api-deploy
+
+# Switch to fork image
+./switch-sub2api-source.sh fork --dir /path/to/sub2api-deploy
+
+# Switch back to official image
+./switch-sub2api-source.sh official --dir /path/to/sub2api-deploy
+
+# Update the currently configured source to latest
+./switch-sub2api-source.sh update --dir /path/to/sub2api-deploy
+
+# Backup deployment data
+./switch-sub2api-source.sh backup --dir /path/to/sub2api-deploy
+
+# Restore from a backup
+./switch-sub2api-source.sh restore --dir /path/to/sub2api-deploy
+
+# Reset admin password
+./switch-sub2api-source.sh reset-admin --dir /path/to/sub2api-deploy
+```
+
+### Notes
+
+- The script always creates a backup before image switching.
+- It uses `docker compose down` without `-v`, so Docker volumes are not deleted during switching.
+- Backups are stored under `DEPLOY_DIR/backups`.
+- This script is intended for Docker Compose deployments, not source-code development environments.
 
 ---
 
