@@ -79,6 +79,7 @@
               class="input h-9 w-40 text-sm"
               @change="loadRanking"
             >
+              <option value="tokens">{{ t('tokenRanking.rankByTokens') }}</option>
               <option value="nonwork_tokens">{{ t('tokenRanking.rankByNonworkTokens') }}</option>
               <option value="requests">{{ t('tokenRanking.rankByRequests') }}</option>
               <option value="active_duration">{{ t('tokenRanking.rankByActiveDuration') }}</option>
@@ -105,10 +106,14 @@
         </div>
 
         <template v-else>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div class="card p-4">
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalTokens') }}</div>
+              <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatTokens(totals.totalTokens) }}</div>
+            </div>
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalNonworkTokens') }}</div>
-              <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatTokens(totals.tokens) }}</div>
+              <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatTokens(totals.nonworkTokens) }}</div>
             </div>
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalRequests') }}</div>
@@ -146,6 +151,7 @@
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.rank') }}</th>
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.requests') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.tokens') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkTokens') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.activeDuration') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
@@ -164,7 +170,8 @@
                       </div>
                     </td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatNumber(item.requests) }}</td>
-                    <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.nonwork_tokens ?? item.tokens ?? 0) }}</td>
+                    <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.tokens) }}</td>
+                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
                   </tr>
@@ -202,9 +209,9 @@ const exportMenuOpen = ref(false)
 const exportMenuRef = ref<HTMLElement | null>(null)
 const error = ref(false)
 const rankingScope = ref<'all' | 'nonwork'>('all')
-const rankBy = ref<'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'>('nonwork_tokens')
+const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'>('tokens')
 const rankingItems = ref<UserTokenRankingItem[]>([])
-const totals = ref({ tokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
+const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
 const responseStartDate = ref('')
 const responseEndDate = ref('')
 const calendarConfirmed = ref<boolean | null>(null)
@@ -263,7 +270,8 @@ function exportRows() {
     email: item.email || '',
     username: item.username || '',
     requests: item.requests,
-    nonwork_tokens: item.nonwork_tokens ?? item.tokens ?? 0,
+    tokens: item.tokens,
+    nonwork_tokens: item.nonwork_tokens ?? 0,
     active_duration: formatDuration(item.active_duration_ms || 0),
     actual_cost: item.actual_cost
   }))
@@ -290,6 +298,7 @@ async function exportRanking(format: ExportFormat) {
       'Email',
       'Username',
       t('tokenRanking.requests'),
+      t('tokenRanking.tokens'),
       t('tokenRanking.nonworkTokens'),
       t('tokenRanking.activeDuration'),
       t('tokenRanking.spend')
@@ -300,6 +309,7 @@ async function exportRanking(format: ExportFormat) {
       row.email,
       row.username,
       row.requests,
+      row.tokens,
       row.nonwork_tokens,
       row.active_duration,
       row.actual_cost
@@ -347,7 +357,8 @@ async function loadRanking() {
     })
     rankingItems.value = response.ranking || []
     totals.value = {
-      tokens: response.total_nonwork_tokens ?? response.total_tokens ?? 0,
+      totalTokens: response.total_tokens || 0,
+      nonworkTokens: response.total_nonwork_tokens || 0,
       requests: response.total_requests || 0,
       actualCost: response.total_actual_cost || 0,
       nonworkTokenRatio: response.nonwork_token_ratio || 0
@@ -358,7 +369,7 @@ async function loadRanking() {
   } catch (err) {
     console.error('Failed to load token ranking:', err)
     rankingItems.value = []
-    totals.value = { tokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 }
+    totals.value = { totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 }
     calendarConfirmed.value = null
     error.value = true
   } finally {
