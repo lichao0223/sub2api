@@ -13,8 +13,16 @@ func RegisterUserRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	jwtAuth middleware.JWTAuthMiddleware,
+	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
 ) {
+	v1.GET(
+		"/usage/dashboard/token-ranking/nonwork",
+		jwtOrAdminAuth(jwtAuth, adminAuth),
+		middleware.BackendModeUserGuard(settingService),
+		h.Usage.DashboardNonworkTokenRanking,
+	)
+
 	authenticated := v1.Group("")
 	authenticated.Use(gin.HandlerFunc(jwtAuth))
 	authenticated.Use(middleware.BackendModeUserGuard(settingService))
@@ -91,7 +99,6 @@ func RegisterUserRoutes(
 			usage.GET("/dashboard/trend", h.Usage.DashboardTrend)
 			usage.GET("/dashboard/models", h.Usage.DashboardModels)
 			usage.GET("/dashboard/token-ranking", h.Usage.DashboardTokenRanking)
-			usage.GET("/dashboard/token-ranking/nonwork", h.Usage.DashboardNonworkTokenRanking)
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
 		}
 
@@ -124,5 +131,17 @@ func RegisterUserRoutes(
 			monitors.GET("", h.ChannelMonitor.List)
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
 		}
+	}
+}
+
+func jwtOrAdminAuth(jwtAuth middleware.JWTAuthMiddleware, adminAuth middleware.AdminAuthMiddleware) gin.HandlerFunc {
+	jwt := gin.HandlerFunc(jwtAuth)
+	admin := gin.HandlerFunc(adminAuth)
+	return func(c *gin.Context) {
+		if c.GetHeader("x-api-key") != "" {
+			admin(c)
+			return
+		}
+		jwt(c)
 	}
 }
