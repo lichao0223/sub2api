@@ -342,6 +342,14 @@ func (s *UsageService) GetUserNonworkTokenRanking(ctx context.Context, startDate
 	return ranking, nil
 }
 
+func (s *UsageService) GetNonworkStatsCoverage(ctx context.Context, startDate, endDate time.Time, timezone string) (usagestats.NonworkStatsCoverage, error) {
+	coverage, err := s.usageRepo.GetNonworkStatsCoverage(ctx, startDate, endDate, timezone)
+	if err != nil {
+		return usagestats.NonworkStatsCoverage{}, fmt.Errorf("get nonwork stats coverage: %w", err)
+	}
+	return coverage, nil
+}
+
 // GetAPIKeyModelStats returns per-model usage stats for a specific API Key.
 func (s *UsageService) GetAPIKeyModelStats(ctx context.Context, apiKeyID int64, startTime, endTime time.Time) ([]usagestats.ModelStat, error) {
 	stats, err := s.usageRepo.GetModelStatsWithFilters(ctx, startTime, endTime, 0, apiKeyID, 0, 0, nil, nil, nil)

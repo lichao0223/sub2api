@@ -106,6 +106,16 @@
         </div>
 
         <template v-else>
+          <div
+            v-if="statsCoverage && !statsCoverage.complete"
+            class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+          >
+            {{ t('tokenRanking.statsIncomplete', { aggregated: statsCoverage.aggregated_days, total: statsCoverage.total_days }) }}
+            <template v-if="statsCoverageMissingSummary">
+              · {{ t('tokenRanking.statsMissing', { ranges: statsCoverageMissingSummary }) }}
+            </template>
+          </div>
+
           <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalTokens') }}</div>
@@ -205,7 +215,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import type { UserTokenRankingItem } from '@/types'
+import type { NonworkStatsCoverage, UserTokenRankingItem } from '@/types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -230,6 +240,7 @@ const pagination = ref({
 const responseStartDate = ref('')
 const responseEndDate = ref('')
 const calendarConfirmed = ref<boolean | null>(null)
+const statsCoverage = ref<NonworkStatsCoverage | null>(null)
 
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
@@ -241,6 +252,14 @@ const paginationStart = computed(() => (pagination.value.page - 1) * pagination.
 const paginatedRankingItems = computed(() => {
   const start = paginationStart.value
   return rankingItems.value.slice(start, start + pagination.value.page_size)
+})
+
+const statsCoverageMissingSummary = computed(() => {
+  const ranges = statsCoverage.value?.missing_ranges || []
+  return ranges.slice(0, 3).map((range) => {
+    if (range.start_date === range.end_date) return range.start_date
+    return `${range.start_date}~${range.end_date}`
+  }).join(', ')
 })
 
 type ExportFormat = 'xlsx' | 'csv'
@@ -388,6 +407,7 @@ async function loadRanking() {
       nonworkTokenRatio: response.nonwork_token_ratio || 0
     }
     calendarConfirmed.value = response.calendar_confirmed ?? null
+    statsCoverage.value = response.stats_coverage || null
     responseStartDate.value = response.start_date || startDate.value
     responseEndDate.value = response.end_date || endDate.value
   } catch (err) {
@@ -395,6 +415,7 @@ async function loadRanking() {
     rankingItems.value = []
     totals.value = { totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 }
     calendarConfirmed.value = null
+    statsCoverage.value = null
     error.value = true
   } finally {
     loading.value = false

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,19 +16,26 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/nonworktime"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 const (
 	defaultNonworkJobTimeout          = 5 * time.Minute
+	defaultNonworkBackfillTimeout     = 30 * time.Minute
+	defaultNonworkBackfillChunkDays   = 31
 	defaultNonworkCalendarSyncPeriod  = 24 * time.Hour
 	defaultNonworkAggregationInterval = 10 * time.Minute
 	holidayCNURLFormat                = "https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/%d.json"
 )
 
+var ErrNonworkBackfillRunning = errors.New("非工作统计回填正在运行")
+
 type NonworkUsageRepository interface {
 	UpsertCalendarDays(ctx context.Context, days []nonworktime.CalendarDay) (inserted int, updated int, err error)
 	RecordCalendarSyncRun(ctx context.Context, run CalendarSyncRun) error
 	GetCalendarStatus(ctx context.Context, country string, years []int) ([]CalendarYearStatus, error)
+	GetStatsCoverage(ctx context.Context, startDate, endDate time.Time, timezone string) (usagestats.NonworkStatsCoverage, error)
+	GetFirstUsageDate(ctx context.Context, timezone string) (time.Time, bool, error)
 	GetCalendarDays(ctx context.Context, country string, startDate, endDate time.Time) ([]nonworktime.CalendarDay, error)
 	UpsertManualCalendarDay(ctx context.Context, day nonworktime.CalendarDay) error
 	GetUsageEvents(ctx context.Context, start, end time.Time) ([]NonworkUsageEvent, error)
@@ -99,6 +107,7 @@ type UsageNonworkAggregationService struct {
 	cfg         config.NonworkUsageConfig
 	httpClient  *http.Client
 	running     int32
+	backfilling int32
 }
 
 type ManualCalendarDayInput struct {
@@ -146,6 +155,9 @@ func (s *UsageNonworkAggregationService) Start() {
 		s.timingWheel.ScheduleRecurring("nonwork:usage-aggregation", interval, func() {
 			s.runRecentAggregation()
 		})
+		s.timingWheel.ScheduleRecurring("nonwork:historical-backfill", time.Hour, func() {
+			s.runHistoricalBackfill()
+		})
 	}
 }
 
@@ -155,11 +167,13 @@ func (s *UsageNonworkAggregationService) Stop() {
 	}
 	s.timingWheel.Cancel("nonwork:calendar-sync")
 	s.timingWheel.Cancel("nonwork:usage-aggregation")
+	s.timingWheel.Cancel("nonwork:historical-backfill")
 }
 
 func (s *UsageNonworkAggregationService) runStartupJobs() {
 	s.runCalendarSync()
 	s.runRecentAggregation()
+	s.runHistoricalBackfill()
 }
 
 func (s *UsageNonworkAggregationService) runCalendarSync() {
@@ -202,6 +216,34 @@ func (s *UsageNonworkAggregationService) runRecentAggregation() {
 	}
 }
 
+func (s *UsageNonworkAggregationService) runHistoricalBackfill() {
+	if !s.cfg.Aggregation.Enabled {
+		return
+	}
+	if !atomic.CompareAndSwapInt32(&s.backfilling, 0, 1) {
+		return
+	}
+	defer atomic.StoreInt32(&s.backfilling, 0)
+
+	cfg := s.workdayConfig()
+	ctx, cancel := context.WithTimeout(context.Background(), defaultNonworkBackfillTimeout)
+	defer cancel()
+
+	first, ok, err := s.repo.GetFirstUsageDate(ctx, cfg.Location.String())
+	if err != nil {
+		logger.LegacyPrintf("service.nonwork_usage", "[NonworkUsage] 查询历史回填起点失败: %v", err)
+		return
+	}
+	if !ok {
+		return
+	}
+	start := dateOnlyService(first.In(cfg.Location), cfg.Location)
+	end := dateOnlyService(time.Now().In(cfg.Location), cfg.Location)
+	if err := s.BackfillMissingRange(ctx, start, end.AddDate(0, 0, 1)); err != nil {
+		logger.LegacyPrintf("service.nonwork_usage", "[NonworkUsage] 历史非工作统计回填失败: %v", err)
+	}
+}
+
 func (s *UsageNonworkAggregationService) SyncCalendars(ctx context.Context, now time.Time) error {
 	if s == nil || s.repo == nil {
 		return nil
@@ -227,13 +269,80 @@ func (s *UsageNonworkAggregationService) TriggerBackfill(start, end time.Time) e
 	if !end.After(start) {
 		return fmt.Errorf("回填时间范围无效")
 	}
+	if !atomic.CompareAndSwapInt32(&s.backfilling, 0, 1) {
+		return ErrNonworkBackfillRunning
+	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultNonworkJobTimeout)
+		defer atomic.StoreInt32(&s.backfilling, 0)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultNonworkBackfillTimeout)
 		defer cancel()
-		if err := s.AggregateRange(ctx, start, end); err != nil {
+		if err := s.BackfillMissingRange(ctx, start, end); err != nil {
 			logger.LegacyPrintf("service.nonwork_usage", "[NonworkUsage] 手动回填失败: %v", err)
 		}
 	}()
+	return nil
+}
+
+func (s *UsageNonworkAggregationService) GetStatsCoverage(ctx context.Context, start, end time.Time) (usagestats.NonworkStatsCoverage, error) {
+	if s == nil || s.repo == nil || !end.After(start) {
+		return usagestats.NonworkStatsCoverage{}, nil
+	}
+	cfg := s.workdayConfig()
+	localStart := dateOnlyService(start.In(cfg.Location), cfg.Location)
+	localEndExclusive := dateOnlyService(end.In(cfg.Location), cfg.Location)
+	if end.In(cfg.Location).After(localEndExclusive) {
+		localEndExclusive = localEndExclusive.AddDate(0, 0, 1)
+	}
+	localEndDate := localEndExclusive.AddDate(0, 0, -1)
+	if localEndDate.Before(localStart) {
+		return usagestats.NonworkStatsCoverage{}, nil
+	}
+	return s.repo.GetStatsCoverage(ctx, localStart, localEndDate, cfg.Location.String())
+}
+
+func (s *UsageNonworkAggregationService) BackfillMissingRange(ctx context.Context, start, end time.Time) error {
+	if s == nil || s.repo == nil || !end.After(start) {
+		return nil
+	}
+	cfg := s.workdayConfig()
+	localStart := dateOnlyService(start.In(cfg.Location), cfg.Location)
+	localEndExclusive := dateOnlyService(end.In(cfg.Location), cfg.Location)
+	if end.In(cfg.Location).After(localEndExclusive) {
+		localEndExclusive = localEndExclusive.AddDate(0, 0, 1)
+	}
+	localEndDate := localEndExclusive.AddDate(0, 0, -1)
+	if localEndDate.Before(localStart) {
+		return nil
+	}
+
+	coverage, err := s.repo.GetStatsCoverage(ctx, localStart, localEndDate, cfg.Location.String())
+	if err != nil {
+		return err
+	}
+	if coverage.Complete {
+		return nil
+	}
+	for _, missing := range coverage.MissingRanges {
+		rangeStart, err := time.ParseInLocation("2006-01-02", missing.StartDate, cfg.Location)
+		if err != nil {
+			return err
+		}
+		rangeEnd, err := time.ParseInLocation("2006-01-02", missing.EndDate, cfg.Location)
+		if err != nil {
+			return err
+		}
+		rangeEndExclusive := rangeEnd.AddDate(0, 0, 1)
+		for chunkStart := rangeStart; chunkStart.Before(rangeEndExclusive); {
+			chunkEnd := chunkStart.AddDate(0, 0, defaultNonworkBackfillChunkDays)
+			if chunkEnd.After(rangeEndExclusive) {
+				chunkEnd = rangeEndExclusive
+			}
+			if err := s.AggregateRange(ctx, chunkStart, chunkEnd); err != nil {
+				return err
+			}
+			chunkStart = chunkEnd
+		}
+	}
 	return nil
 }
 

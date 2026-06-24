@@ -20,6 +20,17 @@
                 {{ t('admin.usage.noCalendarStatus') }}
               </span>
             </div>
+            <div class="mt-3 text-xs" :class="nonworkStatsCoverage?.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
+              <template v-if="nonworkStatsCoverage">
+                {{ t('admin.usage.nonworkStatsCoverage', { aggregated: nonworkStatsCoverage.aggregated_days, total: nonworkStatsCoverage.total_days }) }}
+                <template v-if="!nonworkStatsCoverage.complete && nonworkStatsMissingSummary">
+                  · {{ t('admin.usage.nonworkStatsMissing', { ranges: nonworkStatsMissingSummary }) }}
+                </template>
+              </template>
+              <template v-else>
+                {{ t('admin.usage.nonworkStatsAutoBackfillHint') }}
+              </template>
+            </div>
           </div>
           <div class="flex flex-wrap items-end gap-2">
             <button class="btn btn-secondary" :disabled="nonworkBusy" @click="loadNonworkCalendarStatus">
@@ -29,7 +40,7 @@
               {{ t('admin.usage.syncCalendar') }}
             </button>
             <button class="btn btn-secondary" :disabled="nonworkBusy" @click="backfillNonworkUsage">
-              {{ t('admin.usage.backfillNonwork') }}
+              {{ t('admin.usage.backfillCurrentRange') }}
             </button>
             <input v-model="manualCalendarDate" type="date" class="input h-9 w-36 text-sm" />
             <select v-model="manualCalendarIsWorkday" class="input h-9 w-28 text-sm">
@@ -210,7 +221,7 @@ import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams, NonworkCalendarYearStatus } from '@/api/admin/usage'
+import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser, NonworkStatsCoverage } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams, NonworkCalendarYearStatus } from '@/api/admin/usage'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -242,6 +253,7 @@ const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0
 const cleanupDialogVisible = ref(false)
 const nonworkBusy = ref(false)
 const nonworkCalendarYears = ref<NonworkCalendarYearStatus[]>([])
+const nonworkStatsCoverage = ref<NonworkStatsCoverage | null>(null)
 const manualCalendarDate = ref('')
 const manualCalendarIsWorkday = ref(false)
 // Balance history modal state
@@ -262,6 +274,14 @@ const breakdownFilters = computed(() => {
 const modelNameOptions = computed(() =>
   Array.from(new Set(requestedModelStats.value.map((m) => m.model).filter(Boolean))).sort()
 )
+
+const nonworkStatsMissingSummary = computed(() => {
+  const ranges = nonworkStatsCoverage.value?.missing_ranges || []
+  return ranges.slice(0, 3).map((range) => {
+    if (range.start_date === range.end_date) return range.start_date
+    return `${range.start_date}~${range.end_date}`
+  }).join(', ')
+})
 
 const handleUserClick = async (userId: number) => {
   try {
@@ -314,6 +334,19 @@ const loadNonworkCalendarStatus = async () => {
   }
 }
 
+const loadNonworkStatsStatus = async () => {
+  try {
+    const res = await adminUsageAPI.getNonworkStatsStatus({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    })
+    nonworkStatsCoverage.value = res.coverage || null
+  } catch {
+    nonworkStatsCoverage.value = null
+  }
+}
+
 const syncNonworkCalendar = async () => {
   if (nonworkBusy.value) return
   nonworkBusy.value = true
@@ -339,6 +372,7 @@ const backfillNonworkUsage = async () => {
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     })
     appStore.showSuccess(t('admin.usage.nonworkBackfillAccepted'))
+    setTimeout(loadNonworkStatsStatus, 1500)
   } catch {
     appStore.showError(t('admin.usage.nonworkBackfillFailed'))
   } finally {
@@ -558,6 +592,7 @@ const applyFilters = () => {
   loadLogs()
   loadStats()
   loadNonworkCalendarStatus()
+  loadNonworkStatsStatus()
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   errPage.value = 1
@@ -571,6 +606,7 @@ const refreshData = () => {
   invalidateModelStatsCache()
   loadLogs()
   loadStats(true)
+  loadNonworkStatsStatus()
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()
@@ -785,6 +821,8 @@ onMounted(() => {
   applyRouteQueryFilters()
   loadLogs()
   loadStats()
+  loadNonworkCalendarStatus()
+  loadNonworkStatsStatus()
   loadModelStats(modelDistributionSource.value, true)
   window.setTimeout(() => {
     void loadChartData()

@@ -2538,6 +2538,10 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 	if strings.TrimSpace(tz) == "" {
 		tz = "Asia/Shanghai"
 	}
+	coverage, err := r.GetNonworkStatsCoverage(ctx, startDate, endDate, tz)
+	if err != nil {
+		return nil, err
+	}
 	segments := nonworkRankingSegments(scope)
 	innerOrderExpr, outerOrderExpr := nonworkRankingOrderExprs(rankBy)
 
@@ -2675,7 +2679,88 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		NonworkTokenRatio:     nonworkTokenRatio,
 		TotalActiveDurationMs: totalActiveDurationMs,
 		CalendarConfirmed:     calendarConfirmed,
+		StatsCoverage:         coverage,
+		StatsComplete:         coverage.Complete,
 	}, nil
+}
+
+func (r *usageLogRepository) GetNonworkStatsCoverage(ctx context.Context, startDate, endDate time.Time, tz string) (result usagestats.NonworkStatsCoverage, err error) {
+	if r == nil || r.sql == nil || endDate.Before(startDate) {
+		return usagestats.NonworkStatsCoverage{}, nil
+	}
+	if strings.TrimSpace(tz) == "" {
+		tz = "Asia/Shanghai"
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH days AS (
+			SELECT generate_series($1::date, $2::date, interval '1 day')::date AS bucket_date
+		),
+		marked AS (
+			SELECT bucket_date
+			FROM usage_nonwork_daily_stat_runs
+			WHERE timezone = $3
+			  AND bucket_date >= $1::date
+			  AND bucket_date <= $2::date
+		)
+		SELECT d.bucket_date::text, (m.bucket_date IS NOT NULL) AS aggregated
+		FROM days d
+		LEFT JOIN marked m ON m.bucket_date = d.bucket_date
+		ORDER BY d.bucket_date ASC
+	`, startDate, endDate, tz)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	result = usagestats.NonworkStatsCoverage{
+		StartDate:     startDate.Format("2006-01-02"),
+		EndDate:       endDate.Format("2006-01-02"),
+		Timezone:      tz,
+		MissingRanges: make([]usagestats.NonworkMissingDateRange, 0),
+		Complete:      true,
+	}
+	var openMissingStart string
+	var lastMissing string
+	for rows.Next() {
+		var date string
+		var aggregated bool
+		if err = rows.Scan(&date, &aggregated); err != nil {
+			return result, err
+		}
+		result.TotalDays++
+		if aggregated {
+			result.AggregatedDays++
+			if openMissingStart != "" {
+				result.MissingRanges = append(result.MissingRanges, usagestats.NonworkMissingDateRange{
+					StartDate: openMissingStart,
+					EndDate:   lastMissing,
+				})
+				openMissingStart = ""
+				lastMissing = ""
+			}
+			continue
+		}
+		result.MissingDays++
+		result.Complete = false
+		if openMissingStart == "" {
+			openMissingStart = date
+		}
+		lastMissing = date
+	}
+	if err = rows.Err(); err != nil {
+		return result, err
+	}
+	if openMissingStart != "" {
+		result.MissingRanges = append(result.MissingRanges, usagestats.NonworkMissingDateRange{
+			StartDate: openMissingStart,
+			EndDate:   lastMissing,
+		})
+	}
+	return result, nil
 }
 
 func nonworkRankingSegments(scope string) []string {

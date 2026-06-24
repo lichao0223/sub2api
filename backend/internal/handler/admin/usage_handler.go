@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -650,6 +651,26 @@ func (h *UsageHandler) GetNonworkCalendarStatus(c *gin.Context) {
 	response.Success(c, gin.H{"years": status})
 }
 
+// GetNonworkStatsStatus returns aggregation coverage for the selected date range.
+// GET /api/v1/admin/usage/nonwork/stats/status?start_date=2026-06-01&end_date=2026-06-24
+func (h *UsageHandler) GetNonworkStatsStatus(c *gin.Context) {
+	if h.nonworkService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Non-work usage service unavailable")
+		return
+	}
+	start, end, err := parseNonworkDateRange(c.Query("start_date"), c.Query("end_date"), c.Query("timezone"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	coverage, err := h.nonworkService.GetStatsCoverage(c.Request.Context(), start, end.AddDate(0, 0, 1))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"coverage": coverage})
+}
+
 // SyncNonworkCalendar triggers an async calendar sync for selected years.
 // POST /api/v1/admin/usage/nonwork/calendar/sync
 func (h *UsageHandler) SyncNonworkCalendar(c *gin.Context) {
@@ -709,21 +730,35 @@ func (h *UsageHandler) BackfillNonworkUsage(c *gin.Context) {
 		response.BadRequest(c, "Invalid request body")
 		return
 	}
-	start, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(req.StartDate), req.Timezone)
+	start, end, err := parseNonworkDateRange(req.StartDate, req.EndDate, req.Timezone)
 	if err != nil {
-		response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
-		return
-	}
-	end, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(req.EndDate), req.Timezone)
-	if err != nil {
-		response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+		response.BadRequest(c, err.Error())
 		return
 	}
 	if err := h.nonworkService.TriggerBackfill(start, end.AddDate(0, 0, 1)); err != nil {
+		if errors.Is(err, service.ErrNonworkBackfillRunning) {
+			response.Error(c, http.StatusConflict, "Non-work stats backfill is already running")
+			return
+		}
 		response.ErrorFrom(c, err)
 		return
 	}
 	response.Success(c, gin.H{"status": "accepted"})
+}
+
+func parseNonworkDateRange(startRaw, endRaw, tz string) (time.Time, time.Time, error) {
+	start, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(startRaw), tz)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid start_date format, use YYYY-MM-DD")
+	}
+	end, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(endRaw), tz)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid end_date format, use YYYY-MM-DD")
+	}
+	if end.Before(start) {
+		return time.Time{}, time.Time{}, fmt.Errorf("end_date must be on or after start_date")
+	}
+	return start, end, nil
 }
 
 func parseYearList(raw string) ([]int, error) {

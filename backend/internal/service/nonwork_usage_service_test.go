@@ -10,6 +10,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/nonworktime"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/stretchr/testify/require"
 )
 
@@ -32,6 +33,14 @@ func (r *fakeNonworkUsageRepo) RecordCalendarSyncRun(ctx context.Context, run Ca
 
 func (r *fakeNonworkUsageRepo) GetCalendarStatus(ctx context.Context, country string, years []int) ([]CalendarYearStatus, error) {
 	return nil, nil
+}
+
+func (r *fakeNonworkUsageRepo) GetStatsCoverage(ctx context.Context, startDate, endDate time.Time, timezone string) (usagestats.NonworkStatsCoverage, error) {
+	return usagestats.NonworkStatsCoverage{Complete: true}, nil
+}
+
+func (r *fakeNonworkUsageRepo) GetFirstUsageDate(ctx context.Context, timezone string) (time.Time, bool, error) {
+	return time.Time{}, false, nil
 }
 
 func (r *fakeNonworkUsageRepo) GetCalendarDays(ctx context.Context, country string, startDate, endDate time.Time) ([]nonworktime.CalendarDay, error) {

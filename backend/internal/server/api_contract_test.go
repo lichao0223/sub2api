@@ -2402,6 +2402,10 @@ func (r *stubUsageLogRepo) GetUserNonworkTokenRanking(ctx context.Context, start
 	return &usagestats.UserNonworkTokenRankingResponse{}, nil
 }
 
+func (r *stubUsageLogRepo) GetNonworkStatsCoverage(ctx context.Context, startDate, endDate time.Time, timezone string) (usagestats.NonworkStatsCoverage, error) {
+	return usagestats.NonworkStatsCoverage{Complete: true}, nil
+}
+
 func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	logs := r.userLogs[userID]
 	if len(logs) == 0 {

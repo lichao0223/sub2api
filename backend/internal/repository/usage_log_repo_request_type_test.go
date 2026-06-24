@@ -577,6 +577,18 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 6, 24, 0, 0, 0, 0, time.UTC)
 
+	coverageRows := sqlmock.NewRows([]string{"bucket_date", "aggregated"}).
+		AddRow("2026-06-18", true).
+		AddRow("2026-06-19", true).
+		AddRow("2026-06-20", true).
+		AddRow("2026-06-21", true).
+		AddRow("2026-06-22", true).
+		AddRow("2026-06-23", true).
+		AddRow("2026-06-24", true)
+	mock.ExpectQuery("WITH days AS \\(").
+		WithArgs(start, end, "Asia/Shanghai").
+		WillReturnRows(coverageRows)
+
 	rows := sqlmock.NewRows([]string{
 		"user_id",
 		"email",
@@ -637,6 +649,16 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		NonworkTokenRatio:     0.65,
 		TotalActiveDurationMs: 900000,
 		CalendarConfirmed:     true,
+		StatsCoverage: usagestats.NonworkStatsCoverage{
+			StartDate:      "2026-06-18",
+			EndDate:        "2026-06-24",
+			Timezone:       "Asia/Shanghai",
+			TotalDays:      7,
+			AggregatedDays: 7,
+			MissingRanges:  []usagestats.NonworkMissingDateRange{},
+			Complete:       true,
+		},
+		StatsComplete: true,
 	}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

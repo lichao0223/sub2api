@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType } from '@/types'
+import type { AdminUsageLog, UsageQueryParams, PaginatedResponse, UsageRequestType, NonworkStatsCoverage } from '@/types'
 import type { EndpointStat } from '@/types'
 
 // ==================== Types ====================
@@ -222,6 +222,17 @@ export async function getNonworkCalendarStatus(years?: number[]): Promise<{ year
   return data
 }
 
+export async function getNonworkStatsStatus(params: {
+  start_date: string
+  end_date: string
+  timezone?: string
+}): Promise<{ coverage: NonworkStatsCoverage }> {
+  const { data } = await apiClient.get<{ coverage: NonworkStatsCoverage }>('/admin/usage/nonwork/stats/status', {
+    params
+  })
+  return data
+}
+
 export async function syncNonworkCalendar(years?: number[]): Promise<{ status: string }> {
   const { data } = await apiClient.post<{ status: string }>('/admin/usage/nonwork/calendar/sync', {
     years: years || []
@@ -257,6 +268,7 @@ export const adminUsageAPI = {
   createCleanupTask,
   cancelCleanupTask,
   getNonworkCalendarStatus,
+  getNonworkStatsStatus,
   syncNonworkCalendar,
   overrideNonworkCalendarDay,
   backfillNonworkUsage

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/nonworktime"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 )
@@ -191,6 +192,103 @@ func (r *nonworkUsageRepository) GetCalendarStatus(ctx context.Context, country 
 	return out, rows.Err()
 }
 
+func (r *nonworkUsageRepository) GetStatsCoverage(ctx context.Context, startDate, endDate time.Time, tz string) (result usagestats.NonworkStatsCoverage, err error) {
+	if r == nil || r.sql == nil || endDate.Before(startDate) {
+		return usagestats.NonworkStatsCoverage{}, nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH days AS (
+			SELECT generate_series($1::date, $2::date, interval '1 day')::date AS bucket_date
+		),
+		marked AS (
+			SELECT bucket_date
+			FROM usage_nonwork_daily_stat_runs
+			WHERE timezone = $3
+			  AND bucket_date >= $1::date
+			  AND bucket_date <= $2::date
+		)
+		SELECT d.bucket_date::text, (m.bucket_date IS NOT NULL) AS aggregated
+		FROM days d
+		LEFT JOIN marked m ON m.bucket_date = d.bucket_date
+		ORDER BY d.bucket_date ASC
+	`, startDate, endDate, tz)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
+
+	result = usagestats.NonworkStatsCoverage{
+		StartDate:     startDate.Format("2006-01-02"),
+		EndDate:       endDate.Format("2006-01-02"),
+		Timezone:      tz,
+		MissingRanges: make([]usagestats.NonworkMissingDateRange, 0),
+		Complete:      true,
+	}
+	var openMissingStart string
+	var lastMissing string
+	for rows.Next() {
+		var date string
+		var aggregated bool
+		if err = rows.Scan(&date, &aggregated); err != nil {
+			return result, err
+		}
+		result.TotalDays++
+		if aggregated {
+			result.AggregatedDays++
+			if openMissingStart != "" {
+				result.MissingRanges = append(result.MissingRanges, usagestats.NonworkMissingDateRange{
+					StartDate: openMissingStart,
+					EndDate:   lastMissing,
+				})
+				openMissingStart = ""
+				lastMissing = ""
+			}
+			continue
+		}
+		result.MissingDays++
+		result.Complete = false
+		if openMissingStart == "" {
+			openMissingStart = date
+		}
+		lastMissing = date
+	}
+	if err = rows.Err(); err != nil {
+		return result, err
+	}
+	if openMissingStart != "" {
+		result.MissingRanges = append(result.MissingRanges, usagestats.NonworkMissingDateRange{
+			StartDate: openMissingStart,
+			EndDate:   lastMissing,
+		})
+	}
+	return result, nil
+}
+
+func (r *nonworkUsageRepository) GetFirstUsageDate(ctx context.Context, tz string) (time.Time, bool, error) {
+	if r == nil || r.sql == nil {
+		return time.Time{}, false, nil
+	}
+	var first sql.NullTime
+	if err := scanSingleRow(ctx, r.sql, `
+		SELECT (MIN(created_at) AT TIME ZONE $1)::date
+		FROM usage_logs
+		WHERE user_id IS NOT NULL
+	`, []any{tz}, &first); err != nil {
+		if err == sql.ErrNoRows {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, err
+	}
+	if !first.Valid {
+		return time.Time{}, false, nil
+	}
+	return first.Time, true, nil
+}
+
 func (r *nonworkUsageRepository) GetCalendarDays(ctx context.Context, country string, startDate, endDate time.Time) ([]nonworktime.CalendarDay, error) {
 	if r == nil || r.sql == nil {
 		return nil, nil
@@ -316,8 +414,31 @@ func (r *nonworkUsageRepository) CleanupDailyUserStats(ctx context.Context, cuto
 	if r == nil || r.sql == nil {
 		return nil
 	}
-	_, err := r.sql.ExecContext(ctx, `
+	if db, ok := r.sql.(*sql.DB); ok {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		txRepo := newNonworkUsageRepositoryWithSQL(tx)
+		if err := txRepo.cleanupDailyUserStatsInTx(ctx, cutoffDate, tz); err != nil {
+			_ = tx.Rollback()
+			return err
+		}
+		return tx.Commit()
+	}
+	return r.cleanupDailyUserStatsInTx(ctx, cutoffDate, tz)
+}
+
+func (r *nonworkUsageRepository) cleanupDailyUserStatsInTx(ctx context.Context, cutoffDate time.Time, tz string) error {
+	if _, err := r.sql.ExecContext(ctx, `
 		DELETE FROM usage_nonwork_daily_user_stats
+		WHERE bucket_date < $1::date
+		  AND timezone = $2
+	`, cutoffDate, tz); err != nil {
+		return err
+	}
+	_, err := r.sql.ExecContext(ctx, `
+		DELETE FROM usage_nonwork_daily_stat_runs
 		WHERE bucket_date < $1::date
 		  AND timezone = $2
 	`, cutoffDate, tz)
@@ -378,6 +499,14 @@ func (r *nonworkUsageRepository) replaceDailyUserStatsInTx(ctx context.Context, 
 			row.TotalTokens, row.ActualCost, row.ActiveMs, row.ActiveSessions, row.CalendarConfirmed); err != nil {
 			return err
 		}
+	}
+	if _, err := r.sql.ExecContext(ctx, `
+		INSERT INTO usage_nonwork_daily_stat_runs (bucket_date, timezone, computed_at)
+		SELECT generate_series($1::date, $2::date, interval '1 day')::date, $3, NOW()
+		ON CONFLICT (bucket_date, timezone)
+		DO UPDATE SET computed_at = EXCLUDED.computed_at
+	`, startDate, endDate, tz); err != nil {
+		return err
 	}
 	return nil
 }

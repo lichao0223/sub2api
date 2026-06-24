@@ -214,6 +214,24 @@ type UserNonworkTokenRankingResponse struct {
 	NonworkTokenRatio     float64                       `json:"nonwork_token_ratio"`
 	TotalActiveDurationMs int64                         `json:"total_active_duration_ms"`
 	CalendarConfirmed     bool                          `json:"calendar_confirmed"`
+	StatsCoverage         NonworkStatsCoverage          `json:"stats_coverage"`
+	StatsComplete         bool                          `json:"stats_complete"`
+}
+
+type NonworkMissingDateRange struct {
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+}
+
+type NonworkStatsCoverage struct {
+	StartDate      string                    `json:"start_date"`
+	EndDate        string                    `json:"end_date"`
+	Timezone       string                    `json:"timezone"`
+	TotalDays      int                       `json:"total_days"`
+	AggregatedDays int                       `json:"aggregated_days"`
+	MissingDays    int                       `json:"missing_days"`
+	MissingRanges  []NonworkMissingDateRange `json:"missing_ranges"`
+	Complete       bool                      `json:"complete"`
 }
 
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).

@@ -1532,6 +1532,22 @@ export interface UserTokenRankingItem {
   calendar_confirmed?: boolean
 }
 
+export interface NonworkMissingDateRange {
+  start_date: string
+  end_date: string
+}
+
+export interface NonworkStatsCoverage {
+  start_date: string
+  end_date: string
+  timezone: string
+  total_days: number
+  aggregated_days: number
+  missing_days: number
+  missing_ranges: NonworkMissingDateRange[]
+  complete: boolean
+}
+
 export interface UserTokenRankingResponse {
   ranking: UserTokenRankingItem[]
   total_actual_cost: number
@@ -1542,6 +1558,8 @@ export interface UserTokenRankingResponse {
   nonwork_token_ratio?: number
   total_active_duration_ms?: number
   calendar_confirmed?: boolean
+  stats_coverage?: NonworkStatsCoverage
+  stats_complete?: boolean
   scope?: string
   rank_by?: string
   timezone?: string

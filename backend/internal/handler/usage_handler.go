@@ -585,6 +585,8 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 		"nonwork_token_ratio":      ranking.NonworkTokenRatio,
 		"total_active_duration_ms": ranking.TotalActiveDurationMs,
 		"calendar_confirmed":       ranking.CalendarConfirmed,
+		"stats_coverage":           ranking.StatsCoverage,
+		"stats_complete":           ranking.StatsComplete,
 		"scope":                    scope,
 		"rank_by":                  rankBy,
 		"timezone":                 userTZ,

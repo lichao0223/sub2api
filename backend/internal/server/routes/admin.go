@@ -561,6 +561,7 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
 		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)
 		usage.GET("/nonwork/calendar/status", h.Admin.Usage.GetNonworkCalendarStatus)
+		usage.GET("/nonwork/stats/status", h.Admin.Usage.GetNonworkStatsStatus)
 		usage.POST("/nonwork/calendar/sync", h.Admin.Usage.SyncNonworkCalendar)
 		usage.PUT("/nonwork/calendar/day", h.Admin.Usage.OverrideNonworkCalendarDay)
 		usage.POST("/nonwork/backfill", h.Admin.Usage.BackfillNonworkUsage)
