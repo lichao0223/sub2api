@@ -76,14 +76,28 @@
             </span>
             <select
               v-model="rankBy"
-              class="input h-9 w-40 text-sm"
+              class="input h-9 w-56 text-sm"
               @change="handleFilterChange"
             >
               <option value="tokens">{{ t('tokenRanking.rankByTokens') }}</option>
               <option value="nonwork_tokens">{{ t('tokenRanking.rankByNonworkTokens') }}</option>
               <option value="requests">{{ t('tokenRanking.rankByRequests') }}</option>
               <option value="active_duration">{{ t('tokenRanking.rankByActiveDuration') }}</option>
+              <option value="nonwork_active_duration">{{ t('tokenRanking.rankByNonworkActiveDuration') }}</option>
               <option value="actual_cost">{{ t('tokenRanking.rankBySpend') }}</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('tokenRanking.sortOrder') }}:
+            </span>
+            <select
+              v-model="sortOrder"
+              class="input h-9 w-28 text-sm"
+              @change="handleFilterChange"
+            >
+              <option value="asc">{{ t('tokenRanking.sortAsc') }}</option>
+              <option value="desc">{{ t('tokenRanking.sortDesc') }}</option>
             </select>
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
@@ -155,16 +169,26 @@
               </div>
             </div>
             <div ref="rankingTableScrollRef" class="max-h-[52vh] overflow-auto">
-              <table class="w-full min-w-[980px] text-sm">
+              <table class="w-full min-w-[1120px] table-fixed text-sm">
+                <colgroup>
+                  <col class="w-20" />
+                  <col class="w-40" />
+                  <col class="w-28" />
+                  <col class="w-32" />
+                  <col class="w-40" />
+                  <col class="w-44" />
+                  <col class="w-44" />
+                  <col class="w-28" />
+                </colgroup>
                 <thead class="sticky top-0 z-10 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.rank') }}</th>
-                    <th class="w-48 px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
+                    <th class="px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.requests') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.tokens') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkTokens') }}</th>
-                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.activeDuration') }}</th>
-                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkActiveDuration') }}</th>
+                    <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.activeDuration') }}</th>
+                    <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.nonworkActiveDuration') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
                   </tr>
                 </thead>
@@ -175,16 +199,16 @@
                     class="border-t border-gray-100 dark:border-dark-700"
                   >
                     <td class="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400">#{{ paginationStart + index + 1 }}</td>
-                    <td class="w-48 px-4 py-3">
-                      <div class="max-w-[180px] truncate font-medium text-gray-900 dark:text-white" :title="userLabel(item)">
+                    <td class="px-4 py-3">
+                      <div class="max-w-[140px] truncate font-medium text-gray-900 dark:text-white" :title="userLabel(item)">
                         {{ userLabel(item) }}
                       </div>
                     </td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatNumber(item.requests) }}</td>
                     <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.tokens) }}</td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
-                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
-                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
+                    <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
                   </tr>
                 </tbody>
@@ -232,7 +256,8 @@ const exportMenuRef = ref<HTMLElement | null>(null)
 const rankingTableScrollRef = ref<HTMLElement | null>(null)
 const error = ref(false)
 const rankingScope = ref<'all' | 'nonwork'>('all')
-const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'>('tokens')
+const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration' | 'actual_cost'>('tokens')
+const sortOrder = ref<'asc' | 'desc'>('asc')
 const rankingItems = ref<UserTokenRankingItem[]>([])
 const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
 const pagination = ref({
@@ -397,7 +422,8 @@ async function loadRanking() {
       end_date: endDate.value,
       limit: 10000,
       scope: rankingScope.value,
-      rank_by: rankBy.value
+      rank_by: rankBy.value,
+      sort_order: sortOrder.value
     })
     rankingItems.value = response.ranking || []
     clampPagination()

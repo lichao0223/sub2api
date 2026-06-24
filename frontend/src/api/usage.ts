@@ -78,7 +78,8 @@ export interface UserTokenRankingParams {
   end_date?: string
   limit?: number
   scope?: 'all' | 'nonwork'
-  rank_by?: 'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'
+  rank_by?: 'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration' | 'actual_cost'
+  sort_order?: 'asc' | 'desc'
   timezone?: string
 }
 

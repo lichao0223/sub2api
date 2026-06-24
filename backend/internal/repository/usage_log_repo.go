@@ -2531,7 +2531,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 	}, nil
 }
 
-func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, tz string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
+func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, tz string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -2544,6 +2544,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 	}
 	segments := nonworkRankingSegments(scope)
 	innerOrderExpr, outerOrderExpr := nonworkRankingOrderExprs(rankBy)
+	innerDirection, outerDirection := nonworkRankingDirections(sortOrder)
 
 	query := fmt.Sprintf(`
 		WITH stats AS (
@@ -2602,7 +2603,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			CROSS JOIN totals t
 			LEFT JOIN stats s ON s.user_id = u.id
 			WHERE u.deleted_at IS NULL AND u.role <> $5
-			ORDER BY %s DESC, COALESCE(s.tokens, 0) DESC, COALESCE(s.active_duration_ms, 0) DESC, u.id ASC
+			ORDER BY %s %s, COALESCE(s.tokens, 0) %s, COALESCE(s.active_duration_ms, 0) %s, u.id ASC
 			LIMIT $6
 		)
 		SELECT
@@ -2625,8 +2626,8 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			total_active_duration_ms,
 			all_calendar_confirmed
 		FROM ranked
-		ORDER BY %s DESC, tokens DESC, active_duration_ms DESC, user_id ASC
-	`, innerOrderExpr, outerOrderExpr)
+		ORDER BY %s %s, tokens %s, active_duration_ms %s, user_id ASC
+	`, innerOrderExpr, innerDirection, innerDirection, innerDirection, outerOrderExpr, outerDirection, outerDirection, outerDirection)
 
 	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, limit)
 	if err != nil {
@@ -2782,12 +2783,23 @@ func nonworkRankingOrderExprs(rankBy string) (string, string) {
 		return "COALESCE(s.requests, 0)", "requests"
 	case usagestats.NonworkRankingRankByActiveDuration:
 		return "COALESCE(s.active_duration_ms, 0)", "active_duration_ms"
+	case usagestats.NonworkRankingRankByNonworkActive:
+		return "COALESCE(s.nonwork_active_ms, 0)", "nonwork_active_ms"
 	case usagestats.NonworkRankingRankByActualCost:
 		return "COALESCE(s.actual_cost, 0)", "actual_cost"
 	case usagestats.NonworkRankingRankByNonworkTokens:
 		return "COALESCE(s.nonwork_tokens, 0)", "nonwork_tokens"
 	default:
 		return "COALESCE(s.tokens, 0)", "tokens"
+	}
+}
+
+func nonworkRankingDirections(sortOrder string) (string, string) {
+	switch strings.ToLower(strings.TrimSpace(sortOrder)) {
+	case "desc":
+		return "ASC", "ASC"
+	default:
+		return "DESC", "DESC"
 	}
 }
 

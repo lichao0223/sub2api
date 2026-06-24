@@ -189,6 +189,7 @@ const (
 	NonworkRankingRankByNonworkTokens  = "nonwork_tokens"
 	NonworkRankingRankByRequests       = "requests"
 	NonworkRankingRankByActiveDuration = "active_duration"
+	NonworkRankingRankByNonworkActive  = "nonwork_active_duration"
 	NonworkRankingRankByActualCost     = "actual_cost"
 )
 

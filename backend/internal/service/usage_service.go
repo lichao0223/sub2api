@@ -334,8 +334,8 @@ func (s *UsageService) GetUserTokenRanking(ctx context.Context, startTime, endTi
 	return ranking, nil
 }
 
-func (s *UsageService) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, timezone string, limit int) (*usagestats.UserNonworkTokenRankingResponse, error) {
-	ranking, err := s.usageRepo.GetUserNonworkTokenRanking(ctx, startDate, endDate, scope, rankBy, timezone, limit)
+func (s *UsageService) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, timezone string, limit int) (*usagestats.UserNonworkTokenRankingResponse, error) {
+	ranking, err := s.usageRepo.GetUserNonworkTokenRanking(ctx, startDate, endDate, scope, rankBy, sortOrder, timezone, limit)
 	if err != nil {
 		return nil, fmt.Errorf("get user nonwork token ranking: %w", err)
 	}

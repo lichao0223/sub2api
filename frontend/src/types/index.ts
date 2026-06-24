@@ -1563,6 +1563,7 @@ export interface UserTokenRankingResponse {
   stats_complete?: boolean
   scope?: string
   rank_by?: string
+  sort_order?: string
   timezone?: string
   start_date: string
   end_date: string

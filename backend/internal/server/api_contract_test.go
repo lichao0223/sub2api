@@ -2398,7 +2398,7 @@ func (r *stubUsageLogRepo) GetUserTokenRanking(ctx context.Context, startTime, e
 	return nil, errors.New("not implemented")
 }
 
-func (r *stubUsageLogRepo) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, timezone string, limit int) (*usagestats.UserNonworkTokenRankingResponse, error) {
+func (r *stubUsageLogRepo) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, timezone string, limit int) (*usagestats.UserNonworkTokenRankingResponse, error) {
 	return &usagestats.UserNonworkTokenRankingResponse{}, nil
 }
 
