@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +17,7 @@ type fakeNonworkUsageRepo struct {
 	calendar []nonworktime.CalendarDay
 	events   []NonworkUsageEvent
 	rows     []NonworkDailyUserStat
+	runs     []CalendarSyncRun
 }
 
 func (r *fakeNonworkUsageRepo) UpsertCalendarDays(ctx context.Context, days []nonworktime.CalendarDay) (int, int, error) {
@@ -22,6 +26,7 @@ func (r *fakeNonworkUsageRepo) UpsertCalendarDays(ctx context.Context, days []no
 }
 
 func (r *fakeNonworkUsageRepo) RecordCalendarSyncRun(ctx context.Context, run CalendarSyncRun) error {
+	r.runs = append(r.runs, run)
 	return nil
 }
 
@@ -117,9 +122,50 @@ func TestUsageNonworkAggregationServiceAggregateRangeSplitsActiveDuration(t *tes
 	require.Equal(t, int64(3*60*1000), bySegment[nonworktime.SegmentAfterHours].ActiveMs)
 }
 
+func TestUsageNonworkAggregationServiceSyncCalendarUsesPredictionForEmptyHolidayCN(t *testing.T) {
+	repo := &fakeNonworkUsageRepo{}
+	svc := NewUsageNonworkAggregationService(repo, nil, &config.Config{
+		NonworkUsage: config.NonworkUsageConfig{
+			Timezone: "Asia/Shanghai",
+			Calendar: config.NonworkUsageCalendarConfig{
+				Country:     "CN",
+				Source:      "holiday-cn",
+				SyncEnabled: true,
+			},
+		},
+	})
+	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader(`{"year":2027,"papers":[],"days":[]}`)),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})}
+
+	cfg := svc.workdayConfig()
+	err := svc.syncCalendarYear(context.Background(), 2027, cfg)
+	require.NoError(t, err)
+	require.Len(t, repo.calendar, 365)
+	require.NotEmpty(t, repo.runs)
+	require.Equal(t, "predicted", repo.runs[len(repo.runs)-1].Status)
+	require.Equal(t, "holiday-cn has no confirmed day entries", repo.runs[len(repo.runs)-1].ErrorMessage)
+
+	for _, day := range repo.calendar {
+		require.False(t, day.Confirmed)
+		require.Equal(t, "week_rule", day.Source)
+	}
+}
+
 func mustLoadLocation(t *testing.T, name string) *time.Location {
 	t.Helper()
 	loc, err := time.LoadLocation(name)
 	require.NoError(t, err)
 	return loc
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

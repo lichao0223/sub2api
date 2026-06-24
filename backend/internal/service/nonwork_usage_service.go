@@ -331,7 +331,7 @@ func (s *UsageNonworkAggregationService) syncCalendarYear(ctx context.Context, y
 		data, err := s.fetchHolidayCN(ctx, year)
 		if err == nil {
 			parsed, parseErr := nonworktime.ParseHolidayCNCalendar(data, cfg.Location)
-			if parseErr == nil && parsed.Year == year {
+			if parseErr == nil && parsed.Year == year && len(parsed.Days) > 0 {
 				sourceHash := sha256.Sum256(data)
 				cfg.DefaultSource = "holiday-cn"
 				cfg.DefaultSourceVers = parsed.SourceVersion
@@ -344,7 +344,14 @@ func (s *UsageNonworkAggregationService) syncCalendarYear(ctx context.Context, y
 				run.SourceVersion = parsed.SourceVersion + "#" + hex.EncodeToString(sourceHash[:8])
 				run.Status = "success"
 			} else {
-				run.ErrorMessage = fmt.Sprintf("parse holiday-cn failed: %v", parseErr)
+				switch {
+				case parseErr != nil:
+					run.ErrorMessage = fmt.Sprintf("parse holiday-cn failed: %v", parseErr)
+				case parsed.Year != year:
+					run.ErrorMessage = fmt.Sprintf("holiday-cn year mismatch: got %d", parsed.Year)
+				default:
+					run.ErrorMessage = "holiday-cn has no confirmed day entries"
+				}
 			}
 		} else {
 			run.ErrorMessage = err.Error()

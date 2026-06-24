@@ -17,6 +17,22 @@ type holidayPaper struct {
 	URL  string `json:"url"`
 }
 
+func (p *holidayPaper) UnmarshalJSON(data []byte) error {
+	var url string
+	if err := json.Unmarshal(data, &url); err == nil {
+		p.URL = url
+		return nil
+	}
+
+	type holidayPaperAlias holidayPaper
+	var paper holidayPaperAlias
+	if err := json.Unmarshal(data, &paper); err != nil {
+		return err
+	}
+	*p = holidayPaper(paper)
+	return nil
+}
+
 type holidayCNDay struct {
 	Name     string `json:"name"`
 	Date     string `json:"date"`
