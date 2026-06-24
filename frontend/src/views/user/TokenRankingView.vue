@@ -59,6 +59,19 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('tokenRanking.scope') }}:
+            </span>
+            <select
+              v-model="rankingScope"
+              class="input h-9 w-32 text-sm"
+              @change="loadRanking"
+            >
+              <option value="all">{{ t('tokenRanking.scopeAll') }}</option>
+              <option value="nonwork">{{ t('tokenRanking.scopeNonwork') }}</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t('tokenRanking.rankBy') }}:
             </span>
             <select
@@ -151,7 +164,7 @@
                       </div>
                     </td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatNumber(item.requests) }}</td>
-                    <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.nonwork_tokens || item.tokens || 0) }}</td>
+                    <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.nonwork_tokens ?? item.tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
                   </tr>
@@ -188,6 +201,7 @@ const exporting = ref(false)
 const exportMenuOpen = ref(false)
 const exportMenuRef = ref<HTMLElement | null>(null)
 const error = ref(false)
+const rankingScope = ref<'all' | 'nonwork'>('all')
 const rankBy = ref<'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'>('nonwork_tokens')
 const rankingItems = ref<UserTokenRankingItem[]>([])
 const totals = ref({ tokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
@@ -249,7 +263,7 @@ function exportRows() {
     email: item.email || '',
     username: item.username || '',
     requests: item.requests,
-    nonwork_tokens: item.nonwork_tokens || item.tokens || 0,
+    nonwork_tokens: item.nonwork_tokens ?? item.tokens ?? 0,
     active_duration: formatDuration(item.active_duration_ms || 0),
     actual_cost: item.actual_cost
   }))
@@ -328,12 +342,12 @@ async function loadRanking() {
     const response = await usageAPI.getDashboardNonworkTokenRanking({
       start_date: startDate.value,
       end_date: endDate.value,
-      scope: 'nonwork',
+      scope: rankingScope.value,
       rank_by: rankBy.value
     })
     rankingItems.value = response.ranking || []
     totals.value = {
-      tokens: response.total_nonwork_tokens || response.total_tokens || 0,
+      tokens: response.total_nonwork_tokens ?? response.total_tokens ?? 0,
       requests: response.total_requests || 0,
       actualCost: response.total_actual_cost || 0,
       nonworkTokenRatio: response.nonwork_token_ratio || 0

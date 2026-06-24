@@ -562,7 +562,7 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 
 	startTime, endTime := parseUserTimeRange(c)
 	limit := parseUserRankingLimit(c.Query("limit"))
-	scope := strings.TrimSpace(c.DefaultQuery("scope", usagestats.NonworkRankingScopeNonwork))
+	scope := strings.TrimSpace(c.DefaultQuery("scope", usagestats.NonworkRankingScopeAll))
 	rankBy := strings.TrimSpace(c.DefaultQuery("rank_by", usagestats.NonworkRankingRankByNonworkTokens))
 	userTZ := strings.TrimSpace(c.Query("timezone"))
 	if userTZ == "" {
