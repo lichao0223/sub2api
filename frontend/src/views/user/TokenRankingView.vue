@@ -54,7 +54,7 @@
             <DateRangePicker
               v-model:start-date="startDate"
               v-model:end-date="endDate"
-              @change="loadRanking"
+              @change="handleFilterChange"
             />
           </div>
           <div class="flex items-center gap-2">
@@ -64,7 +64,7 @@
             <select
               v-model="rankingScope"
               class="input h-9 w-32 text-sm"
-              @change="loadRanking"
+              @change="handleFilterChange"
             >
               <option value="all">{{ t('tokenRanking.scopeAll') }}</option>
               <option value="nonwork">{{ t('tokenRanking.scopeNonwork') }}</option>
@@ -77,7 +77,7 @@
             <select
               v-model="rankBy"
               class="input h-9 w-40 text-sm"
-              @change="loadRanking"
+              @change="handleFilterChange"
             >
               <option value="tokens">{{ t('tokenRanking.rankByTokens') }}</option>
               <option value="nonwork_tokens">{{ t('tokenRanking.rankByNonworkTokens') }}</option>
@@ -144,9 +144,9 @@
                 </span>
               </div>
             </div>
-            <div class="overflow-x-auto">
+            <div ref="rankingTableScrollRef" class="max-h-[52vh] overflow-auto">
               <table class="w-full text-sm">
-                <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+                <thead class="sticky top-0 z-10 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.rank') }}</th>
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
@@ -159,11 +159,11 @@
                 </thead>
                 <tbody>
                   <tr
-                    v-for="(item, index) in rankingItems"
+                    v-for="(item, index) in paginatedRankingItems"
                     :key="`${item.user_id}-${index}`"
                     class="border-t border-gray-100 dark:border-dark-700"
                   >
-                    <td class="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400">#{{ index + 1 }}</td>
+                    <td class="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400">#{{ paginationStart + index + 1 }}</td>
                     <td class="px-4 py-3">
                       <div class="max-w-[260px] truncate font-medium text-gray-900 dark:text-white" :title="userLabel(item)">
                         {{ userLabel(item) }}
@@ -178,6 +178,14 @@
                 </tbody>
               </table>
             </div>
+            <Pagination
+              v-if="rankingItems.length > 0"
+              :page="pagination.page"
+              :total="rankingItems.length"
+              :page-size="pagination.page_size"
+              @update:page="handlePageChange"
+              @update:pageSize="handlePageSizeChange"
+            />
           </div>
         </template>
       </template>
@@ -192,9 +200,11 @@ import { saveAs } from 'file-saver'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import { useAppStore } from '@/stores/app'
+import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import type { UserTokenRankingItem } from '@/types'
 
 const { t } = useI18n()
@@ -207,11 +217,16 @@ const loading = ref(false)
 const exporting = ref(false)
 const exportMenuOpen = ref(false)
 const exportMenuRef = ref<HTMLElement | null>(null)
+const rankingTableScrollRef = ref<HTMLElement | null>(null)
 const error = ref(false)
 const rankingScope = ref<'all' | 'nonwork'>('all')
 const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'>('tokens')
 const rankingItems = ref<UserTokenRankingItem[]>([])
 const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
+const pagination = ref({
+  page: 1,
+  page_size: getPersistedPageSize(),
+})
 const responseStartDate = ref('')
 const responseEndDate = ref('')
 const calendarConfirmed = ref<boolean | null>(null)
@@ -219,6 +234,13 @@ const calendarConfirmed = ref<boolean | null>(null)
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
   return `${responseStartDate.value} - ${responseEndDate.value}`
+})
+
+const paginationStart = computed(() => (pagination.value.page - 1) * pagination.value.page_size)
+
+const paginatedRankingItems = computed(() => {
+  const start = paginationStart.value
+  return rankingItems.value.slice(start, start + pagination.value.page_size)
 })
 
 type ExportFormat = 'xlsx' | 'csv'
@@ -352,10 +374,12 @@ async function loadRanking() {
     const response = await usageAPI.getDashboardNonworkTokenRanking({
       start_date: startDate.value,
       end_date: endDate.value,
+      limit: 10000,
       scope: rankingScope.value,
       rank_by: rankBy.value
     })
     rankingItems.value = response.ranking || []
+    clampPagination()
     totals.value = {
       totalTokens: response.total_tokens || 0,
       nonworkTokens: response.total_nonwork_tokens || 0,
@@ -375,6 +399,33 @@ async function loadRanking() {
   } finally {
     loading.value = false
   }
+}
+
+function clampPagination() {
+  const totalPages = Math.max(1, Math.ceil(rankingItems.value.length / pagination.value.page_size))
+  if (pagination.value.page > totalPages) {
+    pagination.value.page = totalPages
+  }
+}
+
+function handleFilterChange() {
+  pagination.value.page = 1
+  loadRanking()
+}
+
+function handlePageChange(page: number) {
+  pagination.value.page = page
+  scrollRankingTableToTop()
+}
+
+function handlePageSizeChange(pageSize: number) {
+  pagination.value.page_size = pageSize
+  pagination.value.page = 1
+  scrollRankingTableToTop()
+}
+
+function scrollRankingTableToTop() {
+  rankingTableScrollRef.value?.scrollTo({ top: 0, left: 0 })
 }
 
 onMounted(() => {
