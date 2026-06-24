@@ -43,10 +43,10 @@ type CalendarDay struct {
 
 type WorkdayConfig struct {
 	Location          *time.Location
-	WorkStart        time.Duration
-	WorkEnd          time.Duration
-	ActiveGap        time.Duration
-	MinSession       time.Duration
+	WorkStart         time.Duration
+	WorkEnd           time.Duration
+	ActiveGap         time.Duration
+	MinSession        time.Duration
 	DefaultCountry    string
 	DefaultSource     string
 	DefaultSourceVers string
@@ -59,10 +59,10 @@ func DefaultConfig() WorkdayConfig {
 	}
 	return WorkdayConfig{
 		Location:       loc,
-		WorkStart:     8*time.Hour + 30*time.Minute,
-		WorkEnd:       18 * time.Hour,
-		ActiveGap:     5 * time.Minute,
-		MinSession:    time.Minute,
+		WorkStart:      8*time.Hour + 30*time.Minute,
+		WorkEnd:        18 * time.Hour,
+		ActiveGap:      5 * time.Minute,
+		MinSession:     time.Minute,
 		DefaultCountry: CountryCN,
 		DefaultSource:  "week_rule",
 	}

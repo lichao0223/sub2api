@@ -196,16 +196,16 @@ const (
 )
 
 type UserNonworkTokenRankingItem struct {
-	UserID              int64   `json:"user_id"`
-	Email               string  `json:"email"`
-	Username            string  `json:"username"`
-	ActualCost          float64 `json:"actual_cost"`
-	Requests            int64   `json:"requests"`
-	Tokens              int64   `json:"tokens"`
-	OffdayTokens        int64   `json:"offday_tokens"`
-	AfterHoursTokens    int64   `json:"after_hours_tokens"`
-	ActiveDurationMs    int64   `json:"active_duration_ms"`
-	CalendarConfirmed   bool    `json:"calendar_confirmed"`
+	UserID            int64   `json:"user_id"`
+	Email             string  `json:"email"`
+	Username          string  `json:"username"`
+	ActualCost        float64 `json:"actual_cost"`
+	Requests          int64   `json:"requests"`
+	Tokens            int64   `json:"tokens"`
+	OffdayTokens      int64   `json:"offday_tokens"`
+	AfterHoursTokens  int64   `json:"after_hours_tokens"`
+	ActiveDurationMs  int64   `json:"active_duration_ms"`
+	CalendarConfirmed bool    `json:"calendar_confirmed"`
 }
 
 type UserNonworkTokenRankingResponse struct {

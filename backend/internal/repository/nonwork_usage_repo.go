@@ -165,7 +165,7 @@ func (r *nonworkUsageRepository) GetCalendarStatus(ctx context.Context, country 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]service.CalendarYearStatus, 0, len(years))
 	for rows.Next() {
@@ -208,7 +208,7 @@ func (r *nonworkUsageRepository) GetCalendarDays(ctx context.Context, country st
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []nonworktime.CalendarDay
 	for rows.Next() {
@@ -289,7 +289,7 @@ func (r *nonworkUsageRepository) GetUsageEvents(ctx context.Context, start, end 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []service.NonworkUsageEvent
 	for rows.Next() {

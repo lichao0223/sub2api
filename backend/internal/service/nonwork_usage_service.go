@@ -481,7 +481,7 @@ func (s *UsageNonworkAggregationService) fetchHolidayCN(ctx context.Context, yea
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("holiday-cn returned status %d", resp.StatusCode)
 	}
