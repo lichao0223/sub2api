@@ -155,15 +155,16 @@
               </div>
             </div>
             <div ref="rankingTableScrollRef" class="max-h-[52vh] overflow-auto">
-              <table class="w-full text-sm">
+              <table class="w-full min-w-[980px] text-sm">
                 <thead class="sticky top-0 z-10 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.rank') }}</th>
-                    <th class="px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
+                    <th class="w-48 px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.requests') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.tokens') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkTokens') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.activeDuration') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkActiveDuration') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
                   </tr>
                 </thead>
@@ -174,8 +175,8 @@
                     class="border-t border-gray-100 dark:border-dark-700"
                   >
                     <td class="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400">#{{ paginationStart + index + 1 }}</td>
-                    <td class="px-4 py-3">
-                      <div class="max-w-[260px] truncate font-medium text-gray-900 dark:text-white" :title="userLabel(item)">
+                    <td class="w-48 px-4 py-3">
+                      <div class="max-w-[180px] truncate font-medium text-gray-900 dark:text-white" :title="userLabel(item)">
                         {{ userLabel(item) }}
                       </div>
                     </td>
@@ -183,6 +184,7 @@
                     <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.tokens) }}</td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
+                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
                   </tr>
                 </tbody>
@@ -314,6 +316,7 @@ function exportRows() {
     tokens: item.tokens,
     nonwork_tokens: item.nonwork_tokens ?? 0,
     active_duration: formatDuration(item.active_duration_ms || 0),
+    nonwork_active_duration: formatDuration(item.nonwork_active_ms || 0),
     actual_cost: item.actual_cost
   }))
 }
@@ -342,6 +345,7 @@ async function exportRanking(format: ExportFormat) {
       t('tokenRanking.tokens'),
       t('tokenRanking.nonworkTokens'),
       t('tokenRanking.activeDuration'),
+      t('tokenRanking.nonworkActiveDuration'),
       t('tokenRanking.spend')
     ]
     const body = rows.map((row) => [
@@ -353,6 +357,7 @@ async function exportRanking(format: ExportFormat) {
       row.tokens,
       row.nonwork_tokens,
       row.active_duration,
+      row.nonwork_active_duration,
       row.actual_cost
     ])
 

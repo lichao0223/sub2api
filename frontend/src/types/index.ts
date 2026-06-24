@@ -1529,6 +1529,7 @@ export interface UserTokenRankingItem {
   tokens: number
   nonwork_tokens?: number
   active_duration_ms?: number
+  nonwork_active_ms?: number
   calendar_confirmed?: boolean
 }
 

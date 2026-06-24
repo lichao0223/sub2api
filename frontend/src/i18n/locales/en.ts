@@ -708,6 +708,7 @@ export default {
     tokens: 'Tokens',
     nonworkTokens: 'Non-work Time Tokens',
     activeDuration: 'Active Duration',
+    nonworkActiveDuration: 'Non-work Active Duration',
     spend: 'Spend',
     scope: 'Scope',
     scopeAll: 'All',

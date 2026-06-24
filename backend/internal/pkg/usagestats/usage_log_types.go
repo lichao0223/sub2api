@@ -201,6 +201,7 @@ type UserNonworkTokenRankingItem struct {
 	Tokens            int64   `json:"tokens"`
 	NonworkTokens     int64   `json:"nonwork_tokens"`
 	ActiveDurationMs  int64   `json:"active_duration_ms"`
+	NonworkActiveMs   int64   `json:"nonwork_active_ms"`
 	CalendarConfirmed bool    `json:"calendar_confirmed"`
 }
 

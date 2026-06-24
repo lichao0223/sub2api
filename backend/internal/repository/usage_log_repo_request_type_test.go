@@ -598,6 +598,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		"tokens",
 		"nonwork_tokens",
 		"active_duration_ms",
+		"nonwork_active_ms",
 		"calendar_confirmed",
 		"total_actual_cost",
 		"total_requests",
@@ -608,10 +609,10 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		"total_active_duration_ms",
 		"all_calendar_confirmed",
 	}).AddRow(
-		int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), int64(1200), int64(360000), true,
+		int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), int64(1200), int64(360000), int64(240000), true,
 		40.0, int64(30), int64(2600), int64(2600), int64(4000), 0.65, int64(900000), true,
 	).AddRow(
-		int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), int64(0), int64(0), true,
+		int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), int64(0), int64(0), int64(0), true,
 		40.0, int64(30), int64(2600), int64(2600), int64(4000), 0.65, int64(900000), true,
 	)
 
@@ -632,6 +633,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 				Tokens:            1200,
 				NonworkTokens:     1200,
 				ActiveDurationMs:  360000,
+				NonworkActiveMs:   240000,
 				CalendarConfirmed: true,
 			},
 			{

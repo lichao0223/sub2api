@@ -2553,6 +2553,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(total_tokens), 0) AS tokens,
 				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS nonwork_tokens,
 				COALESCE(SUM(active_ms), 0) AS active_duration_ms,
+				COALESCE(SUM(active_ms) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS nonwork_active_ms,
 				COALESCE(SUM(actual_cost), 0) AS actual_cost,
 				COALESCE(BOOL_AND(calendar_confirmed), TRUE) AS calendar_confirmed
 			FROM usage_nonwork_daily_user_stats
@@ -2584,6 +2585,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(s.tokens, 0) AS tokens,
 				COALESCE(s.nonwork_tokens, 0) AS nonwork_tokens,
 				COALESCE(s.active_duration_ms, 0) AS active_duration_ms,
+				COALESCE(s.nonwork_active_ms, 0) AS nonwork_active_ms,
 				COALESCE(s.calendar_confirmed, TRUE) AS calendar_confirmed,
 				COALESCE(SUM(COALESCE(s.actual_cost, 0)) OVER (), 0) AS total_actual_cost,
 				COALESCE(SUM(COALESCE(s.requests, 0)) OVER (), 0) AS total_requests,
@@ -2612,6 +2614,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			tokens,
 			nonwork_tokens,
 			active_duration_ms,
+			nonwork_active_ms,
 			calendar_confirmed,
 			total_actual_cost,
 			total_requests,
@@ -2651,6 +2654,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			&row.Tokens,
 			&row.NonworkTokens,
 			&row.ActiveDurationMs,
+			&row.NonworkActiveMs,
 			&row.CalendarConfirmed,
 			&totalActualCost,
 			&totalRequests,
