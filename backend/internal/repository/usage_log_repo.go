@@ -2572,31 +2572,31 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		),
 		ranked AS (
 			SELECT
-				s.user_id,
+				u.id AS user_id,
 				COALESCE(u.email, '') AS email,
 				COALESCE(u.username, '') AS username,
-				s.actual_cost,
-				s.requests,
-				s.tokens,
-				s.nonwork_tokens,
-				s.active_duration_ms,
-				s.calendar_confirmed,
-				COALESCE(SUM(s.actual_cost) OVER (), 0) AS total_actual_cost,
-				COALESCE(SUM(s.requests) OVER (), 0) AS total_requests,
-				COALESCE(SUM(s.tokens) OVER (), 0) AS total_tokens,
-				COALESCE(SUM(s.nonwork_tokens) OVER (), 0) AS total_nonwork_tokens,
+				COALESCE(s.actual_cost, 0) AS actual_cost,
+				COALESCE(s.requests, 0) AS requests,
+				COALESCE(s.tokens, 0) AS tokens,
+				COALESCE(s.nonwork_tokens, 0) AS nonwork_tokens,
+				COALESCE(s.active_duration_ms, 0) AS active_duration_ms,
+				COALESCE(s.calendar_confirmed, TRUE) AS calendar_confirmed,
+				COALESCE(SUM(COALESCE(s.actual_cost, 0)) OVER (), 0) AS total_actual_cost,
+				COALESCE(SUM(COALESCE(s.requests, 0)) OVER (), 0) AS total_requests,
+				COALESCE(SUM(COALESCE(s.tokens, 0)) OVER (), 0) AS total_tokens,
+				COALESCE(SUM(COALESCE(s.nonwork_tokens, 0)) OVER (), 0) AS total_nonwork_tokens,
 				t.total_all_tokens,
 				CASE WHEN t.total_all_tokens > 0
 					THEN t.total_nonwork_tokens::double precision / t.total_all_tokens::double precision
 					ELSE 0
 				END AS nonwork_token_ratio,
-				COALESCE(SUM(s.active_duration_ms) OVER (), 0) AS total_active_duration_ms,
-				COALESCE(BOOL_AND(s.calendar_confirmed) OVER (), TRUE) AS all_calendar_confirmed
-			FROM stats s
+				COALESCE(SUM(COALESCE(s.active_duration_ms, 0)) OVER (), 0) AS total_active_duration_ms,
+				COALESCE(BOOL_AND(COALESCE(s.calendar_confirmed, TRUE)) OVER (), TRUE) AS all_calendar_confirmed
+			FROM users u
 			CROSS JOIN totals t
-			LEFT JOIN users u ON u.id = s.user_id
+			LEFT JOIN stats s ON s.user_id = u.id
 			WHERE u.deleted_at IS NULL AND u.role <> $5
-			ORDER BY %s DESC, s.tokens DESC, s.active_duration_ms DESC, s.user_id ASC
+			ORDER BY %s DESC, COALESCE(s.tokens, 0) DESC, COALESCE(s.active_duration_ms, 0) DESC, u.id ASC
 			LIMIT $6
 		)
 		SELECT
@@ -2690,15 +2690,15 @@ func nonworkRankingSegments(scope string) []string {
 func nonworkRankingOrderExprs(rankBy string) (string, string) {
 	switch strings.TrimSpace(rankBy) {
 	case usagestats.NonworkRankingRankByRequests:
-		return "s.requests", "requests"
+		return "COALESCE(s.requests, 0)", "requests"
 	case usagestats.NonworkRankingRankByActiveDuration:
-		return "s.active_duration_ms", "active_duration_ms"
+		return "COALESCE(s.active_duration_ms, 0)", "active_duration_ms"
 	case usagestats.NonworkRankingRankByActualCost:
-		return "s.actual_cost", "actual_cost"
+		return "COALESCE(s.actual_cost, 0)", "actual_cost"
 	case usagestats.NonworkRankingRankByNonworkTokens:
-		return "s.nonwork_tokens", "nonwork_tokens"
+		return "COALESCE(s.nonwork_tokens, 0)", "nonwork_tokens"
 	default:
-		return "s.tokens", "tokens"
+		return "COALESCE(s.tokens, 0)", "tokens"
 	}
 }
 
