@@ -4689,6 +4689,7 @@ export default {
       backfillNonwork: 'Backfill Non-work Stats',
       backfillCurrentRange: 'Backfill Current Range',
       nonworkStatsCoverage: 'Non-work stats covered {aggregated}/{total} days',
+      nonworkStatsIncomplete: 'Non-work stats incomplete, covered {aggregated}/{total} days',
       nonworkStatsMissing: 'missing {ranges}',
       nonworkStatsAutoBackfillHint: 'Historical non-work stats are backfilled automatically',
       offday: 'Offday',

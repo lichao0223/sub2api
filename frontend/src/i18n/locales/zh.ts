@@ -4842,6 +4842,7 @@ export default {
       backfillNonwork: '回填非工作统计',
       backfillCurrentRange: '回填当前范围',
       nonworkStatsCoverage: '非工作统计已覆盖 {aggregated}/{total} 天',
+      nonworkStatsIncomplete: '非工作统计未完整，已覆盖 {aggregated}/{total} 天',
       nonworkStatsMissing: '缺失 {ranges}',
       nonworkStatsAutoBackfillHint: '历史非工作统计会在后台自动补齐',
       offday: '休息日',

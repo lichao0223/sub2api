@@ -20,9 +20,12 @@
                 {{ t('admin.usage.noCalendarStatus') }}
               </span>
             </div>
-            <div class="mt-3 text-xs" :class="nonworkStatsCoverage?.complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'">
-              <template v-if="nonworkStatsCoverage">
-                {{ t('admin.usage.nonworkStatsCoverage', { aggregated: nonworkStatsCoverage.aggregated_days, total: nonworkStatsCoverage.total_days }) }}
+            <div
+              v-if="!nonworkStatsCoverage || !nonworkStatsCoverage.complete"
+              class="mt-3 text-xs text-amber-600 dark:text-amber-400"
+            >
+              <template v-if="nonworkStatsCoverage && !nonworkStatsCoverage.complete">
+                {{ t('admin.usage.nonworkStatsIncomplete', { aggregated: nonworkStatsCoverage.aggregated_days, total: nonworkStatsCoverage.total_days }) }}
                 <template v-if="!nonworkStatsCoverage.complete && nonworkStatsMissingSummary">
                   · {{ t('admin.usage.nonworkStatsMissing', { ranges: nonworkStatsMissingSummary }) }}
                 </template>
