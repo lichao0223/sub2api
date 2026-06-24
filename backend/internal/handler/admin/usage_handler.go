@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	nonworkService *service.UsageNonworkAggregationService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +35,14 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	nonworkService *service.UsageNonworkAggregationService,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		nonworkService: nonworkService,
 	}
 }
 
@@ -55,6 +59,23 @@ type CreateUsageCleanupTaskRequest struct {
 	Stream      *bool   `json:"stream"`
 	BillingType *int8   `json:"billing_type"`
 	Timezone    string  `json:"timezone"`
+}
+
+type NonworkBackfillRequest struct {
+	StartDate string `json:"start_date"`
+	EndDate   string `json:"end_date"`
+	Timezone  string `json:"timezone"`
+}
+
+type NonworkCalendarSyncRequest struct {
+	Years []int `json:"years"`
+}
+
+type NonworkCalendarOverrideRequest struct {
+	Date        string `json:"date"`
+	IsWorkday   bool   `json:"is_workday"`
+	HolidayName string `json:"holiday_name"`
+	Timezone    string `json:"timezone"`
 }
 
 // List handles listing all usage records with filters
@@ -607,4 +628,117 @@ func (h *UsageHandler) CancelCleanupTask(c *gin.Context) {
 	}
 	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
 	response.Success(c, gin.H{"id": taskID, "status": service.UsageCleanupStatusCanceled})
+}
+
+// GetNonworkCalendarStatus returns calendar confirmation/sync status for selected years.
+// GET /api/v1/admin/usage/nonwork/calendar/status?years=2026,2027
+func (h *UsageHandler) GetNonworkCalendarStatus(c *gin.Context) {
+	if h.nonworkService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Non-work usage service unavailable")
+		return
+	}
+	years, err := parseYearList(c.Query("years"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	status, err := h.nonworkService.GetCalendarStatus(c.Request.Context(), years)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"years": status})
+}
+
+// SyncNonworkCalendar triggers an async calendar sync for selected years.
+// POST /api/v1/admin/usage/nonwork/calendar/sync
+func (h *UsageHandler) SyncNonworkCalendar(c *gin.Context) {
+	if h.nonworkService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Non-work usage service unavailable")
+		return
+	}
+	var req NonworkCalendarSyncRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	if err := h.nonworkService.TriggerCalendarSync(req.Years); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"status": "accepted"})
+}
+
+// OverrideNonworkCalendarDay manually marks one date as workday/offday and triggers that day's recompute.
+// PUT /api/v1/admin/usage/nonwork/calendar/day
+func (h *UsageHandler) OverrideNonworkCalendarDay(c *gin.Context) {
+	if h.nonworkService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Non-work usage service unavailable")
+		return
+	}
+	var req NonworkCalendarOverrideRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	day, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(req.Date), req.Timezone)
+	if err != nil {
+		response.BadRequest(c, "Invalid date format, use YYYY-MM-DD")
+		return
+	}
+	if err := h.nonworkService.OverrideCalendarDay(c.Request.Context(), service.ManualCalendarDayInput{
+		Date:        day,
+		IsWorkday:   req.IsWorkday,
+		HolidayName: req.HolidayName,
+	}); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"status": "accepted"})
+}
+
+// BackfillNonworkUsage triggers an async recompute of non-work usage stats.
+// POST /api/v1/admin/usage/nonwork/backfill
+func (h *UsageHandler) BackfillNonworkUsage(c *gin.Context) {
+	if h.nonworkService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Non-work usage service unavailable")
+		return
+	}
+	var req NonworkBackfillRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+	start, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(req.StartDate), req.Timezone)
+	if err != nil {
+		response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+		return
+	}
+	end, err := timezone.ParseInUserLocation("2006-01-02", strings.TrimSpace(req.EndDate), req.Timezone)
+	if err != nil {
+		response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+		return
+	}
+	if err := h.nonworkService.TriggerBackfill(start, end.AddDate(0, 0, 1)); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"status": "accepted"})
+}
+
+func parseYearList(raw string) ([]int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	parts := strings.Split(raw, ",")
+	years := make([]int, 0, len(parts))
+	for _, part := range parts {
+		year, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil || year < 2000 || year > 2100 {
+			return nil, fmt.Errorf("invalid years, use comma-separated years between 2000 and 2100")
+		}
+		years = append(years, year)
+	}
+	return years, nil
 }

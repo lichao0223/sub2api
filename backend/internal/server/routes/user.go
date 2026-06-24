@@ -91,6 +91,7 @@ func RegisterUserRoutes(
 			usage.GET("/dashboard/trend", h.Usage.DashboardTrend)
 			usage.GET("/dashboard/models", h.Usage.DashboardModels)
 			usage.GET("/dashboard/token-ranking", h.Usage.DashboardTokenRanking)
+			usage.GET("/dashboard/token-ranking/nonwork", h.Usage.DashboardNonworkTokenRanking)
 			usage.POST("/dashboard/api-keys-usage", h.Usage.DashboardAPIKeysUsage)
 		}
 

@@ -2250,6 +2250,8 @@ type UserSpendingRankingItem = usagestats.UserSpendingRankingItem
 type UserSpendingRankingResponse = usagestats.UserSpendingRankingResponse
 type UserTokenRankingItem = usagestats.UserTokenRankingItem
 type UserTokenRankingResponse = usagestats.UserTokenRankingResponse
+type UserNonworkTokenRankingItem = usagestats.UserNonworkTokenRankingItem
+type UserNonworkTokenRankingResponse = usagestats.UserNonworkTokenRankingResponse
 
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
@@ -2527,6 +2529,167 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 		TotalRequests:   totalRequests,
 		TotalTokens:     totalTokens,
 	}, nil
+}
+
+func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, tz string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if strings.TrimSpace(tz) == "" {
+		tz = "Asia/Shanghai"
+	}
+	segments := nonworkRankingSegments(scope)
+	innerOrderExpr, outerOrderExpr := nonworkRankingOrderExprs(rankBy)
+
+	query := fmt.Sprintf(`
+		WITH stats AS (
+			SELECT
+				user_id,
+				COALESCE(SUM(requests), 0) AS requests,
+				COALESCE(SUM(total_tokens), 0) AS tokens,
+				COALESCE(SUM(total_tokens) FILTER (WHERE segment = 'offday'), 0) AS offday_tokens,
+				COALESCE(SUM(total_tokens) FILTER (WHERE segment = 'after_hours'), 0) AS after_hours_tokens,
+				COALESCE(SUM(active_ms), 0) AS active_duration_ms,
+				COALESCE(SUM(actual_cost), 0) AS actual_cost,
+				COALESCE(BOOL_AND(calendar_confirmed), TRUE) AS calendar_confirmed
+			FROM usage_nonwork_daily_user_stats
+			WHERE bucket_date >= $1::date
+			  AND bucket_date <= $2::date
+			  AND timezone = $3
+			  AND segment = ANY($4)
+			GROUP BY user_id
+		),
+		ranked AS (
+			SELECT
+				s.user_id,
+				COALESCE(u.email, '') AS email,
+				COALESCE(u.username, '') AS username,
+				s.actual_cost,
+				s.requests,
+				s.tokens,
+				s.offday_tokens,
+				s.after_hours_tokens,
+				s.active_duration_ms,
+				s.calendar_confirmed,
+				COALESCE(SUM(s.actual_cost) OVER (), 0) AS total_actual_cost,
+				COALESCE(SUM(s.requests) OVER (), 0) AS total_requests,
+				COALESCE(SUM(s.tokens) OVER (), 0) AS total_tokens,
+				COALESCE(SUM(s.offday_tokens) OVER (), 0) AS total_offday_tokens,
+				COALESCE(SUM(s.after_hours_tokens) OVER (), 0) AS total_after_hours_tokens,
+				COALESCE(SUM(s.active_duration_ms) OVER (), 0) AS total_active_duration_ms,
+				COALESCE(BOOL_AND(s.calendar_confirmed) OVER (), TRUE) AS all_calendar_confirmed
+			FROM stats s
+			LEFT JOIN users u ON u.id = s.user_id
+			WHERE u.deleted_at IS NULL AND u.role <> $5
+			ORDER BY %s DESC, s.tokens DESC, s.active_duration_ms DESC, s.user_id ASC
+			LIMIT $6
+		)
+		SELECT
+			user_id,
+			email,
+			username,
+			actual_cost,
+			requests,
+			tokens,
+			offday_tokens,
+			after_hours_tokens,
+			active_duration_ms,
+			calendar_confirmed,
+			total_actual_cost,
+			total_requests,
+			total_tokens,
+			total_offday_tokens,
+			total_after_hours_tokens,
+			total_active_duration_ms,
+			all_calendar_confirmed
+		FROM ranked
+		ORDER BY %s DESC, tokens DESC, active_duration_ms DESC, user_id ASC
+	`, innerOrderExpr, outerOrderExpr)
+
+	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = closeErr
+			result = nil
+		}
+	}()
+
+	ranking := make([]UserNonworkTokenRankingItem, 0)
+	var totalActualCost float64
+	var totalRequests, totalTokens, totalOffdayTokens, totalAfterHoursTokens, totalActiveDurationMs int64
+	calendarConfirmed := true
+	for rows.Next() {
+		var row UserNonworkTokenRankingItem
+		if err = rows.Scan(
+			&row.UserID,
+			&row.Email,
+			&row.Username,
+			&row.ActualCost,
+			&row.Requests,
+			&row.Tokens,
+			&row.OffdayTokens,
+			&row.AfterHoursTokens,
+			&row.ActiveDurationMs,
+			&row.CalendarConfirmed,
+			&totalActualCost,
+			&totalRequests,
+			&totalTokens,
+			&totalOffdayTokens,
+			&totalAfterHoursTokens,
+			&totalActiveDurationMs,
+			&calendarConfirmed,
+		); err != nil {
+			return nil, err
+		}
+		ranking = append(ranking, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &UserNonworkTokenRankingResponse{
+		Ranking:               ranking,
+		TotalActualCost:       totalActualCost,
+		TotalRequests:         totalRequests,
+		TotalTokens:           totalTokens,
+		TotalOffdayTokens:     totalOffdayTokens,
+		TotalAfterHoursTokens: totalAfterHoursTokens,
+		TotalActiveDurationMs: totalActiveDurationMs,
+		CalendarConfirmed:     calendarConfirmed,
+	}, nil
+}
+
+func nonworkRankingSegments(scope string) []string {
+	switch strings.TrimSpace(scope) {
+	case usagestats.NonworkRankingScopeAll:
+		return []string{"work_hours", "after_hours", "offday"}
+	case usagestats.NonworkRankingScopeOffday:
+		return []string{"offday"}
+	case usagestats.NonworkRankingScopeAfterHours:
+		return []string{"after_hours"}
+	default:
+		return []string{"after_hours", "offday"}
+	}
+}
+
+func nonworkRankingOrderExprs(rankBy string) (string, string) {
+	switch strings.TrimSpace(rankBy) {
+	case usagestats.NonworkRankingRankByRequests:
+		return "s.requests", "requests"
+	case usagestats.NonworkRankingRankByActiveDuration:
+		return "s.active_duration_ms", "active_duration_ms"
+	case usagestats.NonworkRankingRankByActualCost:
+		return "s.actual_cost", "actual_cost"
+	case usagestats.NonworkRankingRankByOffdayTokens:
+		return "s.offday_tokens", "offday_tokens"
+	case usagestats.NonworkRankingRankByAfterHoursTokens:
+		return "s.after_hours_tokens", "after_hours_tokens"
+	default:
+		return "s.tokens", "tokens"
+	}
 }
 
 // UserDashboardStats 用户仪表盘统计

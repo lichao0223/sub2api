@@ -1527,6 +1527,10 @@ export interface UserTokenRankingItem {
   actual_cost: number
   requests: number
   tokens: number
+  offday_tokens?: number
+  after_hours_tokens?: number
+  active_duration_ms?: number
+  calendar_confirmed?: boolean
 }
 
 export interface UserTokenRankingResponse {
@@ -1534,6 +1538,13 @@ export interface UserTokenRankingResponse {
   total_actual_cost: number
   total_requests: number
   total_tokens: number
+  total_offday_tokens?: number
+  total_after_hours_tokens?: number
+  total_active_duration_ms?: number
+  calendar_confirmed?: boolean
+  scope?: string
+  rank_by?: string
+  timezone?: string
   start_date: string
   end_date: string
 }

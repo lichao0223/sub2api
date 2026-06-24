@@ -552,6 +552,46 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 	})
 }
 
+// DashboardNonworkTokenRanking handles getting cross-user token usage ranking split by non-work segments.
+// GET /api/v1/usage/dashboard/token-ranking/nonwork
+func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
+	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	startTime, endTime := parseUserTimeRange(c)
+	limit := parseUserRankingLimit(c.Query("limit"))
+	scope := strings.TrimSpace(c.DefaultQuery("scope", usagestats.NonworkRankingScopeNonwork))
+	rankBy := strings.TrimSpace(c.DefaultQuery("rank_by", usagestats.NonworkRankingRankByTokens))
+	userTZ := strings.TrimSpace(c.Query("timezone"))
+	if userTZ == "" {
+		userTZ = "Asia/Shanghai"
+	}
+
+	ranking, err := h.usageService.GetUserNonworkTokenRanking(c.Request.Context(), startTime, endTime.Add(-24*time.Hour), scope, rankBy, userTZ, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"ranking":                  ranking.Ranking,
+		"total_actual_cost":        ranking.TotalActualCost,
+		"total_requests":           ranking.TotalRequests,
+		"total_tokens":             ranking.TotalTokens,
+		"total_offday_tokens":      ranking.TotalOffdayTokens,
+		"total_after_hours_tokens": ranking.TotalAfterHoursTokens,
+		"total_active_duration_ms": ranking.TotalActiveDurationMs,
+		"calendar_confirmed":       ranking.CalendarConfirmed,
+		"scope":                    scope,
+		"rank_by":                  rankBy,
+		"timezone":                 userTZ,
+		"start_date":               startTime.Format("2006-01-02"),
+		"end_date":                 endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+	})
+}
+
 // BatchAPIKeysUsageRequest represents the request for batch API keys usage
 type BatchAPIKeysUsageRequest struct {
 	APIKeyIDs []int64 `json:"api_key_ids" binding:"required"`

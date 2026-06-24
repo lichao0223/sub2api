@@ -88,6 +88,21 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   sort_order?: 'asc' | 'desc'
 }
 
+export interface NonworkCalendarYearStatus {
+  year: number
+  country: string
+  total_days: number
+  confirmed_days: number
+  manual_overrides: number
+  first_date: string
+  last_date: string
+  last_sync_status: string
+  last_sync_at: string
+  last_source: string
+  last_source_version: string
+  confirmed: boolean
+}
+
 // ==================== API Functions ====================
 
 /**
@@ -200,6 +215,39 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+export async function getNonworkCalendarStatus(years?: number[]): Promise<{ years: NonworkCalendarYearStatus[] }> {
+  const { data } = await apiClient.get<{ years: NonworkCalendarYearStatus[] }>('/admin/usage/nonwork/calendar/status', {
+    params: years?.length ? { years: years.join(',') } : undefined
+  })
+  return data
+}
+
+export async function syncNonworkCalendar(years?: number[]): Promise<{ status: string }> {
+  const { data } = await apiClient.post<{ status: string }>('/admin/usage/nonwork/calendar/sync', {
+    years: years || []
+  })
+  return data
+}
+
+export async function overrideNonworkCalendarDay(payload: {
+  date: string
+  is_workday: boolean
+  holiday_name?: string
+  timezone?: string
+}): Promise<{ status: string }> {
+  const { data } = await apiClient.put<{ status: string }>('/admin/usage/nonwork/calendar/day', payload)
+  return data
+}
+
+export async function backfillNonworkUsage(payload: {
+  start_date: string
+  end_date: string
+  timezone?: string
+}): Promise<{ status: string }> {
+  const { data } = await apiClient.post<{ status: string }>('/admin/usage/nonwork/backfill', payload)
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
@@ -207,7 +255,11 @@ export const adminUsageAPI = {
   searchApiKeys,
   listCleanupTasks,
   createCleanupTask,
-  cancelCleanupTask
+  cancelCleanupTask,
+  getNonworkCalendarStatus,
+  syncNonworkCalendar,
+  overrideNonworkCalendarDay,
+  backfillNonworkUsage
 }
 
 export default adminUsageAPI

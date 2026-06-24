@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Token 使用排名 - 非工作时段原型</title>
+  <style>
+    :root {
+      --bg: #f9fafb;
+      --card: #ffffff;
+      --text: #111827;
+      --muted: #6b7280;
+      --line: #e5e7eb;
+      --line-strong: #d1d5db;
+      --primary: #2563eb;
+      --primary-soft: #eff6ff;
+      --primary-line: #bfdbfe;
+      --emerald: #059669;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --rose: #e11d48;
+      --rose-soft: #fff1f2;
+      --dark: #1f2937;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    .space-y > * + * {
+      margin-top: 24px;
+    }
+
+    .header {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    @media (min-width: 768px) {
+      .header {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--text);
+      font-size: 24px;
+      line-height: 32px;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    h2,
+    p {
+      margin: 0;
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      align-self: flex-start;
+    }
+
+    @media (min-width: 768px) {
+      .actions {
+        align-self: auto;
+      }
+    }
+
+    .btn {
+      min-height: 38px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--card);
+      color: #374151;
+      padding: 8px 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      background: #f9fafb;
+      border-color: #9ca3af;
+    }
+
+    .menu {
+      position: relative;
+    }
+
+    .menu-panel {
+      position: absolute;
+      right: 0;
+      z-index: 20;
+      margin-top: 8px;
+      width: 144px;
+      overflow: hidden;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--card);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+      display: none;
+    }
+
+    .menu.open .menu-panel {
+      display: block;
+    }
+
+    .menu-panel button {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      padding: 9px 14px;
+      color: #374151;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .menu-panel button:hover {
+      background: #f9fafb;
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+    }
+
+    .filter-card {
+      padding: 16px;
+    }
+
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-label {
+      color: #374151;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .range-picker,
+    .time-range {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .range-menu {
+      position: relative;
+    }
+
+    .range-button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      color: #374151;
+      padding: 8px 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
+
+    .range-button:hover {
+      border-color: var(--line-strong);
+      background: #f9fafb;
+    }
+
+    .range-panel {
+      position: absolute;
+      left: 0;
+      z-index: 30;
+      margin-top: 8px;
+      width: 168px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--card);
+      box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+      display: none;
+    }
+
+    .range-menu.open .range-panel {
+      display: block;
+    }
+
+    .range-panel button {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #374151;
+      cursor: pointer;
+      padding: 9px 12px;
+      text-align: left;
+    }
+
+    .range-panel button:hover,
+    .range-panel button.active {
+      background: var(--primary-soft);
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    input,
+    select {
+      height: 38px;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--text);
+      padding: 0 10px;
+    }
+
+    input[type="time"] {
+      width: 116px;
+    }
+
+    .dash {
+      color: var(--muted);
+    }
+
+    .segment-control {
+      display: inline-flex;
+      overflow: hidden;
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      background: #f3f4f6;
+    }
+
+    .segment-control button {
+      border: 0;
+      border-right: 1px solid var(--line-strong);
+      background: transparent;
+      color: #4b5563;
+      padding: 8px 11px;
+      cursor: pointer;
+      min-height: 36px;
+      white-space: nowrap;
+    }
+
+    .segment-control button:last-child {
+      border-right: 0;
+    }
+
+    .segment-control button.active {
+      background: var(--card);
+      color: var(--primary);
+      font-weight: 700;
+      box-shadow: inset 0 0 0 1px var(--primary-line);
+    }
+
+    .hint {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--primary);
+      flex: 0 0 auto;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    @media (min-width: 768px) {
+      .kpis {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    .kpi {
+      padding: 16px;
+    }
+
+    .kpi-label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .kpi-value {
+      margin-top: 8px;
+      color: var(--text);
+      font-size: 24px;
+      line-height: 32px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .kpi-value.green {
+      color: var(--emerald);
+    }
+
+    .kpi-sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .table-card {
+      overflow: hidden;
+    }
+
+    .table-head {
+      border-bottom: 1px solid #f3f4f6;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    @media (min-width: 640px) {
+      .table-head {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+
+    .table-title {
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .range-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 980px;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th {
+      background: #f9fafb;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 12px 16px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    td {
+      border-top: 1px solid #f3f4f6;
+      padding: 12px 16px;
+      vertical-align: middle;
+    }
+
+    tr:hover td {
+      background: #fcfcfd;
+    }
+
+    .right {
+      text-align: right;
+    }
+
+    .rank {
+      color: var(--muted);
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .user-cell {
+      min-width: 220px;
+    }
+
+    .user-name {
+      max-width: 260px;
+      overflow: hidden;
+      color: var(--text);
+      font-weight: 700;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .user-meta {
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .strong {
+      color: var(--text);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .money {
+      color: var(--emerald);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .empty {
+      min-height: 256px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .algorithm-note {
+      padding: 14px 16px;
+      border-top: 1px solid #f3f4f6;
+      background: #fcfcfd;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .algorithm-note strong {
+      color: #374151;
+    }
+
+    @media (max-width: 760px) {
+      .page {
+        padding: 16px;
+      }
+
+      .filter-row,
+      .filter-group,
+      .range-picker,
+      .time-range {
+        align-items: stretch;
+        flex-direction: column;
+        width: 100%;
+      }
+
+      input[type="time"],
+      select,
+      .segment-control,
+      .range-button {
+        width: 100%;
+      }
+
+      .segment-control {
+        display: grid;
+        grid-template-columns: 1fr;
+      }
+
+      .segment-control button {
+        border-right: 0;
+        border-bottom: 1px solid var(--line-strong);
+      }
+
+      .segment-control button:last-child {
+        border-bottom: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page space-y">
+    <section class="header">
+      <div>
+        <h1>Token 使用排名</h1>
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" id="refreshBtn">刷新</button>
+        <div class="menu" id="exportMenu">
+          <button class="btn" type="button" id="exportToggle">
+            下载
+            <span aria-hidden="true">⌄</span>
+          </button>
+          <div class="menu-panel">
+            <button type="button" id="exportXlsx">导出 Excel</button>
+            <button type="button" id="exportCsv">导出 CSV</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card filter-card">
+      <div class="filter-row">
+        <div class="filter-group">
+          <span class="filter-label">时间范围:</span>
+          <div class="range-picker">
+            <div class="range-menu" id="rangeMenu">
+              <button class="range-button" type="button" id="rangeToggle">
+                <span aria-hidden="true">□</span>
+                <span id="rangePresetLabel">近 7 天</span>
+                <span aria-hidden="true">⌄</span>
+              </button>
+              <div class="range-panel" id="rangePanel">
+                <button type="button" data-range="7d" class="active">近 7 天</button>
+                <button type="button" data-range="30d">近 30 天</button>
+                <button type="button" data-range="month">本月</button>
+                <button type="button" data-range="lastMonth">上月</button>
+                <button type="button" data-range="custom">自定义</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">排名口径:</span>
+          <div class="segment-control" role="tablist" aria-label="排名口径">
+            <button type="button" data-mode="all">全部</button>
+            <button type="button" data-mode="offday">非工作日</button>
+            <button type="button" data-mode="afterHours">下班时间</button>
+            <button type="button" data-mode="offScope" class="active">非工作时段</button>
+          </div>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">排名维度:</span>
+          <select id="rankBy" aria-label="排名维度">
+            <option value="tokens">Token 数</option>
+            <option value="requests">请求数</option>
+            <option value="duration">活跃时长</option>
+            <option value="cost">消费</option>
+            <option value="offdayTokens">非工作日 Token</option>
+            <option value="afterHoursTokens">下班时间 Token</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <span class="filter-label">工作时间:</span>
+          <div class="time-range">
+            <input id="workStart" type="time" value="08:30">
+            <span class="dash">-</span>
+            <input id="workEnd" type="time" value="18:00">
+          </div>
+        </div>
+
+        <div class="hint">
+          <span class="dot"></span>
+          假数据原型，日历来源示意为本地 holiday-cn/国务院公告维表
+        </div>
+      </div>
+    </section>
+
+    <section class="kpis">
+      <div class="card kpi">
+        <div class="kpi-label">总 Token</div>
+        <div class="kpi-value" id="totalTokens">0</div>
+        <div class="kpi-sub" id="scopeHint">当前口径合计</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">总请求数</div>
+        <div class="kpi-value" id="totalRequests">0</div>
+        <div class="kpi-sub" id="totalDuration">活跃时长 0 分钟</div>
+      </div>
+      <div class="card kpi">
+        <div class="kpi-label">总消费</div>
+        <div class="kpi-value green" id="totalSpend">$0.00</div>
+        <div class="kpi-sub" id="offScopeShare">非工作时段占比 0%</div>
+      </div>
+    </section>
+
+    <section class="card table-card">
+      <div class="table-head">
+        <h2 class="table-title">排名明细</h2>
+        <span class="range-label">
+          <span aria-hidden="true">□</span>
+          <span id="rangeLabel">2026-06-18 - 2026-06-24</span>
+        </span>
+      </div>
+      <div class="empty" id="emptyState">暂无可展示用户</div>
+      <div class="table-wrap" id="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>排名</th>
+              <th>用户</th>
+              <th class="right">请求数</th>
+              <th class="right">Token 数</th>
+              <th class="right">非工作日 Token</th>
+              <th class="right">下班时间 Token</th>
+              <th class="right">活跃时长</th>
+              <th class="right">消费</th>
+            </tr>
+          </thead>
+          <tbody id="rankingBody"></tbody>
+        </table>
+      </div>
+      <div class="algorithm-note">
+        <strong>活跃时长口径:</strong>
+        按用户请求时间排序做会话化统计。相邻两次请求间隔小于等于 5 分钟时，把这段间隔计入活跃时长；超过 5 分钟则关闭上一段会话，从下一次请求重新开始。单次孤立请求默认计 1 分钟活跃时长，可在实现时配置；跨越工作/非工作边界的间隔按分钟分摊到对应时段。
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const rows = [
+      { userId: 95, name: '许曼', email: 'xu.man@example.com', offdayTokens: 694400, afterHoursTokens: 1524200, normalTokens: 1840000, offdayDuration: 12600000, afterHoursDuration: 23460000, normalDuration: 28800000, offdayRequests: 38, afterHoursRequests: 104, normalRequests: 129, cost: 31.68 },
+      { userId: 104, name: '唐朔', email: 'tang.shuo@example.com', offdayTokens: 1180600, afterHoursTokens: 583600, normalTokens: 1149000, offdayDuration: 19680000, afterHoursDuration: 9000000, normalDuration: 17160000, offdayRequests: 73, afterHoursRequests: 36, normalRequests: 88, cost: 24.35 },
+      { userId: 28, name: '周宁', email: 'zhou.ning@example.com', offdayTokens: 312400, afterHoursTokens: 981800, normalTokens: 742500, offdayDuration: 5940000, afterHoursDuration: 14760000, normalDuration: 10200000, offdayRequests: 19, afterHoursRequests: 67, normalRequests: 51, cost: 18.64 },
+      { userId: 17, name: '林雨', email: 'lin.yu@example.com', offdayTokens: 738900, afterHoursTokens: 244600, normalTokens: 653700, offdayDuration: 14100000, afterHoursDuration: 4380000, normalDuration: 9780000, offdayRequests: 47, afterHoursRequests: 17, normalRequests: 45, cost: 14.22 },
+      { userId: 42, name: '陈启', email: 'chen.qi@example.com', offdayTokens: 192800, afterHoursTokens: 609340, normalTokens: 510100, offdayDuration: 3540000, afterHoursDuration: 9360000, normalDuration: 7740000, offdayRequests: 12, afterHoursRequests: 39, normalRequests: 34, cost: 10.78 },
+      { userId: 35, name: '苗佳', email: 'miao.jia@example.com', offdayTokens: 508780, afterHoursTokens: 153100, normalTokens: 394400, offdayDuration: 7920000, afterHoursDuration: 2460000, normalDuration: 6000000, offdayRequests: 31, afterHoursRequests: 8, normalRequests: 27, cost: 8.93 },
+      { userId: 61, name: '黄潇', email: 'huang.xiao@example.com', offdayTokens: 103000, afterHoursTokens: 411900, normalTokens: 298500, offdayDuration: 1740000, afterHoursDuration: 5640000, normalDuration: 4440000, offdayRequests: 7, afterHoursRequests: 24, normalRequests: 19, cost: 7.46 },
+      { userId: 53, name: '钱墨', email: 'qian.mo@example.com', offdayTokens: 347200, afterHoursTokens: 91520, normalTokens: 210800, offdayDuration: 4620000, afterHoursDuration: 1500000, normalDuration: 3180000, offdayRequests: 22, afterHoursRequests: 5, normalRequests: 16, cost: 5.87 },
+      { userId: 74, name: '郭然', email: 'guo.ran@example.com', offdayTokens: 42800, afterHoursTokens: 260610, normalTokens: 180200, offdayDuration: 720000, afterHoursDuration: 3480000, normalDuration: 2700000, offdayRequests: 3, afterHoursRequests: 19, normalRequests: 13, cost: 4.21 },
+      { userId: 81, name: '何安', email: 'he.an@example.com', offdayTokens: 165060, afterHoursTokens: 43000, normalTokens: 90200, offdayDuration: 2160000, afterHoursDuration: 660000, normalDuration: 1320000, offdayRequests: 10, afterHoursRequests: 3, normalRequests: 7, cost: 2.94 }
+    ];
+
+    const anchorDate = new Date('2026-06-24T12:00:00+08:00');
+    const state = { mode: 'offScope', range: '7d', rankBy: 'tokens' };
+    const numberFormat = new Intl.NumberFormat('zh-CN');
+
+    const rangeLabels = {
+      '7d': '近 7 天',
+      '30d': '近 30 天',
+      month: '本月',
+      lastMonth: '上月',
+      custom: '自定义'
+    };
+
+    function pad(value) {
+      return String(value).padStart(2, '0');
+    }
+
+    function formatDate(date) {
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function addDays(date, days) {
+      const next = new Date(date);
+      next.setDate(next.getDate() + days);
+      return next;
+    }
+
+    function startOfMonth(date) {
+      return new Date(date.getFullYear(), date.getMonth(), 1, 12, 0, 0);
+    }
+
+    function rangeDates() {
+      if (state.range === '30d') {
+        return { start: formatDate(addDays(anchorDate, -29)), end: formatDate(anchorDate) };
+      }
+      if (state.range === 'month') {
+        return { start: formatDate(startOfMonth(anchorDate)), end: formatDate(anchorDate) };
+      }
+      if (state.range === 'lastMonth') {
+        const start = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1, 12, 0, 0);
+        const end = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 0, 12, 0, 0);
+        return { start: formatDate(start), end: formatDate(end) };
+      }
+      if (state.range === 'custom') {
+        return { start: '2026-06-10', end: '2026-06-24' };
+      }
+      return { start: formatDate(addDays(anchorDate, -6)), end: formatDate(anchorDate) };
+    }
+
+    function total(row, field) {
+      if (state.mode === 'all') return row[`offday${field}`] + row[`afterHours${field}`] + row[`normal${field}`];
+      if (state.mode === 'offday') return row[`offday${field}`];
+      if (state.mode === 'afterHours') return row[`afterHours${field}`];
+      return row[`offday${field}`] + row[`afterHours${field}`];
+    }
+
+    function modeLabel() {
+      return {
+        all: '全部用量',
+        offday: '非工作日',
+        afterHours: '工作日下班时间',
+        offScope: '非工作日 + 工作日下班时间'
+      }[state.mode];
+    }
+
+    function rankLabel() {
+      return {
+        tokens: 'Token 数',
+        requests: '请求数',
+        duration: '活跃时长',
+        cost: '消费',
+        offdayTokens: '非工作日 Token',
+        afterHoursTokens: '下班时间 Token'
+      }[state.rankBy];
+    }
+
+    function formatTokens(value) {
+      if (value >= 1000000000) return `${(value / 1000000000).toFixed(2)}B`;
+      if (value >= 1000000) return `${(value / 1000000).toFixed(2)}M`;
+      if (value >= 1000) return `${(value / 1000).toFixed(2)}K`;
+      return numberFormat.format(value);
+    }
+
+    function formatDuration(ms) {
+      const minutes = Math.round(ms / 60000);
+      if (minutes < 60) return `${minutes} 分钟`;
+      const hours = Math.floor(minutes / 60);
+      const rest = minutes % 60;
+      return rest ? `${hours} 小时 ${rest} 分钟` : `${hours} 小时`;
+    }
+
+    function visibleRows() {
+      return rows
+        .map(row => ({
+          ...row,
+          requests: total(row, 'Requests'),
+          tokens: total(row, 'Tokens'),
+          duration: total(row, 'Duration')
+        }))
+        .filter(row => row.tokens > 0)
+        .sort((a, b) => {
+          const primary = (b[state.rankBy] || 0) - (a[state.rankBy] || 0);
+          if (primary !== 0) return primary;
+          if (b.tokens !== a.tokens) return b.tokens - a.tokens;
+          if (b.duration !== a.duration) return b.duration - a.duration;
+          return a.userId - b.userId;
+        });
+    }
+
+    function renderKpis(items) {
+      const tokens = items.reduce((sum, row) => sum + row.tokens, 0);
+      const requests = items.reduce((sum, row) => sum + row.requests, 0);
+      const duration = items.reduce((sum, row) => sum + row.duration, 0);
+      const spend = items.reduce((sum, row) => sum + row.cost, 0);
+      const allTokens = rows.reduce((sum, row) => sum + row.offdayTokens + row.afterHoursTokens + row.normalTokens, 0);
+      const offScopeTokens = rows.reduce((sum, row) => sum + row.offdayTokens + row.afterHoursTokens, 0);
+      const shareBase = state.mode === 'all' ? allTokens : offScopeTokens;
+      const share = allTokens > 0 ? (shareBase / allTokens) * 100 : 0;
+
+      document.getElementById('totalTokens').textContent = formatTokens(tokens);
+      document.getElementById('totalRequests').textContent = numberFormat.format(requests);
+      document.getElementById('totalDuration').textContent = `活跃时长 ${formatDuration(duration)}`;
+      document.getElementById('totalSpend').textContent = `$${spend.toFixed(2)}`;
+      document.getElementById('scopeHint').textContent = `${modeLabel()} · 按${rankLabel()}排名`;
+      document.getElementById('offScopeShare').textContent = `非工作时段占比 ${share.toFixed(1)}%`;
+    }
+
+    function renderRows(items) {
+      const body = document.getElementById('rankingBody');
+      body.innerHTML = items.map((row, index) => {
+        return `
+          <tr>
+            <td class="rank">#${index + 1}</td>
+            <td class="user-cell">
+              <div class="user-name" title="${row.name}">${row.name}</div>
+              <div class="user-meta">${row.email}</div>
+            </td>
+            <td class="right">${numberFormat.format(row.requests)}</td>
+            <td class="right strong">${formatTokens(row.tokens)}</td>
+            <td class="right">${formatTokens(row.offdayTokens)}</td>
+            <td class="right">${formatTokens(row.afterHoursTokens)}</td>
+            <td class="right">${formatDuration(row.duration)}</td>
+            <td class="right money">$${row.cost.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
+
+      document.getElementById('tableWrap').style.display = items.length ? 'block' : 'none';
+      document.getElementById('emptyState').style.display = items.length ? 'none' : 'flex';
+    }
+
+    function renderRange() {
+      const workStart = document.getElementById('workStart').value;
+      const workEnd = document.getElementById('workEnd').value;
+      const { start, end } = rangeDates();
+      document.getElementById('rangePresetLabel').textContent = rangeLabels[state.range];
+      document.getElementById('rangeLabel').textContent = `${start} - ${end} · 工作时间 ${workStart}-${workEnd}`;
+    }
+
+    function render() {
+      document.querySelectorAll('[data-mode]').forEach(button => {
+        button.classList.toggle('active', button.dataset.mode === state.mode);
+      });
+      const items = visibleRows();
+      renderRange();
+      renderKpis(items);
+      renderRows(items);
+    }
+
+    function exportCsv() {
+      const header = ['排名', '用户', '邮箱', '请求数', 'Token数', '非工作日Token', '下班时间Token', '活跃时长', '消费'];
+      const lines = visibleRows().map((row, index) => [
+        index + 1,
+        row.name,
+        row.email,
+        row.requests,
+        row.tokens,
+        row.offdayTokens,
+        row.afterHoursTokens,
+        formatDuration(row.duration),
+        row.cost.toFixed(2)
+      ]);
+      const csv = [header, ...lines]
+        .map(line => line.map(value => `"${String(value).replaceAll('"', '""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `token-ranking-${state.mode}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    }
+
+    document.querySelectorAll('[data-mode]').forEach(button => {
+      button.addEventListener('click', () => {
+        state.mode = button.dataset.mode;
+        render();
+      });
+    });
+
+    ['workStart', 'workEnd'].forEach(id => {
+      document.getElementById(id).addEventListener('input', render);
+    });
+
+    document.getElementById('rankBy').addEventListener('change', event => {
+      state.rankBy = event.target.value;
+      render();
+    });
+
+    document.getElementById('rangeToggle').addEventListener('click', event => {
+      event.stopPropagation();
+      document.getElementById('rangeMenu').classList.toggle('open');
+    });
+
+    document.querySelectorAll('[data-range]').forEach(button => {
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        state.range = button.dataset.range;
+        document.querySelectorAll('[data-range]').forEach(item => {
+          item.classList.toggle('active', item.dataset.range === state.range);
+        });
+        document.getElementById('rangeMenu').classList.remove('open');
+        render();
+      });
+    });
+
+    document.getElementById('refreshBtn').addEventListener('click', render);
+    document.getElementById('exportToggle').addEventListener('click', event => {
+      event.stopPropagation();
+      document.getElementById('exportMenu').classList.toggle('open');
+    });
+    document.addEventListener('click', event => {
+      if (!document.getElementById('exportMenu').contains(event.target)) {
+        document.getElementById('exportMenu').classList.remove('open');
+      }
+      if (!document.getElementById('rangeMenu').contains(event.target)) {
+        document.getElementById('rangeMenu').classList.remove('open');
+      }
+    });
+    document.getElementById('exportCsv').addEventListener('click', exportCsv);
+    document.getElementById('exportXlsx').addEventListener('click', exportCsv);
+
+    render();
+  </script>
+</body>
+</html>

@@ -57,6 +57,41 @@
               @change="loadRanking"
             />
           </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('tokenRanking.scope') }}:
+            </span>
+            <select
+              v-model="rankingScope"
+              class="input h-9 w-36 text-sm"
+              @change="loadRanking"
+            >
+              <option value="nonwork">{{ t('tokenRanking.scopeNonwork') }}</option>
+              <option value="offday">{{ t('tokenRanking.scopeOffday') }}</option>
+              <option value="after_hours">{{ t('tokenRanking.scopeAfterHours') }}</option>
+              <option value="all">{{ t('tokenRanking.scopeAll') }}</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              {{ t('tokenRanking.rankBy') }}:
+            </span>
+            <select
+              v-model="rankBy"
+              class="input h-9 w-40 text-sm"
+              @change="loadRanking"
+            >
+              <option value="tokens">{{ t('tokenRanking.rankByTokens') }}</option>
+              <option value="requests">{{ t('tokenRanking.rankByRequests') }}</option>
+              <option value="active_duration">{{ t('tokenRanking.rankByActiveDuration') }}</option>
+              <option value="actual_cost">{{ t('tokenRanking.rankBySpend') }}</option>
+              <option value="offday_tokens">{{ t('tokenRanking.rankByOffdayTokens') }}</option>
+              <option value="after_hours_tokens">{{ t('tokenRanking.rankByAfterHoursTokens') }}</option>
+            </select>
+          </div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('tokenRanking.workTime') }} 08:30 - 18:00
+          </div>
         </div>
       </div>
 
@@ -74,7 +109,7 @@
         </div>
 
         <template v-else>
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalTokens') }}</div>
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatTokens(totals.tokens) }}</div>
@@ -87,6 +122,10 @@
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalSpend') }}</div>
               <div class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">${{ formatCost(totals.actualCost) }}</div>
             </div>
+            <div class="card p-4">
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalActiveDuration') }}</div>
+              <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatDuration(totals.activeDurationMs) }}</div>
+            </div>
           </div>
 
           <div class="card overflow-hidden">
@@ -98,6 +137,9 @@
                 <span class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                   <Icon name="calendar" size="sm" />
                   {{ responseRange }}
+                  <template v-if="calendarConfirmed === false">
+                    · {{ t('tokenRanking.calendarPredicted') }}
+                  </template>
                 </span>
               </div>
             </div>
@@ -109,6 +151,9 @@
                     <th class="px-4 py-3 text-left">{{ t('tokenRanking.user') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.requests') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.tokens') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.offdayTokens') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.afterHoursTokens') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.activeDuration') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
                   </tr>
                 </thead>
@@ -126,6 +171,9 @@
                     </td>
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatNumber(item.requests) }}</td>
                     <td class="px-4 py-3 text-right font-semibold text-gray-900 dark:text-white">{{ formatTokens(item.tokens) }}</td>
+                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.offday_tokens || 0) }}</td>
+                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.after_hours_tokens || 0) }}</td>
+                    <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
                   </tr>
                 </tbody>
@@ -161,10 +209,13 @@ const exporting = ref(false)
 const exportMenuOpen = ref(false)
 const exportMenuRef = ref<HTMLElement | null>(null)
 const error = ref(false)
+const rankingScope = ref<'all' | 'offday' | 'after_hours' | 'nonwork'>('nonwork')
+const rankBy = ref<'tokens' | 'requests' | 'active_duration' | 'actual_cost' | 'offday_tokens' | 'after_hours_tokens'>('tokens')
 const rankingItems = ref<UserTokenRankingItem[]>([])
-const totals = ref({ tokens: 0, requests: 0, actualCost: 0 })
+const totals = ref({ tokens: 0, requests: 0, actualCost: 0, offdayTokens: 0, afterHoursTokens: 0, activeDurationMs: 0 })
 const responseStartDate = ref('')
 const responseEndDate = ref('')
+const calendarConfirmed = ref<boolean | null>(null)
 
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
@@ -197,6 +248,16 @@ function formatCost(value: number): string {
   return value.toFixed(4)
 }
 
+function formatDuration(ms: number): string {
+  if (ms <= 0) return '0m'
+  const totalMinutes = Math.round(ms / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours <= 0) return `${minutes}m`
+  if (minutes === 0) return `${hours}h`
+  return `${hours}h ${minutes}m`
+}
+
 function exportRows() {
   return rankingItems.value.map((item, index) => ({
     rank: index + 1,
@@ -205,6 +266,9 @@ function exportRows() {
     username: item.username || '',
     requests: item.requests,
     tokens: item.tokens,
+    offday_tokens: item.offday_tokens || 0,
+    after_hours_tokens: item.after_hours_tokens || 0,
+    active_duration: formatDuration(item.active_duration_ms || 0),
     actual_cost: item.actual_cost
   }))
 }
@@ -231,6 +295,9 @@ async function exportRanking(format: ExportFormat) {
       'Username',
       t('tokenRanking.requests'),
       t('tokenRanking.tokens'),
+      t('tokenRanking.offdayTokens'),
+      t('tokenRanking.afterHoursTokens'),
+      t('tokenRanking.activeDuration'),
       t('tokenRanking.spend')
     ]
     const body = rows.map((row) => [
@@ -240,6 +307,9 @@ async function exportRanking(format: ExportFormat) {
       row.username,
       row.requests,
       row.tokens,
+      row.offday_tokens,
+      row.after_hours_tokens,
+      row.active_duration,
       row.actual_cost
     ])
 
@@ -277,22 +347,29 @@ async function loadRanking() {
   loading.value = true
   error.value = false
   try {
-    const response = await usageAPI.getDashboardTokenRanking({
+    const response = await usageAPI.getDashboardNonworkTokenRanking({
       start_date: startDate.value,
-      end_date: endDate.value
+      end_date: endDate.value,
+      scope: rankingScope.value,
+      rank_by: rankBy.value
     })
     rankingItems.value = response.ranking || []
     totals.value = {
       tokens: response.total_tokens || 0,
       requests: response.total_requests || 0,
-      actualCost: response.total_actual_cost || 0
+      actualCost: response.total_actual_cost || 0,
+      offdayTokens: response.total_offday_tokens || 0,
+      afterHoursTokens: response.total_after_hours_tokens || 0,
+      activeDurationMs: response.total_active_duration_ms || 0
     }
+    calendarConfirmed.value = response.calendar_confirmed ?? null
     responseStartDate.value = response.start_date || startDate.value
     responseEndDate.value = response.end_date || endDate.value
   } catch (err) {
     console.error('Failed to load token ranking:', err)
     rankingItems.value = []
-    totals.value = { tokens: 0, requests: 0, actualCost: 0 }
+    totals.value = { tokens: 0, requests: 0, actualCost: 0, offdayTokens: 0, afterHoursTokens: 0, activeDurationMs: 0 }
+    calendarConfirmed.value = null
     error.value = true
   } finally {
     loading.value = false

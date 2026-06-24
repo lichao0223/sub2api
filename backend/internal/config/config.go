@@ -86,6 +86,7 @@ type Config struct {
 	Dashboard               DashboardCacheConfig          `mapstructure:"dashboard_cache"`
 	DashboardAgg            DashboardAggregationConfig    `mapstructure:"dashboard_aggregation"`
 	UsageCleanup            UsageCleanupConfig            `mapstructure:"usage_cleanup"`
+	NonworkUsage            NonworkUsageConfig            `mapstructure:"nonwork_usage"`
 	Concurrency             ConcurrencyConfig             `mapstructure:"concurrency"`
 	TokenRefresh            TokenRefreshConfig            `mapstructure:"token_refresh"`
 	RunMode                 string                        `mapstructure:"run_mode" yaml:"run_mode"`
@@ -1333,6 +1334,33 @@ type DashboardAggregationRetentionConfig struct {
 	DailyDays             int `mapstructure:"daily_days"`
 }
 
+// NonworkUsageConfig controls non-work time usage ranking and aggregation.
+type NonworkUsageConfig struct {
+	Enabled           bool                          `mapstructure:"enabled"`
+	Timezone          string                        `mapstructure:"timezone"`
+	WorkStart         string                        `mapstructure:"work_start"`
+	WorkEnd           string                        `mapstructure:"work_end"`
+	ActiveGapMinutes  int                           `mapstructure:"active_gap_minutes"`
+	MinSessionMinutes int                           `mapstructure:"min_session_minutes"`
+	Calendar          NonworkUsageCalendarConfig    `mapstructure:"calendar"`
+	Aggregation       NonworkUsageAggregationConfig `mapstructure:"aggregation"`
+}
+
+type NonworkUsageCalendarConfig struct {
+	Country        string `mapstructure:"country"`
+	Source         string `mapstructure:"source"`
+	SyncEnabled    bool   `mapstructure:"sync_enabled"`
+	SyncSchedule   string `mapstructure:"sync_schedule"`
+	SyncYearsAhead int    `mapstructure:"sync_years_ahead"`
+}
+
+type NonworkUsageAggregationConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	Schedule      string `mapstructure:"schedule"`
+	RecomputeDays int    `mapstructure:"recompute_days"`
+	RetentionDays int    `mapstructure:"retention_days"`
+}
+
 // UsageCleanupConfig 使用记录清理任务配置
 type UsageCleanupConfig struct {
 	// Enabled: 是否启用清理任务执行器
@@ -1799,6 +1827,23 @@ func setDefaults() {
 	viper.SetDefault("dashboard_aggregation.retention.hourly_days", 180)
 	viper.SetDefault("dashboard_aggregation.retention.daily_days", 730)
 	viper.SetDefault("dashboard_aggregation.recompute_days", 2)
+
+	// Non-work time usage ranking
+	viper.SetDefault("nonwork_usage.enabled", true)
+	viper.SetDefault("nonwork_usage.timezone", "Asia/Shanghai")
+	viper.SetDefault("nonwork_usage.work_start", "08:30")
+	viper.SetDefault("nonwork_usage.work_end", "18:00")
+	viper.SetDefault("nonwork_usage.active_gap_minutes", 5)
+	viper.SetDefault("nonwork_usage.min_session_minutes", 1)
+	viper.SetDefault("nonwork_usage.calendar.country", "CN")
+	viper.SetDefault("nonwork_usage.calendar.source", "holiday-cn")
+	viper.SetDefault("nonwork_usage.calendar.sync_enabled", true)
+	viper.SetDefault("nonwork_usage.calendar.sync_schedule", "0 3 * * *")
+	viper.SetDefault("nonwork_usage.calendar.sync_years_ahead", 1)
+	viper.SetDefault("nonwork_usage.aggregation.enabled", true)
+	viper.SetDefault("nonwork_usage.aggregation.schedule", "*/10 * * * *")
+	viper.SetDefault("nonwork_usage.aggregation.recompute_days", 3)
+	viper.SetDefault("nonwork_usage.aggregation.retention_days", 3650)
 
 	// Usage cleanup task
 	viper.SetDefault("usage_cleanup.enabled", true)
@@ -2423,6 +2468,9 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("usage_cleanup.task_timeout_seconds must be non-negative")
 		}
 	}
+	if err := validateNonworkUsageConfig(c.NonworkUsage); err != nil {
+		return err
+	}
 	if c.Idempotency.DefaultTTLSeconds <= 0 {
 		return fmt.Errorf("idempotency.default_ttl_seconds must be positive")
 	}
@@ -2971,4 +3019,60 @@ func warnIfInsecureURL(field, raw string) {
 	if strings.EqualFold(u.Scheme, "http") {
 		slog.Warn("url uses http scheme; use https in production to avoid token leakage", "field", field)
 	}
+}
+
+func validateNonworkUsageConfig(c NonworkUsageConfig) error {
+	if !c.Enabled {
+		if c.ActiveGapMinutes < 0 {
+			return fmt.Errorf("nonwork_usage.active_gap_minutes must be non-negative")
+		}
+		if c.MinSessionMinutes < 0 {
+			return fmt.Errorf("nonwork_usage.min_session_minutes must be non-negative")
+		}
+		return nil
+	}
+	if strings.TrimSpace(c.Timezone) == "" {
+		return fmt.Errorf("nonwork_usage.timezone must not be empty")
+	}
+	if _, err := time.LoadLocation(strings.TrimSpace(c.Timezone)); err != nil {
+		return fmt.Errorf("nonwork_usage.timezone invalid: %w", err)
+	}
+	workStart, err := parseHHMMConfig(c.WorkStart)
+	if err != nil {
+		return fmt.Errorf("nonwork_usage.work_start invalid: %w", err)
+	}
+	workEnd, err := parseHHMMConfig(c.WorkEnd)
+	if err != nil {
+		return fmt.Errorf("nonwork_usage.work_end invalid: %w", err)
+	}
+	if workEnd <= workStart {
+		return fmt.Errorf("nonwork_usage.work_end must be after work_start")
+	}
+	if c.ActiveGapMinutes <= 0 {
+		return fmt.Errorf("nonwork_usage.active_gap_minutes must be positive")
+	}
+	if c.MinSessionMinutes < 0 {
+		return fmt.Errorf("nonwork_usage.min_session_minutes must be non-negative")
+	}
+	if strings.TrimSpace(c.Calendar.Country) == "" {
+		return fmt.Errorf("nonwork_usage.calendar.country must not be empty")
+	}
+	if c.Calendar.SyncYearsAhead < 0 {
+		return fmt.Errorf("nonwork_usage.calendar.sync_years_ahead must be non-negative")
+	}
+	if c.Aggregation.RecomputeDays < 0 {
+		return fmt.Errorf("nonwork_usage.aggregation.recompute_days must be non-negative")
+	}
+	if c.Aggregation.RetentionDays <= 0 {
+		return fmt.Errorf("nonwork_usage.aggregation.retention_days must be positive")
+	}
+	return nil
+}
+
+func parseHHMMConfig(value string) (time.Duration, error) {
+	parsed, err := time.Parse("15:04", strings.TrimSpace(value))
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(parsed.Hour())*time.Hour + time.Duration(parsed.Minute())*time.Minute, nil
 }

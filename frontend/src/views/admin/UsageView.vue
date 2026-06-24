@@ -2,6 +2,46 @@
   <AppLayout>
     <div class="space-y-6">
       <UsageStatsCards :stats="usageStats" />
+      <div class="card p-4">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.usage.nonworkCalendar') }}</h2>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <span
+                v-for="year in nonworkCalendarYears"
+                :key="year.year"
+                class="rounded border px-2.5 py-1 text-xs"
+                :class="year.confirmed ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300'"
+              >
+                {{ year.year }} · {{ year.confirmed ? t('admin.usage.calendarConfirmed') : t('admin.usage.calendarPredicted') }}
+                · {{ year.confirmed_days }}/{{ year.total_days || 365 }}
+              </span>
+              <span v-if="!nonworkCalendarYears.length" class="text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.usage.noCalendarStatus') }}
+              </span>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-end gap-2">
+            <button class="btn btn-secondary" :disabled="nonworkBusy" @click="loadNonworkCalendarStatus">
+              {{ t('common.refresh') }}
+            </button>
+            <button class="btn btn-secondary" :disabled="nonworkBusy" @click="syncNonworkCalendar">
+              {{ t('admin.usage.syncCalendar') }}
+            </button>
+            <button class="btn btn-secondary" :disabled="nonworkBusy" @click="backfillNonworkUsage">
+              {{ t('admin.usage.backfillNonwork') }}
+            </button>
+            <input v-model="manualCalendarDate" type="date" class="input h-9 w-36 text-sm" />
+            <select v-model="manualCalendarIsWorkday" class="input h-9 w-28 text-sm">
+              <option :value="false">{{ t('admin.usage.offday') }}</option>
+              <option :value="true">{{ t('admin.usage.workday') }}</option>
+            </select>
+            <button class="btn btn-secondary" :disabled="nonworkBusy || !manualCalendarDate" @click="overrideNonworkCalendarDay">
+              {{ t('admin.usage.saveCalendarDay') }}
+            </button>
+          </div>
+        </div>
+      </div>
       <!-- Charts Section -->
       <div class="space-y-4">
         <div class="card p-4">
@@ -170,7 +210,7 @@ import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
 import Icon from '@/components/icons/Icon.vue'
-import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams } from '@/api/admin/usage'
+import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams, NonworkCalendarYearStatus } from '@/api/admin/usage'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -200,6 +240,10 @@ let statsReqSeq = 0
 let modelStatsReqSeq = 0
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' })
 const cleanupDialogVisible = ref(false)
+const nonworkBusy = ref(false)
+const nonworkCalendarYears = ref<NonworkCalendarYearStatus[]>([])
+const manualCalendarDate = ref('')
+const manualCalendarIsWorkday = ref(false)
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
@@ -259,6 +303,66 @@ const sortState = reactive({
   sort_by: 'created_at',
   sort_order: 'desc' as 'asc' | 'desc'
 })
+
+const loadNonworkCalendarStatus = async () => {
+  try {
+    const currentYear = new Date().getFullYear()
+    const res = await adminUsageAPI.getNonworkCalendarStatus([currentYear - 1, currentYear, currentYear + 1])
+    nonworkCalendarYears.value = res.years || []
+  } catch {
+    appStore.showError(t('admin.usage.failedToLoadCalendarStatus'))
+  }
+}
+
+const syncNonworkCalendar = async () => {
+  if (nonworkBusy.value) return
+  nonworkBusy.value = true
+  try {
+    const years = nonworkCalendarYears.value.map((item) => item.year)
+    await adminUsageAPI.syncNonworkCalendar(years)
+    appStore.showSuccess(t('admin.usage.calendarSyncAccepted'))
+    setTimeout(loadNonworkCalendarStatus, 1500)
+  } catch {
+    appStore.showError(t('admin.usage.calendarSyncFailed'))
+  } finally {
+    nonworkBusy.value = false
+  }
+}
+
+const backfillNonworkUsage = async () => {
+  if (nonworkBusy.value) return
+  nonworkBusy.value = true
+  try {
+    await adminUsageAPI.backfillNonworkUsage({
+      start_date: startDate.value,
+      end_date: endDate.value,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    })
+    appStore.showSuccess(t('admin.usage.nonworkBackfillAccepted'))
+  } catch {
+    appStore.showError(t('admin.usage.nonworkBackfillFailed'))
+  } finally {
+    nonworkBusy.value = false
+  }
+}
+
+const overrideNonworkCalendarDay = async () => {
+  if (nonworkBusy.value || !manualCalendarDate.value) return
+  nonworkBusy.value = true
+  try {
+    await adminUsageAPI.overrideNonworkCalendarDay({
+      date: manualCalendarDate.value,
+      is_workday: manualCalendarIsWorkday.value,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    })
+    appStore.showSuccess(t('admin.usage.calendarOverrideSaved'))
+    await loadNonworkCalendarStatus()
+  } catch {
+    appStore.showError(t('admin.usage.calendarOverrideFailed'))
+  } finally {
+    nonworkBusy.value = false
+  }
+}
 
 const getSingleQueryValue = (value: string | null | Array<string | null> | undefined): string | undefined => {
   if (Array.isArray(value)) return value.find((item): item is string => typeof item === 'string' && item.length > 0)
@@ -453,6 +557,7 @@ const applyFilters = () => {
   invalidateModelStatsCache()
   loadLogs()
   loadStats()
+  loadNonworkCalendarStatus()
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   errPage.value = 1

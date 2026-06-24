@@ -131,6 +131,9 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/prototypes/
+!docs/prototypes/token-ranking-offhours.html
+!docs/token-ranking-nonworktime-design.md
 !docs/legal/
 !docs/legal/*.md
 .serena/

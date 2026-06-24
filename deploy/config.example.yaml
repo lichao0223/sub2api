@@ -719,6 +719,59 @@ dashboard_aggregation:
     daily_days: 730
 
 # =============================================================================
+# Non-work Usage Ranking Configuration
+# 非工作时段 Token 排名配置（重启生效）
+# =============================================================================
+nonwork_usage:
+  # Enable non-work usage ranking and aggregation
+  # 启用非工作时段排名与聚合
+  enabled: true
+  # Business timezone
+  # 业务时区
+  timezone: "Asia/Shanghai"
+  # Workday start time (HH:mm)
+  # 工作日上班时间（HH:mm）
+  work_start: "08:30"
+  # Workday end time (HH:mm), after-hours starts at this instant
+  # 工作日下班时间（HH:mm），到点即进入下班时段
+  work_end: "18:00"
+  # Max gap between adjacent requests to count as continuous active usage
+  # 相邻请求间隔小于等于该值时计为连续活跃（分钟）
+  active_gap_minutes: 5
+  # Minimum active duration for a single isolated request
+  # 单次孤立请求的最小活跃时长（分钟）
+  min_session_minutes: 1
+  calendar:
+    # Calendar country/region
+    # 日历国家/地区
+    country: "CN"
+    # Calendar source: holiday-cn + local week rule
+    # 日历来源：holiday-cn + 本地星期规则
+    source: "holiday-cn"
+    # Enable automatic calendar sync
+    # 启用自动日历同步
+    sync_enabled: true
+    # Calendar sync cron expression
+    # 日历同步 cron 表达式
+    sync_schedule: "0 3 * * *"
+    # Number of future years to sync
+    # 向未来同步的年份数
+    sync_years_ahead: 1
+  aggregation:
+    # Enable aggregation job
+    # 启用聚合作业
+    enabled: true
+    # Aggregation cron expression
+    # 聚合 cron 表达式
+    schedule: "*/10 * * * *"
+    # Recompute recent N days
+    # 重算最近 N 天
+    recompute_days: 3
+    # Aggregation retention days
+    # 聚合保留天数
+    retention_days: 3650
+
+# =============================================================================
 # Usage Cleanup Task Configuration
 # 使用记录清理任务配置（重启生效）
 # =============================================================================

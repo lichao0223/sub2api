@@ -181,6 +181,44 @@ type UserTokenRankingResponse struct {
 	TotalTokens     int64                  `json:"total_tokens"`
 }
 
+const (
+	NonworkRankingScopeAll        = "all"
+	NonworkRankingScopeOffday     = "offday"
+	NonworkRankingScopeAfterHours = "after_hours"
+	NonworkRankingScopeNonwork    = "nonwork"
+
+	NonworkRankingRankByTokens           = "tokens"
+	NonworkRankingRankByRequests         = "requests"
+	NonworkRankingRankByActiveDuration   = "active_duration"
+	NonworkRankingRankByActualCost       = "actual_cost"
+	NonworkRankingRankByOffdayTokens     = "offday_tokens"
+	NonworkRankingRankByAfterHoursTokens = "after_hours_tokens"
+)
+
+type UserNonworkTokenRankingItem struct {
+	UserID              int64   `json:"user_id"`
+	Email               string  `json:"email"`
+	Username            string  `json:"username"`
+	ActualCost          float64 `json:"actual_cost"`
+	Requests            int64   `json:"requests"`
+	Tokens              int64   `json:"tokens"`
+	OffdayTokens        int64   `json:"offday_tokens"`
+	AfterHoursTokens    int64   `json:"after_hours_tokens"`
+	ActiveDurationMs    int64   `json:"active_duration_ms"`
+	CalendarConfirmed   bool    `json:"calendar_confirmed"`
+}
+
+type UserNonworkTokenRankingResponse struct {
+	Ranking               []UserNonworkTokenRankingItem `json:"ranking"`
+	TotalActualCost       float64                       `json:"total_actual_cost"`
+	TotalRequests         int64                         `json:"total_requests"`
+	TotalTokens           int64                         `json:"total_tokens"`
+	TotalOffdayTokens     int64                         `json:"total_offday_tokens"`
+	TotalAfterHoursTokens int64                         `json:"total_after_hours_tokens"`
+	TotalActiveDurationMs int64                         `json:"total_active_duration_ms"`
+	CalendarConfirmed     bool                          `json:"calendar_confirmed"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`

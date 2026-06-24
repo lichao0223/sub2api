@@ -77,6 +77,9 @@ export interface UserTokenRankingParams {
   start_date?: string
   end_date?: string
   limit?: number
+  scope?: 'all' | 'offday' | 'after_hours' | 'nonwork'
+  rank_by?: 'tokens' | 'requests' | 'active_duration' | 'actual_cost' | 'offday_tokens' | 'after_hours_tokens'
+  timezone?: string
 }
 
 export interface ApiKeyDailyUsagePoint {
@@ -277,6 +280,15 @@ export async function getDashboardTokenRanking(
   return data
 }
 
+export async function getDashboardNonworkTokenRanking(
+  params?: UserTokenRankingParams
+): Promise<UserTokenRankingResponse> {
+  const { data } = await apiClient.get<UserTokenRankingResponse>('/usage/dashboard/token-ranking/nonwork', {
+    params
+  })
+  return data
+}
+
 /**
  * Get daily usage details for one API key owned by the current user.
  * @param apiKeyId - API key ID
@@ -356,6 +368,7 @@ export const usageAPI = {
   getDashboardTrend,
   getDashboardModels,
   getDashboardTokenRanking,
+  getDashboardNonworkTokenRanking,
   getMyApiKeyDailyUsage,
   getDashboardApiKeysUsage,
   // Error requests
