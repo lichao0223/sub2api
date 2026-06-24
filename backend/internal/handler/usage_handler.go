@@ -552,7 +552,7 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 	})
 }
 
-// DashboardNonworkTokenRanking handles getting cross-user token usage ranking split by non-work segments.
+// DashboardNonworkTokenRanking handles getting cross-user token usage ranking for non-work time.
 // GET /api/v1/usage/dashboard/token-ranking/nonwork
 func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
@@ -563,7 +563,7 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 	startTime, endTime := parseUserTimeRange(c)
 	limit := parseUserRankingLimit(c.Query("limit"))
 	scope := strings.TrimSpace(c.DefaultQuery("scope", usagestats.NonworkRankingScopeNonwork))
-	rankBy := strings.TrimSpace(c.DefaultQuery("rank_by", usagestats.NonworkRankingRankByTokens))
+	rankBy := strings.TrimSpace(c.DefaultQuery("rank_by", usagestats.NonworkRankingRankByNonworkTokens))
 	userTZ := strings.TrimSpace(c.Query("timezone"))
 	if userTZ == "" {
 		userTZ = "Asia/Shanghai"
@@ -580,8 +580,9 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 		"total_actual_cost":        ranking.TotalActualCost,
 		"total_requests":           ranking.TotalRequests,
 		"total_tokens":             ranking.TotalTokens,
-		"total_offday_tokens":      ranking.TotalOffdayTokens,
-		"total_after_hours_tokens": ranking.TotalAfterHoursTokens,
+		"total_nonwork_tokens":     ranking.TotalNonworkTokens,
+		"total_all_tokens":         ranking.TotalAllTokens,
+		"nonwork_token_ratio":      ranking.NonworkTokenRatio,
 		"total_active_duration_ms": ranking.TotalActiveDurationMs,
 		"calendar_confirmed":       ranking.CalendarConfirmed,
 		"scope":                    scope,

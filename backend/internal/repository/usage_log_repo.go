@@ -2547,8 +2547,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				user_id,
 				COALESCE(SUM(requests), 0) AS requests,
 				COALESCE(SUM(total_tokens), 0) AS tokens,
-				COALESCE(SUM(total_tokens) FILTER (WHERE segment = 'offday'), 0) AS offday_tokens,
-				COALESCE(SUM(total_tokens) FILTER (WHERE segment = 'after_hours'), 0) AS after_hours_tokens,
+				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS nonwork_tokens,
 				COALESCE(SUM(active_ms), 0) AS active_duration_ms,
 				COALESCE(SUM(actual_cost), 0) AS actual_cost,
 				COALESCE(BOOL_AND(calendar_confirmed), TRUE) AS calendar_confirmed
@@ -2559,6 +2558,18 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			  AND segment = ANY($4)
 			GROUP BY user_id
 		),
+		totals AS (
+			SELECT
+				COALESCE(SUM(total_tokens), 0) AS total_all_tokens,
+				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS total_nonwork_tokens
+			FROM usage_nonwork_daily_user_stats st
+			LEFT JOIN users u ON u.id = st.user_id
+			WHERE bucket_date >= $1::date
+			  AND bucket_date <= $2::date
+			  AND timezone = $3
+			  AND u.deleted_at IS NULL
+			  AND u.role <> $5
+		),
 		ranked AS (
 			SELECT
 				s.user_id,
@@ -2567,18 +2578,22 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				s.actual_cost,
 				s.requests,
 				s.tokens,
-				s.offday_tokens,
-				s.after_hours_tokens,
+				s.nonwork_tokens,
 				s.active_duration_ms,
 				s.calendar_confirmed,
 				COALESCE(SUM(s.actual_cost) OVER (), 0) AS total_actual_cost,
 				COALESCE(SUM(s.requests) OVER (), 0) AS total_requests,
 				COALESCE(SUM(s.tokens) OVER (), 0) AS total_tokens,
-				COALESCE(SUM(s.offday_tokens) OVER (), 0) AS total_offday_tokens,
-				COALESCE(SUM(s.after_hours_tokens) OVER (), 0) AS total_after_hours_tokens,
+				COALESCE(SUM(s.nonwork_tokens) OVER (), 0) AS total_nonwork_tokens,
+				t.total_all_tokens,
+				CASE WHEN t.total_all_tokens > 0
+					THEN t.total_nonwork_tokens::double precision / t.total_all_tokens::double precision
+					ELSE 0
+				END AS nonwork_token_ratio,
 				COALESCE(SUM(s.active_duration_ms) OVER (), 0) AS total_active_duration_ms,
 				COALESCE(BOOL_AND(s.calendar_confirmed) OVER (), TRUE) AS all_calendar_confirmed
 			FROM stats s
+			CROSS JOIN totals t
 			LEFT JOIN users u ON u.id = s.user_id
 			WHERE u.deleted_at IS NULL AND u.role <> $5
 			ORDER BY %s DESC, s.tokens DESC, s.active_duration_ms DESC, s.user_id ASC
@@ -2591,15 +2606,15 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			actual_cost,
 			requests,
 			tokens,
-			offday_tokens,
-			after_hours_tokens,
+			nonwork_tokens,
 			active_duration_ms,
 			calendar_confirmed,
 			total_actual_cost,
 			total_requests,
 			total_tokens,
-			total_offday_tokens,
-			total_after_hours_tokens,
+			total_nonwork_tokens,
+			total_all_tokens,
+			nonwork_token_ratio,
 			total_active_duration_ms,
 			all_calendar_confirmed
 		FROM ranked
@@ -2618,8 +2633,8 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 	}()
 
 	ranking := make([]UserNonworkTokenRankingItem, 0)
-	var totalActualCost float64
-	var totalRequests, totalTokens, totalOffdayTokens, totalAfterHoursTokens, totalActiveDurationMs int64
+	var totalActualCost, nonworkTokenRatio float64
+	var totalRequests, totalTokens, totalNonworkTokens, totalAllTokens, totalActiveDurationMs int64
 	calendarConfirmed := true
 	for rows.Next() {
 		var row UserNonworkTokenRankingItem
@@ -2630,15 +2645,15 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			&row.ActualCost,
 			&row.Requests,
 			&row.Tokens,
-			&row.OffdayTokens,
-			&row.AfterHoursTokens,
+			&row.NonworkTokens,
 			&row.ActiveDurationMs,
 			&row.CalendarConfirmed,
 			&totalActualCost,
 			&totalRequests,
 			&totalTokens,
-			&totalOffdayTokens,
-			&totalAfterHoursTokens,
+			&totalNonworkTokens,
+			&totalAllTokens,
+			&nonworkTokenRatio,
 			&totalActiveDurationMs,
 			&calendarConfirmed,
 		); err != nil {
@@ -2655,8 +2670,9 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		TotalActualCost:       totalActualCost,
 		TotalRequests:         totalRequests,
 		TotalTokens:           totalTokens,
-		TotalOffdayTokens:     totalOffdayTokens,
-		TotalAfterHoursTokens: totalAfterHoursTokens,
+		TotalNonworkTokens:    totalNonworkTokens,
+		TotalAllTokens:        totalAllTokens,
+		NonworkTokenRatio:     nonworkTokenRatio,
 		TotalActiveDurationMs: totalActiveDurationMs,
 		CalendarConfirmed:     calendarConfirmed,
 	}, nil
@@ -2666,10 +2682,6 @@ func nonworkRankingSegments(scope string) []string {
 	switch strings.TrimSpace(scope) {
 	case usagestats.NonworkRankingScopeAll:
 		return []string{"work_hours", "after_hours", "offday"}
-	case usagestats.NonworkRankingScopeOffday:
-		return []string{"offday"}
-	case usagestats.NonworkRankingScopeAfterHours:
-		return []string{"after_hours"}
 	default:
 		return []string{"after_hours", "offday"}
 	}
@@ -2683,10 +2695,8 @@ func nonworkRankingOrderExprs(rankBy string) (string, string) {
 		return "s.active_duration_ms", "active_duration_ms"
 	case usagestats.NonworkRankingRankByActualCost:
 		return "s.actual_cost", "actual_cost"
-	case usagestats.NonworkRankingRankByOffdayTokens:
-		return "s.offday_tokens", "offday_tokens"
-	case usagestats.NonworkRankingRankByAfterHoursTokens:
-		return "s.after_hours_tokens", "after_hours_tokens"
+	case usagestats.NonworkRankingRankByNonworkTokens:
+		return "s.nonwork_tokens", "nonwork_tokens"
 	default:
 		return "s.tokens", "tokens"
 	}

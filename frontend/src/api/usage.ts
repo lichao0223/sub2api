@@ -77,8 +77,8 @@ export interface UserTokenRankingParams {
   start_date?: string
   end_date?: string
   limit?: number
-  scope?: 'all' | 'offday' | 'after_hours' | 'nonwork'
-  rank_by?: 'tokens' | 'requests' | 'active_duration' | 'actual_cost' | 'offday_tokens' | 'after_hours_tokens'
+  scope?: 'all' | 'nonwork'
+  rank_by?: 'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'actual_cost'
   timezone?: string
 }
 

@@ -556,24 +556,12 @@
         </div>
 
         <div class="filter-group">
-          <span class="filter-label">排名口径:</span>
-          <div class="segment-control" role="tablist" aria-label="排名口径">
-            <button type="button" data-mode="all">全部</button>
-            <button type="button" data-mode="offday">非工作日</button>
-            <button type="button" data-mode="afterHours">下班时间</button>
-            <button type="button" data-mode="offScope" class="active">非工作时段</button>
-          </div>
-        </div>
-
-        <div class="filter-group">
           <span class="filter-label">排名维度:</span>
           <select id="rankBy" aria-label="排名维度">
-            <option value="tokens">Token 数</option>
+            <option value="tokens">非工作时间 Token</option>
             <option value="requests">请求数</option>
             <option value="duration">活跃时长</option>
             <option value="cost">消费</option>
-            <option value="offdayTokens">非工作日 Token</option>
-            <option value="afterHoursTokens">下班时间 Token</option>
           </select>
         </div>
 
@@ -595,19 +583,19 @@
 
     <section class="kpis">
       <div class="card kpi">
-        <div class="kpi-label">总 Token</div>
+        <div class="kpi-label">非工作时间 Token</div>
         <div class="kpi-value" id="totalTokens">0</div>
-        <div class="kpi-sub" id="scopeHint">当前口径合计</div>
+        <div class="kpi-sub" id="scopeHint">按非工作时间口径合计</div>
       </div>
       <div class="card kpi">
         <div class="kpi-label">总请求数</div>
         <div class="kpi-value" id="totalRequests">0</div>
-        <div class="kpi-sub" id="totalDuration">活跃时长 0 分钟</div>
+        <div class="kpi-sub">非工作时间请求合计</div>
       </div>
       <div class="card kpi">
         <div class="kpi-label">总消费</div>
         <div class="kpi-value green" id="totalSpend">$0.00</div>
-        <div class="kpi-sub" id="offScopeShare">非工作时段占比 0%</div>
+        <div class="kpi-sub" id="offScopeShare">非工作时间 Token 占比 0%</div>
       </div>
     </section>
 
@@ -627,9 +615,7 @@
               <th>排名</th>
               <th>用户</th>
               <th class="right">请求数</th>
-              <th class="right">Token 数</th>
-              <th class="right">非工作日 Token</th>
-              <th class="right">下班时间 Token</th>
+              <th class="right">非工作时间 Token</th>
               <th class="right">活跃时长</th>
               <th class="right">消费</th>
             </tr>
@@ -646,20 +632,20 @@
 
   <script>
     const rows = [
-      { userId: 95, name: '许曼', email: 'xu.man@example.com', offdayTokens: 694400, afterHoursTokens: 1524200, normalTokens: 1840000, offdayDuration: 12600000, afterHoursDuration: 23460000, normalDuration: 28800000, offdayRequests: 38, afterHoursRequests: 104, normalRequests: 129, cost: 31.68 },
-      { userId: 104, name: '唐朔', email: 'tang.shuo@example.com', offdayTokens: 1180600, afterHoursTokens: 583600, normalTokens: 1149000, offdayDuration: 19680000, afterHoursDuration: 9000000, normalDuration: 17160000, offdayRequests: 73, afterHoursRequests: 36, normalRequests: 88, cost: 24.35 },
-      { userId: 28, name: '周宁', email: 'zhou.ning@example.com', offdayTokens: 312400, afterHoursTokens: 981800, normalTokens: 742500, offdayDuration: 5940000, afterHoursDuration: 14760000, normalDuration: 10200000, offdayRequests: 19, afterHoursRequests: 67, normalRequests: 51, cost: 18.64 },
-      { userId: 17, name: '林雨', email: 'lin.yu@example.com', offdayTokens: 738900, afterHoursTokens: 244600, normalTokens: 653700, offdayDuration: 14100000, afterHoursDuration: 4380000, normalDuration: 9780000, offdayRequests: 47, afterHoursRequests: 17, normalRequests: 45, cost: 14.22 },
-      { userId: 42, name: '陈启', email: 'chen.qi@example.com', offdayTokens: 192800, afterHoursTokens: 609340, normalTokens: 510100, offdayDuration: 3540000, afterHoursDuration: 9360000, normalDuration: 7740000, offdayRequests: 12, afterHoursRequests: 39, normalRequests: 34, cost: 10.78 },
-      { userId: 35, name: '苗佳', email: 'miao.jia@example.com', offdayTokens: 508780, afterHoursTokens: 153100, normalTokens: 394400, offdayDuration: 7920000, afterHoursDuration: 2460000, normalDuration: 6000000, offdayRequests: 31, afterHoursRequests: 8, normalRequests: 27, cost: 8.93 },
-      { userId: 61, name: '黄潇', email: 'huang.xiao@example.com', offdayTokens: 103000, afterHoursTokens: 411900, normalTokens: 298500, offdayDuration: 1740000, afterHoursDuration: 5640000, normalDuration: 4440000, offdayRequests: 7, afterHoursRequests: 24, normalRequests: 19, cost: 7.46 },
-      { userId: 53, name: '钱墨', email: 'qian.mo@example.com', offdayTokens: 347200, afterHoursTokens: 91520, normalTokens: 210800, offdayDuration: 4620000, afterHoursDuration: 1500000, normalDuration: 3180000, offdayRequests: 22, afterHoursRequests: 5, normalRequests: 16, cost: 5.87 },
-      { userId: 74, name: '郭然', email: 'guo.ran@example.com', offdayTokens: 42800, afterHoursTokens: 260610, normalTokens: 180200, offdayDuration: 720000, afterHoursDuration: 3480000, normalDuration: 2700000, offdayRequests: 3, afterHoursRequests: 19, normalRequests: 13, cost: 4.21 },
-      { userId: 81, name: '何安', email: 'he.an@example.com', offdayTokens: 165060, afterHoursTokens: 43000, normalTokens: 90200, offdayDuration: 2160000, afterHoursDuration: 660000, normalDuration: 1320000, offdayRequests: 10, afterHoursRequests: 3, normalRequests: 7, cost: 2.94 }
+      { userId: 95, name: '许曼', email: 'xu.man@example.com', nonworkTokens: 2218600, normalTokens: 1840000, nonworkDuration: 36060000, normalDuration: 28800000, nonworkRequests: 142, normalRequests: 129, cost: 31.68 },
+      { userId: 104, name: '唐朔', email: 'tang.shuo@example.com', nonworkTokens: 1764200, normalTokens: 1149000, nonworkDuration: 28680000, normalDuration: 17160000, nonworkRequests: 109, normalRequests: 88, cost: 24.35 },
+      { userId: 28, name: '周宁', email: 'zhou.ning@example.com', nonworkTokens: 1294200, normalTokens: 742500, nonworkDuration: 20700000, normalDuration: 10200000, nonworkRequests: 86, normalRequests: 51, cost: 18.64 },
+      { userId: 17, name: '林雨', email: 'lin.yu@example.com', nonworkTokens: 983500, normalTokens: 653700, nonworkDuration: 18480000, normalDuration: 9780000, nonworkRequests: 64, normalRequests: 45, cost: 14.22 },
+      { userId: 42, name: '陈启', email: 'chen.qi@example.com', nonworkTokens: 802140, normalTokens: 510100, nonworkDuration: 12900000, normalDuration: 7740000, nonworkRequests: 51, normalRequests: 34, cost: 10.78 },
+      { userId: 35, name: '苗佳', email: 'miao.jia@example.com', nonworkTokens: 661880, normalTokens: 394400, nonworkDuration: 10380000, normalDuration: 6000000, nonworkRequests: 39, normalRequests: 27, cost: 8.93 },
+      { userId: 61, name: '黄潇', email: 'huang.xiao@example.com', nonworkTokens: 514900, normalTokens: 298500, nonworkDuration: 7380000, normalDuration: 4440000, nonworkRequests: 31, normalRequests: 19, cost: 7.46 },
+      { userId: 53, name: '钱墨', email: 'qian.mo@example.com', nonworkTokens: 438720, normalTokens: 210800, nonworkDuration: 6120000, normalDuration: 3180000, nonworkRequests: 27, normalRequests: 16, cost: 5.87 },
+      { userId: 74, name: '郭然', email: 'guo.ran@example.com', nonworkTokens: 303410, normalTokens: 180200, nonworkDuration: 4200000, normalDuration: 2700000, nonworkRequests: 22, normalRequests: 13, cost: 4.21 },
+      { userId: 81, name: '何安', email: 'he.an@example.com', nonworkTokens: 208060, normalTokens: 90200, nonworkDuration: 2820000, normalDuration: 1320000, nonworkRequests: 13, normalRequests: 7, cost: 2.94 }
     ];
 
     const anchorDate = new Date('2026-06-24T12:00:00+08:00');
-    const state = { mode: 'offScope', range: '7d', rankBy: 'tokens' };
+    const state = { range: '7d', rankBy: 'tokens' };
     const numberFormat = new Intl.NumberFormat('zh-CN');
 
     const rangeLabels = {
@@ -707,29 +693,15 @@
     }
 
     function total(row, field) {
-      if (state.mode === 'all') return row[`offday${field}`] + row[`afterHours${field}`] + row[`normal${field}`];
-      if (state.mode === 'offday') return row[`offday${field}`];
-      if (state.mode === 'afterHours') return row[`afterHours${field}`];
-      return row[`offday${field}`] + row[`afterHours${field}`];
-    }
-
-    function modeLabel() {
-      return {
-        all: '全部用量',
-        offday: '非工作日',
-        afterHours: '工作日下班时间',
-        offScope: '非工作日 + 工作日下班时间'
-      }[state.mode];
+      return row[`nonwork${field}`];
     }
 
     function rankLabel() {
       return {
-        tokens: 'Token 数',
+        tokens: '非工作时间 Token',
         requests: '请求数',
         duration: '活跃时长',
-        cost: '消费',
-        offdayTokens: '非工作日 Token',
-        afterHoursTokens: '下班时间 Token'
+        cost: '消费'
       }[state.rankBy];
     }
 
@@ -769,19 +741,16 @@
     function renderKpis(items) {
       const tokens = items.reduce((sum, row) => sum + row.tokens, 0);
       const requests = items.reduce((sum, row) => sum + row.requests, 0);
-      const duration = items.reduce((sum, row) => sum + row.duration, 0);
       const spend = items.reduce((sum, row) => sum + row.cost, 0);
-      const allTokens = rows.reduce((sum, row) => sum + row.offdayTokens + row.afterHoursTokens + row.normalTokens, 0);
-      const offScopeTokens = rows.reduce((sum, row) => sum + row.offdayTokens + row.afterHoursTokens, 0);
-      const shareBase = state.mode === 'all' ? allTokens : offScopeTokens;
-      const share = allTokens > 0 ? (shareBase / allTokens) * 100 : 0;
+      const allTokens = rows.reduce((sum, row) => sum + row.nonworkTokens + row.normalTokens, 0);
+      const offScopeTokens = rows.reduce((sum, row) => sum + row.nonworkTokens, 0);
+      const share = allTokens > 0 ? (offScopeTokens / allTokens) * 100 : 0;
 
       document.getElementById('totalTokens').textContent = formatTokens(tokens);
       document.getElementById('totalRequests').textContent = numberFormat.format(requests);
-      document.getElementById('totalDuration').textContent = `活跃时长 ${formatDuration(duration)}`;
       document.getElementById('totalSpend').textContent = `$${spend.toFixed(2)}`;
-      document.getElementById('scopeHint').textContent = `${modeLabel()} · 按${rankLabel()}排名`;
-      document.getElementById('offScopeShare').textContent = `非工作时段占比 ${share.toFixed(1)}%`;
+      document.getElementById('scopeHint').textContent = `按${rankLabel()}排名`;
+      document.getElementById('offScopeShare').textContent = `非工作时间 Token 占比 ${share.toFixed(1)}%`;
     }
 
     function renderRows(items) {
@@ -796,8 +765,6 @@
             </td>
             <td class="right">${numberFormat.format(row.requests)}</td>
             <td class="right strong">${formatTokens(row.tokens)}</td>
-            <td class="right">${formatTokens(row.offdayTokens)}</td>
-            <td class="right">${formatTokens(row.afterHoursTokens)}</td>
             <td class="right">${formatDuration(row.duration)}</td>
             <td class="right money">$${row.cost.toFixed(2)}</td>
           </tr>
@@ -817,9 +784,6 @@
     }
 
     function render() {
-      document.querySelectorAll('[data-mode]').forEach(button => {
-        button.classList.toggle('active', button.dataset.mode === state.mode);
-      });
       const items = visibleRows();
       renderRange();
       renderKpis(items);
@@ -827,15 +791,13 @@
     }
 
     function exportCsv() {
-      const header = ['排名', '用户', '邮箱', '请求数', 'Token数', '非工作日Token', '下班时间Token', '活跃时长', '消费'];
+      const header = ['排名', '用户', '邮箱', '请求数', '非工作时间Token', '活跃时长', '消费'];
       const lines = visibleRows().map((row, index) => [
         index + 1,
         row.name,
         row.email,
         row.requests,
         row.tokens,
-        row.offdayTokens,
-        row.afterHoursTokens,
         formatDuration(row.duration),
         row.cost.toFixed(2)
       ]);
@@ -845,7 +807,7 @@
       const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
       const link = document.createElement('a');
       link.href = URL.createObjectURL(blob);
-      link.download = `token-ranking-${state.mode}.csv`;
+      link.download = 'token-ranking-nonwork.csv';
       link.click();
       URL.revokeObjectURL(link.href);
     }

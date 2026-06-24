@@ -182,17 +182,14 @@ type UserTokenRankingResponse struct {
 }
 
 const (
-	NonworkRankingScopeAll        = "all"
-	NonworkRankingScopeOffday     = "offday"
-	NonworkRankingScopeAfterHours = "after_hours"
-	NonworkRankingScopeNonwork    = "nonwork"
+	NonworkRankingScopeAll     = "all"
+	NonworkRankingScopeNonwork = "nonwork"
 
-	NonworkRankingRankByTokens           = "tokens"
-	NonworkRankingRankByRequests         = "requests"
-	NonworkRankingRankByActiveDuration   = "active_duration"
-	NonworkRankingRankByActualCost       = "actual_cost"
-	NonworkRankingRankByOffdayTokens     = "offday_tokens"
-	NonworkRankingRankByAfterHoursTokens = "after_hours_tokens"
+	NonworkRankingRankByTokens         = "tokens"
+	NonworkRankingRankByNonworkTokens  = "nonwork_tokens"
+	NonworkRankingRankByRequests       = "requests"
+	NonworkRankingRankByActiveDuration = "active_duration"
+	NonworkRankingRankByActualCost     = "actual_cost"
 )
 
 type UserNonworkTokenRankingItem struct {
@@ -202,8 +199,7 @@ type UserNonworkTokenRankingItem struct {
 	ActualCost        float64 `json:"actual_cost"`
 	Requests          int64   `json:"requests"`
 	Tokens            int64   `json:"tokens"`
-	OffdayTokens      int64   `json:"offday_tokens"`
-	AfterHoursTokens  int64   `json:"after_hours_tokens"`
+	NonworkTokens     int64   `json:"nonwork_tokens"`
 	ActiveDurationMs  int64   `json:"active_duration_ms"`
 	CalendarConfirmed bool    `json:"calendar_confirmed"`
 }
@@ -213,8 +209,9 @@ type UserNonworkTokenRankingResponse struct {
 	TotalActualCost       float64                       `json:"total_actual_cost"`
 	TotalRequests         int64                         `json:"total_requests"`
 	TotalTokens           int64                         `json:"total_tokens"`
-	TotalOffdayTokens     int64                         `json:"total_offday_tokens"`
-	TotalAfterHoursTokens int64                         `json:"total_after_hours_tokens"`
+	TotalNonworkTokens    int64                         `json:"total_nonwork_tokens"`
+	TotalAllTokens        int64                         `json:"total_all_tokens"`
+	NonworkTokenRatio     float64                       `json:"nonwork_token_ratio"`
 	TotalActiveDurationMs int64                         `json:"total_active_duration_ms"`
 	CalendarConfirmed     bool                          `json:"calendar_confirmed"`
 }

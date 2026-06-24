@@ -453,8 +453,8 @@ GET /api/v1/usage/dashboard/token-ranking/nonwork
 ```text
 start_date=2026-06-18
 end_date=2026-06-24
-scope=nonwork|offday|after_hours|all
-rank_by=tokens|requests|active_duration|actual_cost|offday_tokens|after_hours_tokens
+scope=nonwork|all
+rank_by=nonwork_tokens|requests|active_duration|actual_cost
 limit=50
 timezone=Asia/Shanghai
 work_start=08:30
@@ -469,19 +469,21 @@ work_end=18:00
     {
       "user_id": 95,
       "email": "xu.man@example.com",
-      "username": "许曼",
-      "requests": 142,
-      "tokens": 2218600,
-      "offday_tokens": 694400,
-      "after_hours_tokens": 1524200,
-      "active_duration_ms": 36060000,
-      "actual_cost": 31.68
-    }
-  ],
-  "total_requests": 52809,
-  "total_tokens": 7410000000,
-  "total_active_duration_ms": 128000000,
-  "total_actual_cost": 6110.0,
+	      "username": "许曼",
+	      "requests": 142,
+	      "tokens": 2218600,
+	      "nonwork_tokens": 2218600,
+	      "active_duration_ms": 36060000,
+	      "actual_cost": 31.68
+	    }
+	  ],
+	  "total_requests": 52809,
+	  "total_tokens": 7410000000,
+	  "total_nonwork_tokens": 7410000000,
+	  "total_all_tokens": 14820000000,
+	  "nonwork_token_ratio": 0.5,
+	  "total_active_duration_ms": 128000000,
+	  "total_actual_cost": 6110.0,
   "calendar_confirmed": true,
   "start_date": "2026-06-18",
   "end_date": "2026-06-24"
@@ -504,34 +506,26 @@ user_id ASC
 筛选区：
 
 - 时间范围：保持原有 DateRangePicker 样式，例如 `近 7 天`。
-- 排名口径：
-  - 全部
-  - 非工作日
-  - 下班时间
-  - 非工作时段
 - 排名维度：
-  - Token 数
+  - 非工作时间 Token
   - 请求数
   - 活跃时长
   - 消费
-  - 非工作日 Token
-  - 下班时间 Token
 - 工作时间：默认 `08:30 - 18:00`，初版可只展示配置，不一定开放用户修改。
 
 指标卡：
 
-- 总 Token
+- 非工作时间 Token
 - 总请求数
 - 总消费
+- 非工作时间 Token 占比
 
 表格列：
 
 - 排名
 - 用户
 - 请求数
-- Token 数
-- 非工作日 Token
-- 下班时间 Token
+- 非工作时间 Token
 - 活跃时长
 - 消费
 
@@ -656,4 +650,3 @@ nonwork_usage:
 5. 新增排名接口。
 6. 接入前端页面。
 7. 加管理后台日历状态与手工修正能力。
-
