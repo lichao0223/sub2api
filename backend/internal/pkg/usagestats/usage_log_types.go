@@ -229,6 +229,7 @@ type NonworkStatsCoverage struct {
 	StartDate      string                    `json:"start_date"`
 	EndDate        string                    `json:"end_date"`
 	Timezone       string                    `json:"timezone"`
+	LastComputedAt *time.Time                `json:"last_computed_at,omitempty"`
 	TotalDays      int                       `json:"total_days"`
 	AggregatedDays int                       `json:"aggregated_days"`
 	MissingDays    int                       `json:"missing_days"`

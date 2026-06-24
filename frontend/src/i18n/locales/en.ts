@@ -725,6 +725,7 @@ export default {
     sortDesc: 'Descending',
     workTime: 'Work Time',
     calendarPredicted: 'Some dates use weekend rules',
+    lastStatsComputedAt: 'Last aggregated {time}',
     statsIncomplete: 'Non-work stats are incomplete for this range, covered {aggregated}/{total} days. Historical data is being backfilled automatically',
     statsMissing: 'missing {ranges}',
     totalTokens: 'Total Tokens',

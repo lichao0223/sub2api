@@ -724,6 +724,7 @@ export default {
     sortDesc: '倒序',
     workTime: '工作时间',
     calendarPredicted: '部分日期按周末规则计算',
+    lastStatsComputedAt: '最后统计 {time}',
     statsIncomplete: '当前范围非工作统计未完整，已覆盖 {aggregated}/{total} 天，历史数据会在后台自动补齐',
     statsMissing: '缺失 {ranges}',
     totalTokens: '总 Token',

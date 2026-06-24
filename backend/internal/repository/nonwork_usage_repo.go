@@ -201,13 +201,13 @@ func (r *nonworkUsageRepository) GetStatsCoverage(ctx context.Context, startDate
 			SELECT generate_series($1::date, $2::date, interval '1 day')::date AS bucket_date
 		),
 		marked AS (
-			SELECT bucket_date
+			SELECT bucket_date, computed_at
 			FROM usage_nonwork_daily_stat_runs
 			WHERE timezone = $3
 			  AND bucket_date >= $1::date
 			  AND bucket_date <= $2::date
 		)
-		SELECT d.bucket_date::text, (m.bucket_date IS NOT NULL) AS aggregated
+		SELECT d.bucket_date::text, (m.bucket_date IS NOT NULL) AS aggregated, m.computed_at
 		FROM days d
 		LEFT JOIN marked m ON m.bucket_date = d.bucket_date
 		ORDER BY d.bucket_date ASC
@@ -230,15 +230,20 @@ func (r *nonworkUsageRepository) GetStatsCoverage(ctx context.Context, startDate
 	}
 	var openMissingStart string
 	var lastMissing string
+	var lastComputedAt time.Time
 	for rows.Next() {
 		var date string
 		var aggregated bool
-		if err = rows.Scan(&date, &aggregated); err != nil {
+		var computedAt sql.NullTime
+		if err = rows.Scan(&date, &aggregated, &computedAt); err != nil {
 			return result, err
 		}
 		result.TotalDays++
 		if aggregated {
 			result.AggregatedDays++
+			if computedAt.Valid && computedAt.Time.After(lastComputedAt) {
+				lastComputedAt = computedAt.Time
+			}
 			if openMissingStart != "" {
 				result.MissingRanges = append(result.MissingRanges, usagestats.NonworkMissingDateRange{
 					StartDate: openMissingStart,
@@ -264,6 +269,9 @@ func (r *nonworkUsageRepository) GetStatsCoverage(ctx context.Context, startDate
 			StartDate: openMissingStart,
 			EndDate:   lastMissing,
 		})
+	}
+	if !lastComputedAt.IsZero() {
+		result.LastComputedAt = &lastComputedAt
 	}
 	return result, nil
 }

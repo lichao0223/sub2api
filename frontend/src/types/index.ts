@@ -1542,6 +1542,7 @@ export interface NonworkStatsCoverage {
   start_date: string
   end_date: string
   timezone: string
+  last_computed_at?: string
   total_days: number
   aggregated_days: number
   missing_days: number

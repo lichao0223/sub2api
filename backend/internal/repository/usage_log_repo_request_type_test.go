@@ -576,15 +576,16 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 
 	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 6, 24, 0, 0, 0, 0, time.UTC)
+	computedAt := time.Date(2026, 6, 24, 10, 30, 0, 0, time.UTC)
 
-	coverageRows := sqlmock.NewRows([]string{"bucket_date", "aggregated"}).
-		AddRow("2026-06-18", true).
-		AddRow("2026-06-19", true).
-		AddRow("2026-06-20", true).
-		AddRow("2026-06-21", true).
-		AddRow("2026-06-22", true).
-		AddRow("2026-06-23", true).
-		AddRow("2026-06-24", true)
+	coverageRows := sqlmock.NewRows([]string{"bucket_date", "aggregated", "computed_at"}).
+		AddRow("2026-06-18", true, computedAt.Add(-6*time.Hour)).
+		AddRow("2026-06-19", true, computedAt.Add(-5*time.Hour)).
+		AddRow("2026-06-20", true, computedAt.Add(-4*time.Hour)).
+		AddRow("2026-06-21", true, computedAt.Add(-3*time.Hour)).
+		AddRow("2026-06-22", true, computedAt.Add(-2*time.Hour)).
+		AddRow("2026-06-23", true, computedAt.Add(-1*time.Hour)).
+		AddRow("2026-06-24", true, computedAt)
 	mock.ExpectQuery("WITH days AS \\(").
 		WithArgs(start, end, "Asia/Shanghai").
 		WillReturnRows(coverageRows)
@@ -659,6 +660,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 			AggregatedDays: 7,
 			MissingRanges:  []usagestats.NonworkMissingDateRange{},
 			Complete:       true,
+			LastComputedAt: &computedAt,
 		},
 		StatsComplete: true,
 	}, got)

@@ -165,6 +165,9 @@
                   <template v-if="calendarConfirmed === false">
                     · {{ t('tokenRanking.calendarPredicted') }}
                   </template>
+                  <template v-if="lastStatsComputedAt">
+                    · {{ t('tokenRanking.lastStatsComputedAt', { time: lastStatsComputedAt }) }}
+                  </template>
                 </span>
               </div>
             </div>
@@ -241,6 +244,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
+import { formatDateTime } from '@/utils/format'
 import type { NonworkStatsCoverage, UserTokenRankingItem } from '@/types'
 
 const { t } = useI18n()
@@ -272,6 +276,11 @@ const statsCoverage = ref<NonworkStatsCoverage | null>(null)
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
   return `${responseStartDate.value} - ${responseEndDate.value}`
+})
+
+const lastStatsComputedAt = computed(() => {
+  const value = statsCoverage.value?.last_computed_at
+  return value ? formatDateTime(value) : ''
 })
 
 const paginationStart = computed(() => (pagination.value.page - 1) * pagination.value.page_size)
