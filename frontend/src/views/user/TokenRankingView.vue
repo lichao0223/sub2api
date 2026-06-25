@@ -150,7 +150,7 @@
                 </span>
               </div>
             </div>
-            <div ref="rankingTableScrollRef" class="min-h-0 flex-1 overflow-auto">
+            <div ref="rankingTableScrollRef" class="token-ranking-table-scroll min-h-0 flex-1 overflow-auto">
               <table class="w-full min-w-[1120px] table-fixed text-sm">
                 <colgroup>
                   <col class="w-20" />
@@ -494,3 +494,48 @@ onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick)
 })
 </script>
+
+<style scoped>
+.token-ranking-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(107, 114, 128, 0.7) rgba(0, 0, 0, 0.03);
+  scrollbar-gutter: stable;
+}
+
+.token-ranking-table-scroll::-webkit-scrollbar {
+  height: 12px;
+  width: 12px;
+}
+
+.token-ranking-table-scroll::-webkit-scrollbar-track {
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+}
+
+.token-ranking-table-scroll::-webkit-scrollbar-thumb {
+  background-clip: padding-box;
+  background-color: rgba(107, 114, 128, 0.75);
+  border: 2px solid transparent;
+  border-radius: 6px;
+}
+
+.token-ranking-table-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(75, 85, 99, 0.9);
+}
+
+.dark .token-ranking-table-scroll {
+  scrollbar-color: rgba(156, 163, 175, 0.75) rgba(255, 255, 255, 0.05);
+}
+
+.dark .token-ranking-table-scroll::-webkit-scrollbar-track {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark .token-ranking-table-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(156, 163, 175, 0.75);
+}
+
+.dark .token-ranking-table-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(209, 213, 219, 0.9);
+}
+</style>
