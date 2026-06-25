@@ -566,11 +566,12 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 	rankBy := strings.TrimSpace(c.DefaultQuery("rank_by", usagestats.NonworkRankingRankByTokens))
 	sortOrder := strings.TrimSpace(c.DefaultQuery("sort_order", "asc"))
 	userTZ := strings.TrimSpace(c.Query("timezone"))
+	externalOrganizationID := strings.TrimSpace(c.Query("external_organization_id"))
 	if userTZ == "" {
 		userTZ = "Asia/Shanghai"
 	}
 
-	ranking, err := h.usageService.GetUserNonworkTokenRanking(c.Request.Context(), startTime, endTime.Add(-24*time.Hour), scope, rankBy, sortOrder, userTZ, limit)
+	ranking, err := h.usageService.GetUserNonworkTokenRanking(c.Request.Context(), startTime, endTime.Add(-24*time.Hour), scope, rankBy, sortOrder, userTZ, externalOrganizationID, limit)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

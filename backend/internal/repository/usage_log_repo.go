@@ -2531,13 +2531,14 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 	}, nil
 }
 
-func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, tz string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
+func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, tz, externalOrganizationID string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if strings.TrimSpace(tz) == "" {
 		tz = "Asia/Shanghai"
 	}
+	externalOrganizationID = strings.TrimSpace(externalOrganizationID)
 	coverage, err := r.GetNonworkStatsCoverage(ctx, startDate, endDate, tz)
 	if err != nil {
 		return nil, err
@@ -2547,7 +2548,23 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 	innerDirection, outerDirection := nonworkRankingDirections(sortOrder)
 
 	query := fmt.Sprintf(`
-		WITH stats AS (
+		WITH filtered_users AS (
+			SELECT u.id, u.email, u.username
+			FROM users u
+			WHERE u.deleted_at IS NULL
+			  AND u.role <> $5
+			  AND (
+				  $6 = ''
+				  OR EXISTS (
+					  SELECT 1
+					  FROM external_user_mappings eum
+					  WHERE eum.user_id = u.id
+					    AND eum.deleted_at IS NULL
+					    AND eum.external_organization_id = $6
+				  )
+			  )
+		),
+		stats AS (
 			SELECT
 				user_id,
 				COALESCE(SUM(requests), 0) AS requests,
@@ -2557,11 +2574,12 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(active_ms) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS nonwork_active_ms,
 				COALESCE(SUM(actual_cost), 0) AS actual_cost,
 				COALESCE(BOOL_AND(calendar_confirmed), TRUE) AS calendar_confirmed
-			FROM usage_nonwork_daily_user_stats
+			FROM usage_nonwork_daily_user_stats st
 			WHERE bucket_date >= $1::date
 			  AND bucket_date <= $2::date
 			  AND timezone = $3
 			  AND segment = ANY($4)
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = st.user_id)
 			GROUP BY user_id
 		),
 		totals AS (
@@ -2569,12 +2587,10 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(total_tokens), 0) AS total_all_tokens,
 				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS total_nonwork_tokens
 			FROM usage_nonwork_daily_user_stats st
-			LEFT JOIN users u ON u.id = st.user_id
 			WHERE bucket_date >= $1::date
 			  AND bucket_date <= $2::date
 			  AND timezone = $3
-			  AND u.deleted_at IS NULL
-			  AND u.role <> $5
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = st.user_id)
 		),
 		ranked AS (
 			SELECT
@@ -2599,12 +2615,11 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				END AS nonwork_token_ratio,
 				COALESCE(SUM(COALESCE(s.active_duration_ms, 0)) OVER (), 0) AS total_active_duration_ms,
 				COALESCE(BOOL_AND(COALESCE(s.calendar_confirmed, TRUE)) OVER (), TRUE) AS all_calendar_confirmed
-			FROM users u
+			FROM filtered_users u
 			CROSS JOIN totals t
 			LEFT JOIN stats s ON s.user_id = u.id
-			WHERE u.deleted_at IS NULL AND u.role <> $5
 			ORDER BY %s %s, COALESCE(s.tokens, 0) %s, COALESCE(s.active_duration_ms, 0) %s, u.id ASC
-			LIMIT $6
+			LIMIT $7
 		)
 		SELECT
 			user_id,
@@ -2629,7 +2644,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		ORDER BY %s %s, tokens %s, active_duration_ms %s, user_id ASC
 	`, innerOrderExpr, innerDirection, innerDirection, innerDirection, outerOrderExpr, outerDirection, outerDirection, outerDirection)
 
-	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, limit)
+	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, externalOrganizationID, limit)
 	if err != nil {
 		return nil, err
 	}

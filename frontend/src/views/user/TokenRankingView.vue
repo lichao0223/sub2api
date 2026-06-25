@@ -61,44 +61,34 @@
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t('tokenRanking.scope') }}:
             </span>
-            <select
+            <Select
               v-model="rankingScope"
-              class="input h-9 w-32 text-sm"
+              :options="rankingScopeOptions"
+              class="w-32"
               @change="handleFilterChange"
-            >
-              <option value="all">{{ t('tokenRanking.scopeAll') }}</option>
-              <option value="nonwork">{{ t('tokenRanking.scopeNonwork') }}</option>
-            </select>
+            />
           </div>
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t('tokenRanking.rankBy') }}:
             </span>
-            <select
+            <Select
               v-model="rankBy"
-              class="input h-9 w-56 text-sm"
+              :options="rankByOptions"
+              class="w-56"
               @change="handleFilterChange"
-            >
-              <option value="tokens">{{ t('tokenRanking.rankByTokens') }}</option>
-              <option value="nonwork_tokens">{{ t('tokenRanking.rankByNonworkTokens') }}</option>
-              <option value="requests">{{ t('tokenRanking.rankByRequests') }}</option>
-              <option value="active_duration">{{ t('tokenRanking.rankByActiveDuration') }}</option>
-              <option value="nonwork_active_duration">{{ t('tokenRanking.rankByNonworkActiveDuration') }}</option>
-              <option value="actual_cost">{{ t('tokenRanking.rankBySpend') }}</option>
-            </select>
+            />
           </div>
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t('tokenRanking.sortOrder') }}:
             </span>
-            <select
+            <Select
               v-model="sortOrder"
-              class="input h-9 w-28 text-sm"
+              :options="sortOrderOptions"
+              class="w-28"
               @change="handleFilterChange"
-            >
-              <option value="asc">{{ t('tokenRanking.sortAsc') }}</option>
-              <option value="desc">{{ t('tokenRanking.sortDesc') }}</option>
-            </select>
+            />
           </div>
           <div class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('tokenRanking.workTime') }} 08:30 - 18:00
@@ -240,11 +230,13 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
+import type { SelectOption } from '@/components/common/Select.vue'
 import type { NonworkStatsCoverage, UserTokenRankingItem } from '@/types'
 
 const { t } = useI18n()
@@ -272,6 +264,25 @@ const responseStartDate = ref('')
 const responseEndDate = ref('')
 const calendarConfirmed = ref<boolean | null>(null)
 const statsCoverage = ref<NonworkStatsCoverage | null>(null)
+
+const rankingScopeOptions = computed<SelectOption[]>(() => [
+  { value: 'all', label: t('tokenRanking.scopeAll') },
+  { value: 'nonwork', label: t('tokenRanking.scopeNonwork') },
+])
+
+const rankByOptions = computed<SelectOption[]>(() => [
+  { value: 'tokens', label: t('tokenRanking.rankByTokens') },
+  { value: 'nonwork_tokens', label: t('tokenRanking.rankByNonworkTokens') },
+  { value: 'requests', label: t('tokenRanking.rankByRequests') },
+  { value: 'active_duration', label: t('tokenRanking.rankByActiveDuration') },
+  { value: 'nonwork_active_duration', label: t('tokenRanking.rankByNonworkActiveDuration') },
+  { value: 'actual_cost', label: t('tokenRanking.rankBySpend') },
+])
+
+const sortOrderOptions = computed<SelectOption[]>(() => [
+  { value: 'asc', label: t('tokenRanking.sortAsc') },
+  { value: 'desc', label: t('tokenRanking.sortDesc') },
+])
 
 const responseRange = computed(() => {
   if (!responseStartDate.value || !responseEndDate.value) return ''
