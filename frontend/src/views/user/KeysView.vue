@@ -33,15 +33,19 @@
 
       <template #actions>
         <div class="flex justify-end gap-3">
-        <button
-          @click="loadApiKeys"
-          :disabled="loading"
-          class="btn btn-secondary"
-          :title="t('common.refresh')"
-        >
-          <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-        </button>
-      </div>
+          <button
+            @click="loadApiKeys"
+            :disabled="loading"
+            class="btn btn-secondary"
+            :title="t('common.refresh')"
+          >
+            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+          </button>
+          <button v-if="isAdmin" @click="showCreateModal = true" class="btn btn-primary" data-tour="keys-create-btn">
+            <Icon name="plus" size="md" class="mr-2" />
+            {{ t('keys.createKey') }}
+          </button>
+        </div>
       </template>
 
       <template #table>
@@ -93,17 +97,53 @@
             </div>
           </template>
           <template #cell-group="{ row }">
-            <GroupBadge
-              v-if="row.group"
-              :name="row.group.name"
-              :platform="row.group.platform"
-              :subscription-type="row.group.subscription_type"
-              :rate-multiplier="row.group.rate_multiplier"
-              :user-rate-multiplier="userGroupRates[row.group.id]"
-            />
-            <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
-              t('keys.noGroup')
-            }}</span>
+            <div v-if="isAdmin" class="group/dropdown relative">
+              <button
+                :ref="(el) => setGroupButtonRef(row.id, el)"
+                @click="openGroupSelector(row)"
+                class="-mx-2 -my-1 flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 transition-all duration-200 hover:bg-gray-100 dark:hover:bg-dark-700"
+                :title="t('keys.clickToChangeGroup')"
+              >
+                <GroupBadge
+                  v-if="row.group"
+                  :name="row.group.name"
+                  :platform="row.group.platform"
+                  :subscription-type="row.group.subscription_type"
+                  :rate-multiplier="row.group.rate_multiplier"
+                  :user-rate-multiplier="userGroupRates[row.group.id]"
+                />
+                <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
+                  t('keys.noGroup')
+                }}</span>
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('keys.selectGroup') }}</span>
+                <svg
+                  class="h-3.5 w-3.5 text-gray-400 opacity-60 transition-opacity group-hover/dropdown:opacity-100"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  stroke-width="2"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M8.25 15L12 18.75 15.75 15m-7.5-6L12 5.25 15.75 9"
+                  />
+                </svg>
+              </button>
+            </div>
+            <template v-else>
+              <GroupBadge
+                v-if="row.group"
+                :name="row.group.name"
+                :platform="row.group.platform"
+                :subscription-type="row.group.subscription_type"
+                :rate-multiplier="row.group.rate_multiplier"
+                :user-rate-multiplier="userGroupRates[row.group.id]"
+              />
+              <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{
+                t('keys.noGroup')
+              }}</span>
+            </template>
           </template>
 
           <template #cell-usage="{ row }">
@@ -290,6 +330,35 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <template v-if="isAdmin">
+                <button
+                  @click="toggleKeyStatus(row)"
+                  :class="[
+                    'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
+                    row.status === 'active'
+                      ? 'text-gray-500 hover:bg-yellow-50 hover:text-yellow-600 dark:hover:bg-yellow-900/20 dark:hover:text-yellow-400'
+                      : 'text-gray-500 hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                  ]"
+                >
+                  <Icon v-if="row.status === 'active'" name="ban" size="sm" />
+                  <Icon v-else name="checkCircle" size="sm" />
+                  <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
+                </button>
+                <button
+                  @click="editKey(row)"
+                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+                >
+                  <Icon name="edit" size="sm" />
+                  <span class="text-xs">{{ t('common.edit') }}</span>
+                </button>
+                <button
+                  @click="confirmDelete(row)"
+                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                >
+                  <Icon name="trash" size="sm" />
+                  <span class="text-xs">{{ t('common.delete') }}</span>
+                </button>
+              </template>
             </div>
           </template>
 
@@ -975,9 +1044,10 @@
 </template>
 
 <script setup lang="ts">
-	import { ref, computed, onMounted, onUnmounted } from 'vue'
+	import { ref, computed, onMounted, onUnmounted, type ComponentPublicInstance } from 'vue'
 	import { useI18n } from 'vue-i18n'
 	import { useAppStore } from '@/stores/app'
+	import { useAuthStore } from '@/stores/auth'
 	import { useOnboardingStore } from '@/stores/onboarding'
 	import { useClipboard } from '@/composables/useClipboard'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -1026,8 +1096,10 @@ interface GroupOption {
 }
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const { copyToClipboard: clipboardCopy } = useClipboard()
+const isAdmin = computed(() => authStore.isAdmin)
 
 const columns = computed<Column[]>(() => [
   { key: 'name', label: t('common.name'), sortable: true },
@@ -1081,6 +1153,7 @@ const groupSelectorKeyId = ref<number | null>(null)
 const publicSettings = ref<PublicSettings | null>(null)
 const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownPosition = ref<{ top?: number; bottom?: number; left: number } | null>(null)
+const groupButtonRefs = ref<Map<number, HTMLElement>>(new Map())
 let abortController: AbortController | null = null
 
 // Get the currently selected key for group change
@@ -1088,6 +1161,14 @@ const selectedKeyForGroup = computed(() => {
   if (groupSelectorKeyId.value === null) return null
   return apiKeys.value.find((k) => k.id === groupSelectorKeyId.value) || null
 })
+
+const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance | null) => {
+  if (el instanceof HTMLElement) {
+    groupButtonRefs.value.set(keyId, el)
+  } else {
+    groupButtonRefs.value.delete(keyId)
+  }
+}
 
 const formData = ref({
   name: '',
@@ -1308,6 +1389,67 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
   loadApiKeys()
 }
 
+const editKey = (key: ApiKey) => {
+  selectedKey.value = key
+  const hasIPRestriction = (key.ip_whitelist?.length > 0) || (key.ip_blacklist?.length > 0)
+  const hasExpiration = !!key.expires_at
+  formData.value = {
+    name: key.name,
+    group_id: key.group_id,
+    status: key.status === 'quota_exhausted' || key.status === 'expired' ? 'inactive' : key.status,
+    use_custom_key: false,
+    custom_key: '',
+    enable_ip_restriction: hasIPRestriction,
+    ip_whitelist: (key.ip_whitelist || []).join('\n'),
+    ip_blacklist: (key.ip_blacklist || []).join('\n'),
+    enable_quota: key.quota > 0,
+    quota: key.quota > 0 ? key.quota : null,
+    enable_rate_limit: (key.rate_limit_5h > 0) || (key.rate_limit_1d > 0) || (key.rate_limit_7d > 0),
+    rate_limit_5h: key.rate_limit_5h || null,
+    rate_limit_1d: key.rate_limit_1d || null,
+    rate_limit_7d: key.rate_limit_7d || null,
+    enable_expiration: hasExpiration,
+    expiration_preset: 'custom',
+    expiration_date: key.expires_at ? formatDateTimeLocal(key.expires_at) : ''
+  }
+  showEditModal.value = true
+}
+
+const toggleKeyStatus = async (key: ApiKey) => {
+  const newStatus = key.status === 'active' ? 'inactive' : 'active'
+  try {
+    await keysAPI.toggleStatus(key.id, newStatus)
+    appStore.showSuccess(
+      newStatus === 'active' ? t('keys.keyEnabledSuccess') : t('keys.keyDisabledSuccess')
+    )
+    loadApiKeys()
+  } catch (error) {
+    appStore.showError(t('keys.failedToUpdateStatus'))
+  }
+}
+
+const openGroupSelector = (key: ApiKey) => {
+  if (groupSelectorKeyId.value === key.id) {
+    groupSelectorKeyId.value = null
+    dropdownPosition.value = null
+    return
+  }
+
+  const buttonEl = groupButtonRefs.value.get(key.id)
+  if (buttonEl) {
+    const rect = buttonEl.getBoundingClientRect()
+    const dropdownEstHeight = 400
+    const spaceBelow = window.innerHeight - rect.bottom
+    const spaceAbove = rect.top
+
+    dropdownPosition.value = spaceBelow < dropdownEstHeight && spaceAbove > spaceBelow
+      ? { bottom: window.innerHeight - rect.top + 4, left: rect.left }
+      : { top: rect.bottom + 4, left: rect.left }
+  }
+  groupSelectorKeyId.value = key.id
+  groupSearchQuery.value = ''
+}
+
 const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
   groupSelectorKeyId.value = null
   dropdownPosition.value = null
@@ -1329,6 +1471,11 @@ const closeGroupSelector = (event: MouseEvent) => {
     groupSelectorKeyId.value = null
     dropdownPosition.value = null
   }
+}
+
+const confirmDelete = (key: ApiKey) => {
+  selectedKey.value = key
+  showDeleteDialog.value = true
 }
 
 const handleSubmit = async () => {

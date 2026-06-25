@@ -2,8 +2,10 @@
 package handler
 
 import (
+	"context"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -139,19 +141,141 @@ func (h *APIKeyHandler) GetByID(c *gin.Context) {
 // Create handles creating a new API key
 // POST /api/v1/api-keys
 func (h *APIKeyHandler) Create(c *gin.Context) {
-	response.Forbidden(c, "API key management is available in admin user management")
+	subject, ok := h.requireAdminSubject(c)
+	if !ok {
+		return
+	}
+
+	var req CreateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	svcReq := service.CreateAPIKeyRequest{
+		Name:          req.Name,
+		GroupID:       req.GroupID,
+		CustomKey:     req.CustomKey,
+		IPWhitelist:   req.IPWhitelist,
+		IPBlacklist:   req.IPBlacklist,
+		ExpiresInDays: req.ExpiresInDays,
+	}
+	if req.Quota != nil {
+		svcReq.Quota = *req.Quota
+	}
+	if req.RateLimit5h != nil {
+		svcReq.RateLimit5h = *req.RateLimit5h
+	}
+	if req.RateLimit1d != nil {
+		svcReq.RateLimit1d = *req.RateLimit1d
+	}
+	if req.RateLimit7d != nil {
+		svcReq.RateLimit7d = *req.RateLimit7d
+	}
+
+	executeUserIdempotentJSON(c, "user.api_keys.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
+		key, err := h.apiKeyService.Create(ctx, subject.UserID, svcReq)
+		if err != nil {
+			return nil, err
+		}
+		return dto.APIKeyFromService(key), nil
+	})
 }
 
 // Update handles updating an API key
 // PUT /api/v1/api-keys/:id
 func (h *APIKeyHandler) Update(c *gin.Context) {
-	response.Forbidden(c, "API key management is available in admin user management")
+	subject, ok := h.requireAdminSubject(c)
+	if !ok {
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+
+	var req UpdateAPIKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	svcReq := service.UpdateAPIKeyRequest{
+		IPWhitelist:         req.IPWhitelist,
+		IPBlacklist:         req.IPBlacklist,
+		Quota:               req.Quota,
+		ResetQuota:          req.ResetQuota,
+		RateLimit5h:         req.RateLimit5h,
+		RateLimit1d:         req.RateLimit1d,
+		RateLimit7d:         req.RateLimit7d,
+		ResetRateLimitUsage: req.ResetRateLimitUsage,
+	}
+	if req.Name != "" {
+		svcReq.Name = &req.Name
+	}
+	svcReq.GroupID = req.GroupID
+	if req.Status != "" {
+		svcReq.Status = &req.Status
+	}
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt == "" {
+			svcReq.ClearExpiration = true
+		} else {
+			t, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+			if err != nil {
+				response.BadRequest(c, "Invalid expires_at format: "+err.Error())
+				return
+			}
+			svcReq.ExpiresAt = &t
+		}
+	}
+
+	key, err := h.apiKeyService.Update(c.Request.Context(), keyID, subject.UserID, svcReq)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, dto.APIKeyFromService(key))
 }
 
 // Delete handles deleting an API key
 // DELETE /api/v1/api-keys/:id
 func (h *APIKeyHandler) Delete(c *gin.Context) {
-	response.Forbidden(c, "API key management is available in admin user management")
+	subject, ok := h.requireAdminSubject(c)
+	if !ok {
+		return
+	}
+
+	keyID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid key ID")
+		return
+	}
+
+	err = h.apiKeyService.Delete(c.Request.Context(), keyID, subject.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"message": "API key deleted successfully"})
+}
+
+func (h *APIKeyHandler) requireAdminSubject(c *gin.Context) (middleware2.AuthSubject, bool) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return middleware2.AuthSubject{}, false
+	}
+	role, ok := middleware2.GetUserRoleFromContext(c)
+	if !ok || role != service.RoleAdmin {
+		response.Forbidden(c, "API key management is available in admin user management")
+		return middleware2.AuthSubject{}, false
+	}
+	return subject, true
 }
 
 // GetAvailableGroups 获取用户可以绑定的分组列表
