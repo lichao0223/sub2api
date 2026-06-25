@@ -72,6 +72,12 @@ func (_c *ExternalUserMappingCreate) SetExternalUserID(v string) *ExternalUserMa
 	return _c
 }
 
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (_c *ExternalUserMappingCreate) SetExternalOrganizationID(v string) *ExternalUserMappingCreate {
+	_c.mutation.SetExternalOrganizationID(v)
+	return _c
+}
+
 // SetUserID sets the "user_id" field.
 func (_c *ExternalUserMappingCreate) SetUserID(v int64) *ExternalUserMappingCreate {
 	_c.mutation.SetUserID(v)
@@ -182,6 +188,14 @@ func (_c *ExternalUserMappingCreate) check() error {
 			return &ValidationError{Name: "external_user_id", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.external_user_id": %w`, err)}
 		}
 	}
+	if _, ok := _c.mutation.ExternalOrganizationID(); !ok {
+		return &ValidationError{Name: "external_organization_id", err: errors.New(`ent: missing required field "ExternalUserMapping.external_organization_id"`)}
+	}
+	if v, ok := _c.mutation.ExternalOrganizationID(); ok {
+		if err := externalusermapping.ExternalOrganizationIDValidator(v); err != nil {
+			return &ValidationError{Name: "external_organization_id", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.external_organization_id": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "ExternalUserMapping.user_id"`)}
 	}
@@ -244,6 +258,10 @@ func (_c *ExternalUserMappingCreate) createSpec() (*ExternalUserMapping, *sqlgra
 	if value, ok := _c.mutation.ExternalUserID(); ok {
 		_spec.SetField(externalusermapping.FieldExternalUserID, field.TypeString, value)
 		_node.ExternalUserID = value
+	}
+	if value, ok := _c.mutation.ExternalOrganizationID(); ok {
+		_spec.SetField(externalusermapping.FieldExternalOrganizationID, field.TypeString, value)
+		_node.ExternalOrganizationID = value
 	}
 	if value, ok := _c.mutation.UsernameSnapshot(); ok {
 		_spec.SetField(externalusermapping.FieldUsernameSnapshot, field.TypeString, value)
@@ -377,6 +395,18 @@ func (u *ExternalUserMappingUpsert) UpdateExternalUserID() *ExternalUserMappingU
 	return u
 }
 
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (u *ExternalUserMappingUpsert) SetExternalOrganizationID(v string) *ExternalUserMappingUpsert {
+	u.Set(externalusermapping.FieldExternalOrganizationID, v)
+	return u
+}
+
+// UpdateExternalOrganizationID sets the "external_organization_id" field to the value that was provided on create.
+func (u *ExternalUserMappingUpsert) UpdateExternalOrganizationID() *ExternalUserMappingUpsert {
+	u.SetExcluded(externalusermapping.FieldExternalOrganizationID)
+	return u
+}
+
 // SetUserID sets the "user_id" field.
 func (u *ExternalUserMappingUpsert) SetUserID(v int64) *ExternalUserMappingUpsert {
 	u.Set(externalusermapping.FieldUserID, v)
@@ -504,6 +534,20 @@ func (u *ExternalUserMappingUpsertOne) SetExternalUserID(v string) *ExternalUser
 func (u *ExternalUserMappingUpsertOne) UpdateExternalUserID() *ExternalUserMappingUpsertOne {
 	return u.Update(func(s *ExternalUserMappingUpsert) {
 		s.UpdateExternalUserID()
+	})
+}
+
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (u *ExternalUserMappingUpsertOne) SetExternalOrganizationID(v string) *ExternalUserMappingUpsertOne {
+	return u.Update(func(s *ExternalUserMappingUpsert) {
+		s.SetExternalOrganizationID(v)
+	})
+}
+
+// UpdateExternalOrganizationID sets the "external_organization_id" field to the value that was provided on create.
+func (u *ExternalUserMappingUpsertOne) UpdateExternalOrganizationID() *ExternalUserMappingUpsertOne {
+	return u.Update(func(s *ExternalUserMappingUpsert) {
+		s.UpdateExternalOrganizationID()
 	})
 }
 
@@ -806,6 +850,20 @@ func (u *ExternalUserMappingUpsertBulk) SetExternalUserID(v string) *ExternalUse
 func (u *ExternalUserMappingUpsertBulk) UpdateExternalUserID() *ExternalUserMappingUpsertBulk {
 	return u.Update(func(s *ExternalUserMappingUpsert) {
 		s.UpdateExternalUserID()
+	})
+}
+
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (u *ExternalUserMappingUpsertBulk) SetExternalOrganizationID(v string) *ExternalUserMappingUpsertBulk {
+	return u.Update(func(s *ExternalUserMappingUpsert) {
+		s.SetExternalOrganizationID(v)
+	})
+}
+
+// UpdateExternalOrganizationID sets the "external_organization_id" field to the value that was provided on create.
+func (u *ExternalUserMappingUpsertBulk) UpdateExternalOrganizationID() *ExternalUserMappingUpsertBulk {
+	return u.Update(func(s *ExternalUserMappingUpsert) {
+		s.UpdateExternalOrganizationID()
 	})
 }
 

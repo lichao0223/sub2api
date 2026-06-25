@@ -70,6 +70,20 @@ func (_u *ExternalUserMappingUpdate) SetNillableExternalUserID(v *string) *Exter
 	return _u
 }
 
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (_u *ExternalUserMappingUpdate) SetExternalOrganizationID(v string) *ExternalUserMappingUpdate {
+	_u.mutation.SetExternalOrganizationID(v)
+	return _u
+}
+
+// SetNillableExternalOrganizationID sets the "external_organization_id" field if the given value is not nil.
+func (_u *ExternalUserMappingUpdate) SetNillableExternalOrganizationID(v *string) *ExternalUserMappingUpdate {
+	if v != nil {
+		_u.SetExternalOrganizationID(*v)
+	}
+	return _u
+}
+
 // SetUserID sets the "user_id" field.
 func (_u *ExternalUserMappingUpdate) SetUserID(v int64) *ExternalUserMappingUpdate {
 	_u.mutation.SetUserID(v)
@@ -188,6 +202,11 @@ func (_u *ExternalUserMappingUpdate) check() error {
 			return &ValidationError{Name: "external_user_id", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.external_user_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExternalOrganizationID(); ok {
+		if err := externalusermapping.ExternalOrganizationIDValidator(v); err != nil {
+			return &ValidationError{Name: "external_organization_id", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.external_organization_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UsernameSnapshot(); ok {
 		if err := externalusermapping.UsernameSnapshotValidator(v); err != nil {
 			return &ValidationError{Name: "username_snapshot", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.username_snapshot": %w`, err)}
@@ -225,6 +244,9 @@ func (_u *ExternalUserMappingUpdate) sqlSave(ctx context.Context) (_node int, er
 	}
 	if value, ok := _u.mutation.ExternalUserID(); ok {
 		_spec.SetField(externalusermapping.FieldExternalUserID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExternalOrganizationID(); ok {
+		_spec.SetField(externalusermapping.FieldExternalOrganizationID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UsernameSnapshot(); ok {
 		_spec.SetField(externalusermapping.FieldUsernameSnapshot, field.TypeString, value)
@@ -343,6 +365,20 @@ func (_u *ExternalUserMappingUpdateOne) SetExternalUserID(v string) *ExternalUse
 func (_u *ExternalUserMappingUpdateOne) SetNillableExternalUserID(v *string) *ExternalUserMappingUpdateOne {
 	if v != nil {
 		_u.SetExternalUserID(*v)
+	}
+	return _u
+}
+
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (_u *ExternalUserMappingUpdateOne) SetExternalOrganizationID(v string) *ExternalUserMappingUpdateOne {
+	_u.mutation.SetExternalOrganizationID(v)
+	return _u
+}
+
+// SetNillableExternalOrganizationID sets the "external_organization_id" field if the given value is not nil.
+func (_u *ExternalUserMappingUpdateOne) SetNillableExternalOrganizationID(v *string) *ExternalUserMappingUpdateOne {
+	if v != nil {
+		_u.SetExternalOrganizationID(*v)
 	}
 	return _u
 }
@@ -478,6 +514,11 @@ func (_u *ExternalUserMappingUpdateOne) check() error {
 			return &ValidationError{Name: "external_user_id", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.external_user_id": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ExternalOrganizationID(); ok {
+		if err := externalusermapping.ExternalOrganizationIDValidator(v); err != nil {
+			return &ValidationError{Name: "external_organization_id", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.external_organization_id": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.UsernameSnapshot(); ok {
 		if err := externalusermapping.UsernameSnapshotValidator(v); err != nil {
 			return &ValidationError{Name: "username_snapshot", err: fmt.Errorf(`ent: validator failed for field "ExternalUserMapping.username_snapshot": %w`, err)}
@@ -532,6 +573,9 @@ func (_u *ExternalUserMappingUpdateOne) sqlSave(ctx context.Context) (_node *Ext
 	}
 	if value, ok := _u.mutation.ExternalUserID(); ok {
 		_spec.SetField(externalusermapping.FieldExternalUserID, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ExternalOrganizationID(); ok {
+		_spec.SetField(externalusermapping.FieldExternalOrganizationID, field.TypeString, value)
 	}
 	if value, ok := _u.mutation.UsernameSnapshot(); ok {
 		_spec.SetField(externalusermapping.FieldUsernameSnapshot, field.TypeString, value)

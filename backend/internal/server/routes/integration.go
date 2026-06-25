@@ -18,6 +18,7 @@ func RegisterIntegrationRoutes(
 		users := integrations.Group("/users")
 		{
 			users.POST("", h.Integration.User.Create)
+			users.DELETE("", h.Integration.User.DeleteAll)
 			users.DELETE("/:external_user_id", h.Integration.User.DeleteByExternalID)
 			users.POST("/sync", h.Integration.User.Sync)
 		}

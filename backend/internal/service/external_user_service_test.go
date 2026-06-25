@@ -37,8 +37,9 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	}
 
 	result, err := svc.Create(context.Background(), ExternalUserInput{
-		ExternalUserID: " u-1 ",
-		Username:       " 张三 ",
+		ExternalUserID:         " u-1 ",
+		ExternalOrganizationID: " org-1 ",
+		Username:               " 张三 ",
 	})
 
 	require.NoError(t, err)
@@ -55,7 +56,8 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	require.Equal(t, float64(externalUserDefaultBalance), *input.Balance)
 	require.Equal(t, externalUserDefaultConcurrency, input.Concurrency)
 	require.Equal(t, []int64{7}, input.AllowedGroups)
-	require.Equal(t, generatedExternalEmail("u-1"), input.Email)
+	require.Equal(t, "u-1@sub.com", input.Email)
+	require.Equal(t, "u-1", input.Password)
 
 	require.Len(t, apiKeys.createCalls, 1)
 	require.Equal(t, int64(101), apiKeys.createCalls[0].userID)
@@ -67,6 +69,7 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, int64(101), mapping.UserID)
 	require.Equal(t, int64(201), mapping.APIKeyID)
+	require.Equal(t, "org-1", mapping.ExternalOrganizationID)
 	require.Equal(t, "张三", mapping.UsernameSnapshot)
 }
 
@@ -84,10 +87,11 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	}
 	mappings := newExternalUserMappingStub()
 	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
-		ID:             1,
-		ExternalUserID: "u-2",
-		UserID:         101,
-		APIKeyID:       201,
+		ID:                     1,
+		ExternalUserID:         "u-2",
+		ExternalOrganizationID: "org-1",
+		UserID:                 101,
+		APIKeyID:               201,
 	}))
 	svc := &ExternalUserService{
 		adminService:  admin,
@@ -96,8 +100,9 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	}
 
 	result, err := svc.Create(context.Background(), ExternalUserInput{
-		ExternalUserID: "u-2",
-		Username:       "李四",
+		ExternalUserID:         "u-2",
+		ExternalOrganizationID: "org-1",
+		Username:               "李四",
 	})
 
 	require.NoError(t, err)
@@ -105,6 +110,7 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	require.Equal(t, int64(101), result.User.ID)
 	require.Equal(t, int64(201), result.APIKey.ID)
 	require.Equal(t, "sk-existing", result.APIKey.Key)
+	require.Equal(t, "org-1", result.ExternalOrganizationID)
 	require.Empty(t, admin.createInputs)
 	require.Empty(t, apiKeys.createCalls)
 }
@@ -122,10 +128,11 @@ func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *t
 	}
 	mappings := newExternalUserMappingStub()
 	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
-		ID:             1,
-		ExternalUserID: "u-3",
-		UserID:         101,
-		APIKeyID:       201,
+		ID:                     1,
+		ExternalUserID:         "u-3",
+		ExternalOrganizationID: "org-1",
+		UserID:                 101,
+		APIKeyID:               201,
 	}))
 	svc := &ExternalUserService{
 		adminService:  admin,
@@ -134,8 +141,9 @@ func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *t
 	}
 
 	result, err := svc.Create(context.Background(), ExternalUserInput{
-		ExternalUserID: "u-3",
-		Username:       "王五",
+		ExternalUserID:         "u-3",
+		ExternalOrganizationID: "org-1",
+		Username:               "王五",
 	})
 
 	require.NoError(t, err)
@@ -162,10 +170,11 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 	}
 	mappings := newExternalUserMappingStub()
 	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
-		ID:             1,
-		ExternalUserID: "existing",
-		UserID:         101,
-		APIKeyID:       201,
+		ID:                     1,
+		ExternalUserID:         "existing",
+		ExternalOrganizationID: "org-1",
+		UserID:                 101,
+		APIKeyID:               201,
 	}))
 	svc := &ExternalUserService{
 		adminService:  admin,
@@ -176,8 +185,8 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 	result, err := svc.Sync(context.Background(), ExternalUserSyncInput{
 		BatchID: "batch-1",
 		Users: []ExternalUserInput{
-			{ExternalUserID: "existing", Username: "已有"},
-			{ExternalUserID: "new", Username: "新增"},
+			{ExternalUserID: "existing", ExternalOrganizationID: "org-1", Username: "已有"},
+			{ExternalUserID: "new", ExternalOrganizationID: "org-1", Username: "新增"},
 		},
 	})
 
@@ -192,6 +201,45 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 	require.Equal(t, ExternalUserStatusCreated, result.Items[1].Status)
 	require.NotNil(t, result.Items[0].APIKey)
 	require.NotNil(t, result.Items[1].APIKey)
+}
+
+func TestExternalUserService_DeleteAll_DeletesMappedUsers(t *testing.T) {
+	admin := &externalUserAdminStub{
+		users: map[int64]*User{
+			101: {ID: 101, Email: "u-1@sub.com", Username: "张三"},
+			102: {ID: 102, Email: "u-2@sub.com", Username: "李四"},
+		},
+	}
+	apiKeys := &externalUserAPIKeyStub{}
+	mappings := newExternalUserMappingStub()
+	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
+		ID:                     1,
+		ExternalUserID:         "u-1",
+		ExternalOrganizationID: "org-1",
+		UserID:                 101,
+		APIKeyID:               201,
+	}))
+	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
+		ID:                     2,
+		ExternalUserID:         "u-2",
+		ExternalOrganizationID: "org-1",
+		UserID:                 102,
+		APIKeyID:               202,
+	}))
+	svc := &ExternalUserService{
+		adminService:  admin,
+		apiKeyService: apiKeys,
+		mappingRepo:   mappings,
+	}
+
+	result, err := svc.DeleteAll(context.Background())
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Summary.Total)
+	require.Equal(t, 2, result.Summary.Deleted)
+	require.Equal(t, 0, result.Summary.Failed)
+	require.ElementsMatch(t, []int64{101, 102}, admin.deletedIDs)
+	require.Empty(t, mappings.byExternal)
 }
 
 func TestExternalUserService_Create_MappingConflictRequeryFailureReturnsConflict(t *testing.T) {
@@ -211,8 +259,9 @@ func TestExternalUserService_Create_MappingConflictRequeryFailureReturnsConflict
 	}
 
 	_, err := svc.Create(context.Background(), ExternalUserInput{
-		ExternalUserID: "u-conflict",
-		Username:       "赵六",
+		ExternalUserID:         "u-conflict",
+		ExternalOrganizationID: "org-1",
+		Username:               "赵六",
 	})
 
 	require.ErrorIs(t, err, ErrExternalUserMappingExists)
@@ -335,6 +384,18 @@ func (s *externalUserMappingStub) GetByExternalUserID(_ context.Context, externa
 		return &out, nil
 	}
 	return nil, ErrExternalUserMappingNotFound
+}
+
+func (s *externalUserMappingStub) ListActive(_ context.Context) ([]ExternalUserMapping, error) {
+	out := make([]ExternalUserMapping, 0, len(s.byExternal))
+	for _, mapping := range s.byExternal {
+		if mapping == nil {
+			continue
+		}
+		item := *mapping
+		out = append(out, item)
+	}
+	return out, nil
 }
 
 func (s *externalUserMappingStub) Create(_ context.Context, mapping *ExternalUserMapping) error {

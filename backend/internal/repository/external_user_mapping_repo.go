@@ -30,12 +30,31 @@ func (r *externalUserMappingRepository) GetByExternalUserID(ctx context.Context,
 	return externalUserMappingEntityToService(m), nil
 }
 
+func (r *externalUserMappingRepository) ListActive(ctx context.Context) ([]service.ExternalUserMapping, error) {
+	items, err := clientFromContext(ctx, r.client).ExternalUserMapping.Query().
+		Where(externalusermapping.DeletedAtIsNil()).
+		Order(dbent.Asc(externalusermapping.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]service.ExternalUserMapping, 0, len(items))
+	for _, item := range items {
+		if mapping := externalUserMappingEntityToService(item); mapping != nil {
+			out = append(out, *mapping)
+		}
+	}
+	return out, nil
+}
+
 func (r *externalUserMappingRepository) Create(ctx context.Context, mapping *service.ExternalUserMapping) error {
 	if mapping == nil {
 		return nil
 	}
 	m, err := clientFromContext(ctx, r.client).ExternalUserMapping.Create().
 		SetExternalUserID(mapping.ExternalUserID).
+		SetExternalOrganizationID(mapping.ExternalOrganizationID).
 		SetUserID(mapping.UserID).
 		SetAPIKeyID(mapping.APIKeyID).
 		SetUsernameSnapshot(mapping.UsernameSnapshot).
@@ -88,14 +107,15 @@ func externalUserMappingEntityToService(m *dbent.ExternalUserMapping) *service.E
 		return nil
 	}
 	return &service.ExternalUserMapping{
-		ID:               m.ID,
-		ExternalUserID:   m.ExternalUserID,
-		UserID:           m.UserID,
-		APIKeyID:         m.APIKeyID,
-		UsernameSnapshot: m.UsernameSnapshot,
-		CreatedAt:        m.CreatedAt,
-		UpdatedAt:        m.UpdatedAt,
-		DeletedAt:        m.DeletedAt,
+		ID:                     m.ID,
+		ExternalUserID:         m.ExternalUserID,
+		ExternalOrganizationID: m.ExternalOrganizationID,
+		UserID:                 m.UserID,
+		APIKeyID:               m.APIKeyID,
+		UsernameSnapshot:       m.UsernameSnapshot,
+		CreatedAt:              m.CreatedAt,
+		UpdatedAt:              m.UpdatedAt,
+		DeletedAt:              m.DeletedAt,
 	}
 }
 
@@ -105,6 +125,7 @@ func applyExternalUserMappingEntity(out *service.ExternalUserMapping, m *dbent.E
 	}
 	out.ID = m.ID
 	out.ExternalUserID = m.ExternalUserID
+	out.ExternalOrganizationID = m.ExternalOrganizationID
 	out.UserID = m.UserID
 	out.APIKeyID = m.APIKeyID
 	out.UsernameSnapshot = m.UsernameSnapshot

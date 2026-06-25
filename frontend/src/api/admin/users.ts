@@ -151,6 +151,35 @@ export async function deleteUser(id: number): Promise<{ message: string }> {
   return data
 }
 
+export interface ExternalUsersDeleteAllResponse {
+  summary: {
+    total: number
+    deleted: number
+    failed: number
+  }
+  items: Array<{
+    status: string
+    external_user_id: string
+    user_id: number
+  }>
+  errors?: Array<{
+    external_user_id: string
+    user_id?: number
+    error: {
+      code: string
+      message: string
+    }
+  }>
+}
+
+/**
+ * Delete all users created through external integration APIs.
+ */
+export async function deleteExternalUsers(): Promise<ExternalUsersDeleteAllResponse> {
+  const { data } = await apiClient.delete<ExternalUsersDeleteAllResponse>('/integrations/users')
+  return data
+}
+
 /**
  * Update user balance
  * @param id - User ID
@@ -382,6 +411,7 @@ export const usersAPI = {
   create,
   update,
   delete: deleteUser,
+  deleteExternalUsers,
   updateBalance,
   updateConcurrency,
   toggleStatus,

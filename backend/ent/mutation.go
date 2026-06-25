@@ -15131,22 +15131,23 @@ func (m *ErrorPassthroughRuleMutation) ResetEdge(name string) error {
 // ExternalUserMappingMutation represents an operation that mutates the ExternalUserMapping nodes in the graph.
 type ExternalUserMappingMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	created_at        *time.Time
-	updated_at        *time.Time
-	deleted_at        *time.Time
-	external_user_id  *string
-	username_snapshot *string
-	clearedFields     map[string]struct{}
-	user              *int64
-	cleareduser       bool
-	api_key           *int64
-	clearedapi_key    bool
-	done              bool
-	oldValue          func(context.Context) (*ExternalUserMapping, error)
-	predicates        []predicate.ExternalUserMapping
+	op                       Op
+	typ                      string
+	id                       *int64
+	created_at               *time.Time
+	updated_at               *time.Time
+	deleted_at               *time.Time
+	external_user_id         *string
+	external_organization_id *string
+	username_snapshot        *string
+	clearedFields            map[string]struct{}
+	user                     *int64
+	cleareduser              bool
+	api_key                  *int64
+	clearedapi_key           bool
+	done                     bool
+	oldValue                 func(context.Context) (*ExternalUserMapping, error)
+	predicates               []predicate.ExternalUserMapping
 }
 
 var _ ent.Mutation = (*ExternalUserMappingMutation)(nil)
@@ -15404,6 +15405,42 @@ func (m *ExternalUserMappingMutation) ResetExternalUserID() {
 	m.external_user_id = nil
 }
 
+// SetExternalOrganizationID sets the "external_organization_id" field.
+func (m *ExternalUserMappingMutation) SetExternalOrganizationID(s string) {
+	m.external_organization_id = &s
+}
+
+// ExternalOrganizationID returns the value of the "external_organization_id" field in the mutation.
+func (m *ExternalUserMappingMutation) ExternalOrganizationID() (r string, exists bool) {
+	v := m.external_organization_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldExternalOrganizationID returns the old "external_organization_id" field's value of the ExternalUserMapping entity.
+// If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ExternalUserMappingMutation) OldExternalOrganizationID(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldExternalOrganizationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldExternalOrganizationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldExternalOrganizationID: %w", err)
+	}
+	return oldValue.ExternalOrganizationID, nil
+}
+
+// ResetExternalOrganizationID resets all changes to the "external_organization_id" field.
+func (m *ExternalUserMappingMutation) ResetExternalOrganizationID() {
+	m.external_organization_id = nil
+}
+
 // SetUserID sets the "user_id" field.
 func (m *ExternalUserMappingMutation) SetUserID(i int64) {
 	m.user = &i
@@ -15600,7 +15637,7 @@ func (m *ExternalUserMappingMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ExternalUserMappingMutation) Fields() []string {
-	fields := make([]string, 0, 7)
+	fields := make([]string, 0, 8)
 	if m.created_at != nil {
 		fields = append(fields, externalusermapping.FieldCreatedAt)
 	}
@@ -15612,6 +15649,9 @@ func (m *ExternalUserMappingMutation) Fields() []string {
 	}
 	if m.external_user_id != nil {
 		fields = append(fields, externalusermapping.FieldExternalUserID)
+	}
+	if m.external_organization_id != nil {
+		fields = append(fields, externalusermapping.FieldExternalOrganizationID)
 	}
 	if m.user != nil {
 		fields = append(fields, externalusermapping.FieldUserID)
@@ -15638,6 +15678,8 @@ func (m *ExternalUserMappingMutation) Field(name string) (ent.Value, bool) {
 		return m.DeletedAt()
 	case externalusermapping.FieldExternalUserID:
 		return m.ExternalUserID()
+	case externalusermapping.FieldExternalOrganizationID:
+		return m.ExternalOrganizationID()
 	case externalusermapping.FieldUserID:
 		return m.UserID()
 	case externalusermapping.FieldAPIKeyID:
@@ -15661,6 +15703,8 @@ func (m *ExternalUserMappingMutation) OldField(ctx context.Context, name string)
 		return m.OldDeletedAt(ctx)
 	case externalusermapping.FieldExternalUserID:
 		return m.OldExternalUserID(ctx)
+	case externalusermapping.FieldExternalOrganizationID:
+		return m.OldExternalOrganizationID(ctx)
 	case externalusermapping.FieldUserID:
 		return m.OldUserID(ctx)
 	case externalusermapping.FieldAPIKeyID:
@@ -15703,6 +15747,13 @@ func (m *ExternalUserMappingMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetExternalUserID(v)
+		return nil
+	case externalusermapping.FieldExternalOrganizationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetExternalOrganizationID(v)
 		return nil
 	case externalusermapping.FieldUserID:
 		v, ok := value.(int64)
@@ -15797,6 +15848,9 @@ func (m *ExternalUserMappingMutation) ResetField(name string) error {
 		return nil
 	case externalusermapping.FieldExternalUserID:
 		m.ResetExternalUserID()
+		return nil
+	case externalusermapping.FieldExternalOrganizationID:
+		m.ResetExternalOrganizationID()
 		return nil
 	case externalusermapping.FieldUserID:
 		m.ResetUserID()

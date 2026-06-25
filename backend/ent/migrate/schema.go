@@ -642,6 +642,7 @@ var (
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "deleted_at", Type: field.TypeTime, Nullable: true, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "external_user_id", Type: field.TypeString, Size: 255},
+		{Name: "external_organization_id", Type: field.TypeString, Size: 255},
 		{Name: "username_snapshot", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "api_key_id", Type: field.TypeInt64},
 		{Name: "user_id", Type: field.TypeInt64},
@@ -654,13 +655,13 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "external_user_mappings_api_keys_external_user_mappings",
-				Columns:    []*schema.Column{ExternalUserMappingsColumns[6]},
+				Columns:    []*schema.Column{ExternalUserMappingsColumns[7]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
 			{
 				Symbol:     "external_user_mappings_users_external_user_mappings",
-				Columns:    []*schema.Column{ExternalUserMappingsColumns[7]},
+				Columns:    []*schema.Column{ExternalUserMappingsColumns[8]},
 				RefColumns: []*schema.Column{UsersColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -674,12 +675,12 @@ var (
 			{
 				Name:    "externalusermapping_user_id",
 				Unique:  false,
-				Columns: []*schema.Column{ExternalUserMappingsColumns[7]},
+				Columns: []*schema.Column{ExternalUserMappingsColumns[8]},
 			},
 			{
 				Name:    "externalusermapping_api_key_id",
 				Unique:  false,
-				Columns: []*schema.Column{ExternalUserMappingsColumns[6]},
+				Columns: []*schema.Column{ExternalUserMappingsColumns[7]},
 			},
 		},
 	}

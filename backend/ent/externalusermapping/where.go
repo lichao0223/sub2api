@@ -75,6 +75,11 @@ func ExternalUserID(v string) predicate.ExternalUserMapping {
 	return predicate.ExternalUserMapping(sql.FieldEQ(FieldExternalUserID, v))
 }
 
+// ExternalOrganizationID applies equality check predicate on the "external_organization_id" field. It's identical to ExternalOrganizationIDEQ.
+func ExternalOrganizationID(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldEQ(FieldExternalOrganizationID, v))
+}
+
 // UserID applies equality check predicate on the "user_id" field. It's identical to UserIDEQ.
 func UserID(v int64) predicate.ExternalUserMapping {
 	return predicate.ExternalUserMapping(sql.FieldEQ(FieldUserID, v))
@@ -283,6 +288,71 @@ func ExternalUserIDEqualFold(v string) predicate.ExternalUserMapping {
 // ExternalUserIDContainsFold applies the ContainsFold predicate on the "external_user_id" field.
 func ExternalUserIDContainsFold(v string) predicate.ExternalUserMapping {
 	return predicate.ExternalUserMapping(sql.FieldContainsFold(FieldExternalUserID, v))
+}
+
+// ExternalOrganizationIDEQ applies the EQ predicate on the "external_organization_id" field.
+func ExternalOrganizationIDEQ(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldEQ(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDNEQ applies the NEQ predicate on the "external_organization_id" field.
+func ExternalOrganizationIDNEQ(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldNEQ(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDIn applies the In predicate on the "external_organization_id" field.
+func ExternalOrganizationIDIn(vs ...string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldIn(FieldExternalOrganizationID, vs...))
+}
+
+// ExternalOrganizationIDNotIn applies the NotIn predicate on the "external_organization_id" field.
+func ExternalOrganizationIDNotIn(vs ...string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldNotIn(FieldExternalOrganizationID, vs...))
+}
+
+// ExternalOrganizationIDGT applies the GT predicate on the "external_organization_id" field.
+func ExternalOrganizationIDGT(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldGT(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDGTE applies the GTE predicate on the "external_organization_id" field.
+func ExternalOrganizationIDGTE(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldGTE(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDLT applies the LT predicate on the "external_organization_id" field.
+func ExternalOrganizationIDLT(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldLT(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDLTE applies the LTE predicate on the "external_organization_id" field.
+func ExternalOrganizationIDLTE(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldLTE(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDContains applies the Contains predicate on the "external_organization_id" field.
+func ExternalOrganizationIDContains(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldContains(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDHasPrefix applies the HasPrefix predicate on the "external_organization_id" field.
+func ExternalOrganizationIDHasPrefix(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldHasPrefix(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDHasSuffix applies the HasSuffix predicate on the "external_organization_id" field.
+func ExternalOrganizationIDHasSuffix(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldHasSuffix(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDEqualFold applies the EqualFold predicate on the "external_organization_id" field.
+func ExternalOrganizationIDEqualFold(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldEqualFold(FieldExternalOrganizationID, v))
+}
+
+// ExternalOrganizationIDContainsFold applies the ContainsFold predicate on the "external_organization_id" field.
+func ExternalOrganizationIDContainsFold(v string) predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldContainsFold(FieldExternalOrganizationID, v))
 }
 
 // UserIDEQ applies the EQ predicate on the "user_id" field.

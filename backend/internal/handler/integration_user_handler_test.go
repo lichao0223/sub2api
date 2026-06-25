@@ -35,19 +35,31 @@ func TestIntegrationUserHandler_CreateValidation(t *testing.T) {
 		},
 		{
 			name:       "missing username",
-			body:       `{"external_user_id":"u-1","username":" "}`,
+			body:       `{"external_user_id":"u-1","external_organization_id":"org-1","username":" "}`,
 			wantReason: "INVALID_ARGUMENT",
 			wantField:  "username",
 		},
 		{
+			name:       "missing external organization id",
+			body:       `{"external_user_id":"u-1","external_organization_id":" ","username":"张三"}`,
+			wantReason: "INVALID_ARGUMENT",
+			wantField:  "external_organization_id",
+		},
+		{
 			name:       "external user id too long",
-			body:       `{"external_user_id":"` + strings.Repeat("a", 256) + `","username":"张三"}`,
+			body:       `{"external_user_id":"` + strings.Repeat("a", 256) + `","external_organization_id":"org-1","username":"张三"}`,
 			wantReason: "INVALID_ARGUMENT",
 			wantField:  "external_user_id",
 		},
 		{
+			name:       "external organization id too long",
+			body:       `{"external_user_id":"u-1","external_organization_id":"` + strings.Repeat("a", 256) + `","username":"张三"}`,
+			wantReason: "INVALID_ARGUMENT",
+			wantField:  "external_organization_id",
+		},
+		{
 			name:       "username too long",
-			body:       `{"external_user_id":"u-1","username":"` + strings.Repeat("a", 101) + `"}`,
+			body:       `{"external_user_id":"u-1","external_organization_id":"org-1","username":"` + strings.Repeat("a", 101) + `"}`,
 			wantReason: "INVALID_ARGUMENT",
 			wantField:  "username",
 		},
@@ -98,12 +110,12 @@ func TestIntegrationUserHandler_CreateSuccessAndExisting(t *testing.T) {
 			router, _ := newIntegrationUserTestRouter(svc)
 
 			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, "/integrations/users", bytes.NewBufferString(`{"external_user_id":" u-1 ","username":" 张三 "}`))
+			req := httptest.NewRequest(http.MethodPost, "/integrations/users", bytes.NewBufferString(`{"external_user_id":" u-1 ","external_organization_id":" org-1 ","username":" 张三 "}`))
 			req.Header.Set("Content-Type", "application/json")
 			router.ServeHTTP(rec, req)
 
 			require.Equal(t, tt.wantStatus, rec.Code)
-			require.Equal(t, service.ExternalUserInput{ExternalUserID: "u-1", Username: "张三"}, svc.createInput)
+			require.Equal(t, service.ExternalUserInput{ExternalUserID: "u-1", ExternalOrganizationID: "org-1", Username: "张三"}, svc.createInput)
 			require.Contains(t, rec.Body.String(), `"api_key"`)
 		})
 	}
@@ -143,6 +155,30 @@ func TestIntegrationUserHandler_Delete(t *testing.T) {
 	})
 }
 
+func TestIntegrationUserHandler_DeleteAll(t *testing.T) {
+	svc := &integrationUserServiceStub{
+		deleteAllResult: &service.ExternalUserDeleteAllResult{
+			Summary: service.ExternalUserDeleteAllSummary{
+				Total:   2,
+				Deleted: 2,
+			},
+			Items: []service.ExternalUserDeleteResult{
+				{Status: service.ExternalUserStatusDeleted, ExternalUserID: "u-1", UserID: 10},
+				{Status: service.ExternalUserStatusDeleted, ExternalUserID: "u-2", UserID: 11},
+			},
+		},
+	}
+	router, _ := newIntegrationUserTestRouter(svc)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/integrations/users", nil)
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.True(t, svc.deleteAllCalled)
+	require.Contains(t, rec.Body.String(), `"deleted":2`)
+}
+
 func TestIntegrationUserHandler_SyncValidation(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -152,7 +188,7 @@ func TestIntegrationUserHandler_SyncValidation(t *testing.T) {
 		{name: "invalid json", body: `{`, wantReason: "INVALID_JSON"},
 		{name: "empty users", body: `{"users":[]}`, wantReason: "INVALID_ARGUMENT"},
 		{name: "too many users", body: syncUsersPayload(501), wantReason: "BATCH_TOO_LARGE"},
-		{name: "duplicate external user id", body: `{"users":[{"external_user_id":"u-1","username":"a"},{"external_user_id":" u-1 ","username":"b"}]}`, wantReason: "DUPLICATE_EXTERNAL_USER_ID"},
+		{name: "duplicate external user id", body: `{"users":[{"external_user_id":"u-1","external_organization_id":"org-1","username":"a"},{"external_user_id":" u-1 ","external_organization_id":"org-1","username":"b"}]}`, wantReason: "DUPLICATE_EXTERNAL_USER_ID"},
 	}
 
 	for _, tt := range tests {
@@ -188,7 +224,7 @@ func TestIntegrationUserHandler_SyncSuccess(t *testing.T) {
 	router, _ := newIntegrationUserTestRouter(svc)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/integrations/users/sync", bytes.NewBufferString(`{"batch_id":" batch-1 ","users":[{"external_user_id":"u-1","username":"张三"},{"external_user_id":"u-2","username":"李四"}]}`))
+	req := httptest.NewRequest(http.MethodPost, "/integrations/users/sync", bytes.NewBufferString(`{"batch_id":" batch-1 ","users":[{"external_user_id":"u-1","external_organization_id":"org-1","username":"张三"},{"external_user_id":"u-2","external_organization_id":"org-1","username":"李四"}]}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 
@@ -203,6 +239,7 @@ func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine,
 	h := NewIntegrationUserHandler(svc)
 	router := gin.New()
 	router.POST("/integrations/users", h.Create)
+	router.DELETE("/integrations/users", h.DeleteAll)
 	router.DELETE("/integrations/users/:external_user_id", h.DeleteByExternalID)
 	router.POST("/integrations/users/sync", h.Sync)
 	return router, h
@@ -212,8 +249,9 @@ func syncUsersPayload(n int) string {
 	users := make([]externalUserRequest, 0, n)
 	for i := 0; i < n; i++ {
 		users = append(users, externalUserRequest{
-			ExternalUserID: "u-" + strconv.Itoa(i),
-			Username:       "用户",
+			ExternalUserID:         "u-" + strconv.Itoa(i),
+			ExternalOrganizationID: "org-1",
+			Username:               "用户",
 		})
 	}
 	payload, _ := json.Marshal(externalUserSyncRequest{Users: users})
@@ -228,6 +266,9 @@ type integrationUserServiceStub struct {
 	deleteResult         *service.ExternalUserDeleteResult
 	deleteErr            error
 	deleteExternalUserID string
+	deleteAllResult      *service.ExternalUserDeleteAllResult
+	deleteAllErr         error
+	deleteAllCalled      bool
 
 	syncResult *service.ExternalUserSyncResult
 	syncErr    error
@@ -248,6 +289,14 @@ func (s *integrationUserServiceStub) DeleteByExternalID(_ context.Context, exter
 		return nil, s.deleteErr
 	}
 	return s.deleteResult, nil
+}
+
+func (s *integrationUserServiceStub) DeleteAll(_ context.Context) (*service.ExternalUserDeleteAllResult, error) {
+	s.deleteAllCalled = true
+	if s.deleteAllErr != nil {
+		return nil, s.deleteAllErr
+	}
+	return s.deleteAllResult, nil
 }
 
 func (s *integrationUserServiceStub) Sync(_ context.Context, input service.ExternalUserSyncInput) (*service.ExternalUserSyncResult, error) {

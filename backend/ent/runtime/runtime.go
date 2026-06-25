@@ -793,8 +793,26 @@ func init() {
 			return nil
 		}
 	}()
+	// externalusermappingDescExternalOrganizationID is the schema descriptor for external_organization_id field.
+	externalusermappingDescExternalOrganizationID := externalusermappingFields[1].Descriptor()
+	// externalusermapping.ExternalOrganizationIDValidator is a validator for the "external_organization_id" field. It is called by the builders before save.
+	externalusermapping.ExternalOrganizationIDValidator = func() func(string) error {
+		validators := externalusermappingDescExternalOrganizationID.Validators
+		fns := [...]func(string) error{
+			validators[0].(func(string) error),
+			validators[1].(func(string) error),
+		}
+		return func(external_organization_id string) error {
+			for _, fn := range fns {
+				if err := fn(external_organization_id); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+	}()
 	// externalusermappingDescUsernameSnapshot is the schema descriptor for username_snapshot field.
-	externalusermappingDescUsernameSnapshot := externalusermappingFields[3].Descriptor()
+	externalusermappingDescUsernameSnapshot := externalusermappingFields[4].Descriptor()
 	// externalusermapping.DefaultUsernameSnapshot holds the default value on creation for the username_snapshot field.
 	externalusermapping.DefaultUsernameSnapshot = externalusermappingDescUsernameSnapshot.Default.(string)
 	// externalusermapping.UsernameSnapshotValidator is a validator for the "username_snapshot" field. It is called by the builders before save.

@@ -39,19 +39,19 @@ func TestIntegrationRoutesUseAdminAuth(t *testing.T) {
 		c.Next()
 	}))
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/users", strings.NewReader(`{"external_user_id":"u-1","username":"张三"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/integrations/users", strings.NewReader(`{"external_user_id":"u-1","external_organization_id":"org-1","username":"张三"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	req = httptest.NewRequest(http.MethodPost, "/api/v1/integrations/users", strings.NewReader(`{"external_user_id":"u-1","username":"张三"}`))
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/integrations/users", strings.NewReader(`{"external_user_id":"u-1","external_organization_id":"org-1","username":"张三"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-test-admin", "ok")
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusCreated, rec.Code)
-	require.Equal(t, service.ExternalUserInput{ExternalUserID: "u-1", Username: "张三"}, svc.createInput)
+	require.Equal(t, service.ExternalUserInput{ExternalUserID: "u-1", ExternalOrganizationID: "org-1", Username: "张三"}, svc.createInput)
 }
 
 type integrationRoutesUserServiceStub struct {
@@ -69,6 +69,12 @@ func (s *integrationRoutesUserServiceStub) DeleteByExternalID(_ context.Context,
 		Status:         service.ExternalUserStatusDeleted,
 		ExternalUserID: externalUserID,
 		UserID:         1,
+	}, nil
+}
+
+func (s *integrationRoutesUserServiceStub) DeleteAll(_ context.Context) (*service.ExternalUserDeleteAllResult, error) {
+	return &service.ExternalUserDeleteAllResult{
+		Summary: service.ExternalUserDeleteAllSummary{Total: 1, Deleted: 1},
 	}, nil
 }
 

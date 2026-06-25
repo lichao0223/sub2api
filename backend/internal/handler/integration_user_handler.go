@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	externalUserIDMaxLen   = 255
-	externalUsernameMaxLen = 100
-	externalBatchIDMaxLen  = 128
+	externalUserIDMaxLen         = 255
+	externalOrganizationIDMaxLen = 255
+	externalUsernameMaxLen       = 100
+	externalBatchIDMaxLen        = 128
 )
 
 type IntegrationHandlers struct {
@@ -24,6 +25,7 @@ type IntegrationHandlers struct {
 type externalUserServicePort interface {
 	Create(c context.Context, input service.ExternalUserInput) (*service.ExternalUserResult, error)
 	DeleteByExternalID(c context.Context, externalUserID string) (*service.ExternalUserDeleteResult, error)
+	DeleteAll(c context.Context) (*service.ExternalUserDeleteAllResult, error)
 	Sync(c context.Context, input service.ExternalUserSyncInput) (*service.ExternalUserSyncResult, error)
 }
 
@@ -44,8 +46,9 @@ func ProvideIntegrationHandlers(userHandler *IntegrationUserHandler) *Integratio
 }
 
 type externalUserRequest struct {
-	ExternalUserID string `json:"external_user_id"`
-	Username       string `json:"username"`
+	ExternalUserID         string `json:"external_user_id"`
+	ExternalOrganizationID string `json:"external_organization_id"`
+	Username               string `json:"username"`
 }
 
 type externalUserSyncRequest struct {
@@ -97,6 +100,15 @@ func (h *IntegrationUserHandler) DeleteByExternalID(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *IntegrationUserHandler) DeleteAll(c *gin.Context) {
+	result, err := h.externalUserService.DeleteAll(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *IntegrationUserHandler) Sync(c *gin.Context) {
 	var req externalUserSyncRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -120,6 +132,7 @@ func (h *IntegrationUserHandler) Sync(c *gin.Context) {
 
 func validateExternalUserRequest(req externalUserRequest) (service.ExternalUserInput, error) {
 	externalUserID := strings.TrimSpace(req.ExternalUserID)
+	externalOrganizationID := strings.TrimSpace(req.ExternalOrganizationID)
 	username := strings.TrimSpace(req.Username)
 
 	if externalUserID == "" {
@@ -127,6 +140,12 @@ func validateExternalUserRequest(req externalUserRequest) (service.ExternalUserI
 	}
 	if len(externalUserID) > externalUserIDMaxLen {
 		return service.ExternalUserInput{}, invalidExternalUserArgument("external_user_id", "external_user_id is too long")
+	}
+	if externalOrganizationID == "" {
+		return service.ExternalUserInput{}, invalidExternalUserArgument("external_organization_id", "external_organization_id is required")
+	}
+	if len(externalOrganizationID) > externalOrganizationIDMaxLen {
+		return service.ExternalUserInput{}, invalidExternalUserArgument("external_organization_id", "external_organization_id is too long")
 	}
 	if username == "" {
 		return service.ExternalUserInput{}, invalidExternalUserArgument("username", "username is required")
@@ -136,8 +155,9 @@ func validateExternalUserRequest(req externalUserRequest) (service.ExternalUserI
 	}
 
 	return service.ExternalUserInput{
-		ExternalUserID: externalUserID,
-		Username:       username,
+		ExternalUserID:         externalUserID,
+		ExternalOrganizationID: externalOrganizationID,
+		Username:               username,
 	}, nil
 }
 

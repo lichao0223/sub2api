@@ -27,6 +27,8 @@ type ExternalUserMapping struct {
 	DeletedAt *time.Time `json:"deleted_at,omitempty"`
 	// ExternalUserID holds the value of the "external_user_id" field.
 	ExternalUserID string `json:"external_user_id,omitempty"`
+	// ExternalOrganizationID holds the value of the "external_organization_id" field.
+	ExternalOrganizationID string `json:"external_organization_id,omitempty"`
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
 	// APIKeyID holds the value of the "api_key_id" field.
@@ -79,7 +81,7 @@ func (*ExternalUserMapping) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case externalusermapping.FieldID, externalusermapping.FieldUserID, externalusermapping.FieldAPIKeyID:
 			values[i] = new(sql.NullInt64)
-		case externalusermapping.FieldExternalUserID, externalusermapping.FieldUsernameSnapshot:
+		case externalusermapping.FieldExternalUserID, externalusermapping.FieldExternalOrganizationID, externalusermapping.FieldUsernameSnapshot:
 			values[i] = new(sql.NullString)
 		case externalusermapping.FieldCreatedAt, externalusermapping.FieldUpdatedAt, externalusermapping.FieldDeletedAt:
 			values[i] = new(sql.NullTime)
@@ -128,6 +130,12 @@ func (_m *ExternalUserMapping) assignValues(columns []string, values []any) erro
 				return fmt.Errorf("unexpected type %T for field external_user_id", values[i])
 			} else if value.Valid {
 				_m.ExternalUserID = value.String
+			}
+		case externalusermapping.FieldExternalOrganizationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field external_organization_id", values[i])
+			} else if value.Valid {
+				_m.ExternalOrganizationID = value.String
 			}
 		case externalusermapping.FieldUserID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -206,6 +214,9 @@ func (_m *ExternalUserMapping) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("external_user_id=")
 	builder.WriteString(_m.ExternalUserID)
+	builder.WriteString(", ")
+	builder.WriteString("external_organization_id=")
+	builder.WriteString(_m.ExternalOrganizationID)
 	builder.WriteString(", ")
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))

@@ -23,10 +23,11 @@ func TestExternalUserMappingRepository_CreateGetUpdateAndSoftDelete(t *testing.T
 	key := createExternalMappingTestAPIKey(t, ctx, client, user.ID, uniqueTestValue(t, "sk-ext-map"))
 
 	mapping := &service.ExternalUserMapping{
-		ExternalUserID:   uniqueTestValue(t, "external-user"),
-		UserID:           user.ID,
-		APIKeyID:         key.ID,
-		UsernameSnapshot: "张三",
+		ExternalUserID:         uniqueTestValue(t, "external-user"),
+		ExternalOrganizationID: uniqueTestValue(t, "external-org"),
+		UserID:                 user.ID,
+		APIKeyID:               key.ID,
+		UsernameSnapshot:       "张三",
 	}
 	require.NoError(t, repo.Create(ctx, mapping))
 	require.NotZero(t, mapping.ID)
@@ -35,6 +36,7 @@ func TestExternalUserMappingRepository_CreateGetUpdateAndSoftDelete(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, user.ID, got.UserID)
 	require.Equal(t, key.ID, got.APIKeyID)
+	require.Equal(t, mapping.ExternalOrganizationID, got.ExternalOrganizationID)
 	require.Equal(t, "张三", got.UsernameSnapshot)
 
 	replacementKey := createExternalMappingTestAPIKey(t, ctx, client, user.ID, uniqueTestValue(t, "sk-ext-map-replacement"))
@@ -65,14 +67,16 @@ func TestExternalUserMappingRepository_DuplicateActiveExternalUserIDReturnsConfl
 	externalUserID := uniqueTestValue(t, "external-user-conflict")
 
 	require.NoError(t, repo.Create(ctx, &service.ExternalUserMapping{
-		ExternalUserID: externalUserID,
-		UserID:         user.ID,
-		APIKeyID:       key1.ID,
+		ExternalUserID:         externalUserID,
+		ExternalOrganizationID: "org-1",
+		UserID:                 user.ID,
+		APIKeyID:               key1.ID,
 	}))
 	err := repo.Create(ctx, &service.ExternalUserMapping{
-		ExternalUserID: externalUserID,
-		UserID:         user.ID,
-		APIKeyID:       key2.ID,
+		ExternalUserID:         externalUserID,
+		ExternalOrganizationID: "org-1",
+		UserID:                 user.ID,
+		APIKeyID:               key2.ID,
 	})
 	require.ErrorIs(t, err, service.ErrExternalUserMappingExists)
 }
@@ -89,16 +93,18 @@ func TestExternalUserMappingRepository_AllowsReuseAfterSoftDelete(t *testing.T) 
 	externalUserID := uniqueTestValue(t, "external-user-reuse")
 
 	require.NoError(t, repo.Create(ctx, &service.ExternalUserMapping{
-		ExternalUserID: externalUserID,
-		UserID:         user.ID,
-		APIKeyID:       key1.ID,
+		ExternalUserID:         externalUserID,
+		ExternalOrganizationID: "org-1",
+		UserID:                 user.ID,
+		APIKeyID:               key1.ID,
 	}))
 	require.NoError(t, repo.SoftDeleteByExternalUserID(ctx, externalUserID))
 
 	recreated := &service.ExternalUserMapping{
-		ExternalUserID: externalUserID,
-		UserID:         user.ID,
-		APIKeyID:       key2.ID,
+		ExternalUserID:         externalUserID,
+		ExternalOrganizationID: "org-1",
+		UserID:                 user.ID,
+		APIKeyID:               key2.ID,
 	}
 	require.NoError(t, repo.Create(ctx, recreated))
 	require.NotZero(t, recreated.ID)

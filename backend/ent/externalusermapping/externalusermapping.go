@@ -23,6 +23,8 @@ const (
 	FieldDeletedAt = "deleted_at"
 	// FieldExternalUserID holds the string denoting the external_user_id field in the database.
 	FieldExternalUserID = "external_user_id"
+	// FieldExternalOrganizationID holds the string denoting the external_organization_id field in the database.
+	FieldExternalOrganizationID = "external_organization_id"
 	// FieldUserID holds the string denoting the user_id field in the database.
 	FieldUserID = "user_id"
 	// FieldAPIKeyID holds the string denoting the api_key_id field in the database.
@@ -58,6 +60,7 @@ var Columns = []string{
 	FieldUpdatedAt,
 	FieldDeletedAt,
 	FieldExternalUserID,
+	FieldExternalOrganizationID,
 	FieldUserID,
 	FieldAPIKeyID,
 	FieldUsernameSnapshot,
@@ -89,6 +92,8 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// ExternalUserIDValidator is a validator for the "external_user_id" field. It is called by the builders before save.
 	ExternalUserIDValidator func(string) error
+	// ExternalOrganizationIDValidator is a validator for the "external_organization_id" field. It is called by the builders before save.
+	ExternalOrganizationIDValidator func(string) error
 	// DefaultUsernameSnapshot holds the default value on creation for the "username_snapshot" field.
 	DefaultUsernameSnapshot string
 	// UsernameSnapshotValidator is a validator for the "username_snapshot" field. It is called by the builders before save.
@@ -121,6 +126,11 @@ func ByDeletedAt(opts ...sql.OrderTermOption) OrderOption {
 // ByExternalUserID orders the results by the external_user_id field.
 func ByExternalUserID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldExternalUserID, opts...).ToFunc()
+}
+
+// ByExternalOrganizationID orders the results by the external_organization_id field.
+func ByExternalOrganizationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldExternalOrganizationID, opts...).ToFunc()
 }
 
 // ByUserID orders the results by the user_id field.

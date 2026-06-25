@@ -2,11 +2,7 @@ package service
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -42,18 +38,20 @@ var (
 )
 
 type ExternalUserMapping struct {
-	ID               int64
-	ExternalUserID   string
-	UserID           int64
-	APIKeyID         int64
-	UsernameSnapshot string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	DeletedAt        *time.Time
+	ID                     int64
+	ExternalUserID         string
+	ExternalOrganizationID string
+	UserID                 int64
+	APIKeyID               int64
+	UsernameSnapshot       string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	DeletedAt              *time.Time
 }
 
 type ExternalUserMappingRepository interface {
 	GetByExternalUserID(ctx context.Context, externalUserID string) (*ExternalUserMapping, error)
+	ListActive(ctx context.Context) ([]ExternalUserMapping, error)
 	Create(ctx context.Context, mapping *ExternalUserMapping) error
 	UpdateAPIKeyID(ctx context.Context, id int64, apiKeyID int64) error
 	SoftDeleteByExternalUserID(ctx context.Context, externalUserID string) error
@@ -90,8 +88,9 @@ func NewExternalUserService(
 }
 
 type ExternalUserInput struct {
-	ExternalUserID string
-	Username       string
+	ExternalUserID         string
+	ExternalOrganizationID string
+	Username               string
 }
 
 type ExternalUserSyncInput struct {
@@ -100,11 +99,12 @@ type ExternalUserSyncInput struct {
 }
 
 type ExternalUserResult struct {
-	Status         string                  `json:"status"`
-	ExternalUserID string                  `json:"external_user_id"`
-	User           *ExternalUserUserInfo   `json:"user,omitempty"`
-	APIKey         *ExternalUserAPIKeyInfo `json:"api_key,omitempty"`
-	Error          *ExternalUserItemError  `json:"error,omitempty"`
+	Status                 string                  `json:"status"`
+	ExternalUserID         string                  `json:"external_user_id"`
+	ExternalOrganizationID string                  `json:"external_organization_id,omitempty"`
+	User                   *ExternalUserUserInfo   `json:"user,omitempty"`
+	APIKey                 *ExternalUserAPIKeyInfo `json:"api_key,omitempty"`
+	Error                  *ExternalUserItemError  `json:"error,omitempty"`
 }
 
 type ExternalUserUserInfo struct {
@@ -127,6 +127,24 @@ type ExternalUserDeleteResult struct {
 	UserID         int64  `json:"user_id"`
 }
 
+type ExternalUserDeleteAllResult struct {
+	Summary ExternalUserDeleteAllSummary `json:"summary"`
+	Items   []ExternalUserDeleteResult   `json:"items"`
+	Errors  []ExternalUserDeleteError    `json:"errors,omitempty"`
+}
+
+type ExternalUserDeleteAllSummary struct {
+	Total   int `json:"total"`
+	Deleted int `json:"deleted"`
+	Failed  int `json:"failed"`
+}
+
+type ExternalUserDeleteError struct {
+	ExternalUserID string                 `json:"external_user_id"`
+	UserID         int64                  `json:"user_id,omitempty"`
+	Error          *ExternalUserItemError `json:"error"`
+}
+
 type ExternalUserSyncSummary struct {
 	Total   int `json:"total"`
 	Created int `json:"created"`
@@ -147,10 +165,11 @@ type ExternalUserItemError struct {
 
 func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInput) (*ExternalUserResult, error) {
 	input.ExternalUserID = strings.TrimSpace(input.ExternalUserID)
+	input.ExternalOrganizationID = strings.TrimSpace(input.ExternalOrganizationID)
 	input.Username = strings.TrimSpace(input.Username)
 
 	if mapping, err := s.mappingRepo.GetByExternalUserID(ctx, input.ExternalUserID); err == nil {
-		return s.buildExistingResult(ctx, input.ExternalUserID, input.Username, mapping)
+		return s.buildExistingResult(ctx, input.ExternalUserID, input.ExternalOrganizationID, input.Username, mapping)
 	} else if !errors.Is(err, ErrExternalUserMappingNotFound) {
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
@@ -163,7 +182,7 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 	balance := float64(externalUserDefaultBalance)
 	user, err := s.adminService.CreateUser(ctx, &CreateUserInput{
 		Email:         generatedExternalEmail(input.ExternalUserID),
-		Password:      generatedExternalPassword(),
+		Password:      generatedExternalPassword(input.ExternalUserID),
 		Username:      input.Username,
 		Balance:       &balance,
 		Concurrency:   externalUserDefaultConcurrency,
@@ -180,17 +199,18 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 	}
 
 	mapping := &ExternalUserMapping{
-		ExternalUserID:   input.ExternalUserID,
-		UserID:           user.ID,
-		APIKeyID:         apiKey.ID,
-		UsernameSnapshot: input.Username,
+		ExternalUserID:         input.ExternalUserID,
+		ExternalOrganizationID: input.ExternalOrganizationID,
+		UserID:                 user.ID,
+		APIKeyID:               apiKey.ID,
+		UsernameSnapshot:       input.Username,
 	}
 	if err := s.mappingRepo.Create(ctx, mapping); err != nil {
 		_ = s.adminService.DeleteUser(ctx, user.ID)
 		if errors.Is(err, ErrExternalUserMappingExists) {
 			existing, getErr := s.mappingRepo.GetByExternalUserID(ctx, input.ExternalUserID)
 			if getErr == nil {
-				return s.buildExistingResult(ctx, input.ExternalUserID, input.Username, existing)
+				return s.buildExistingResult(ctx, input.ExternalUserID, input.ExternalOrganizationID, input.Username, existing)
 			}
 			return nil, ErrExternalUserMappingExists.WithCause(err)
 		}
@@ -198,10 +218,11 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 	}
 
 	return &ExternalUserResult{
-		Status:         ExternalUserStatusCreated,
-		ExternalUserID: input.ExternalUserID,
-		User:           externalUserInfoFromService(user),
-		APIKey:         externalAPIKeyInfoFromService(apiKey),
+		Status:                 ExternalUserStatusCreated,
+		ExternalUserID:         input.ExternalUserID,
+		ExternalOrganizationID: input.ExternalOrganizationID,
+		User:                   externalUserInfoFromService(user),
+		APIKey:                 externalAPIKeyInfoFromService(apiKey),
 	}, nil
 }
 
@@ -215,7 +236,7 @@ func (s *ExternalUserService) DeleteByExternalID(ctx context.Context, externalUs
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
 
-	if err := s.adminService.DeleteUser(ctx, mapping.UserID); err != nil {
+	if err := s.adminService.DeleteUser(ctx, mapping.UserID); err != nil && !errors.Is(err, ErrUserNotFound) {
 		return nil, ErrExternalUserDeleteFailed.WithCause(err)
 	}
 	if err := s.mappingRepo.SoftDeleteByExternalUserID(ctx, externalUserID); err != nil {
@@ -227,6 +248,36 @@ func (s *ExternalUserService) DeleteByExternalID(ctx context.Context, externalUs
 		ExternalUserID: externalUserID,
 		UserID:         mapping.UserID,
 	}, nil
+}
+
+func (s *ExternalUserService) DeleteAll(ctx context.Context) (*ExternalUserDeleteAllResult, error) {
+	mappings, err := s.mappingRepo.ListActive(ctx)
+	if err != nil {
+		return nil, ErrExternalUserInternal.WithCause(err)
+	}
+
+	result := &ExternalUserDeleteAllResult{
+		Items:  make([]ExternalUserDeleteResult, 0, len(mappings)),
+		Errors: make([]ExternalUserDeleteError, 0),
+	}
+	result.Summary.Total = len(mappings)
+
+	for _, mapping := range mappings {
+		item, err := s.DeleteByExternalID(ctx, mapping.ExternalUserID)
+		if err != nil {
+			result.Summary.Failed++
+			result.Errors = append(result.Errors, ExternalUserDeleteError{
+				ExternalUserID: mapping.ExternalUserID,
+				UserID:         mapping.UserID,
+				Error:          externalUserErrorItem(err),
+			})
+			continue
+		}
+		result.Summary.Deleted++
+		result.Items = append(result.Items, *item)
+	}
+
+	return result, nil
 }
 
 func (s *ExternalUserService) Sync(ctx context.Context, input ExternalUserSyncInput) (*ExternalUserSyncResult, error) {
@@ -258,7 +309,7 @@ func (s *ExternalUserService) Sync(ctx context.Context, input ExternalUserSyncIn
 	return result, nil
 }
 
-func (s *ExternalUserService) buildExistingResult(ctx context.Context, externalUserID, username string, mapping *ExternalUserMapping) (*ExternalUserResult, error) {
+func (s *ExternalUserService) buildExistingResult(ctx context.Context, externalUserID, externalOrganizationID, username string, mapping *ExternalUserMapping) (*ExternalUserResult, error) {
 	user, err := s.adminService.GetUser(ctx, mapping.UserID)
 	if err != nil {
 		return nil, ErrExternalUserInternal.WithCause(err)
@@ -285,10 +336,11 @@ func (s *ExternalUserService) buildExistingResult(ctx context.Context, externalU
 	}
 
 	return &ExternalUserResult{
-		Status:         ExternalUserStatusSkipped,
-		ExternalUserID: externalUserID,
-		User:           externalUserInfoFromService(user),
-		APIKey:         externalAPIKeyInfoFromService(apiKey),
+		Status:                 ExternalUserStatusSkipped,
+		ExternalUserID:         externalUserID,
+		ExternalOrganizationID: firstExternalUserNonEmpty(mapping.ExternalOrganizationID, externalOrganizationID),
+		User:                   externalUserInfoFromService(user),
+		APIKey:                 externalAPIKeyInfoFromService(apiKey),
 	}, nil
 }
 
@@ -346,16 +398,20 @@ func externalUserErrorItem(err error) *ExternalUserItemError {
 }
 
 func generatedExternalEmail(externalUserID string) string {
-	sum := sha256.Sum256([]byte(externalUserID))
-	return fmt.Sprintf("ext+%s@external.local", hex.EncodeToString(sum[:])[:16])
+	return strings.TrimSpace(externalUserID) + "@sub.com"
 }
 
-func generatedExternalPassword() string {
-	var buf [24]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
+func generatedExternalPassword(externalUserID string) string {
+	return strings.TrimSpace(externalUserID)
+}
+
+func firstExternalUserNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
 	}
-	return hex.EncodeToString(buf[:])
+	return ""
 }
 
 func ExternalUserMaxBatchSize() int {

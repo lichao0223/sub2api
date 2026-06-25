@@ -247,6 +247,14 @@
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.users.createUser') }}
             </button>
+            <button
+              @click="showDeleteExternalUsersDialog = true"
+              class="btn btn-danger flex-1 md:flex-initial"
+              :disabled="deletingExternalUsers"
+            >
+              <Icon name="trash" size="md" class="mr-2" />
+              {{ deletingExternalUsers ? t('admin.users.deletingExternalUsers') : t('admin.users.deleteExternalUsers') }}
+            </button>
           </div>
         </div>
       </template>
@@ -731,6 +739,15 @@
     </Teleport>
 
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog
+      :show="showDeleteExternalUsersDialog"
+      :title="t('admin.users.deleteExternalUsers')"
+      :message="t('admin.users.deleteExternalUsersConfirm')"
+      :confirm-text="t('admin.users.confirmDeleteExternalUsers')"
+      :danger="true"
+      @confirm="confirmDeleteExternalUsers"
+      @cancel="showDeleteExternalUsersDialog = false"
+    />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <UserPlatformQuotaModal
@@ -1273,6 +1290,8 @@ const pagination = reactive({
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const showDeleteExternalUsersDialog = ref(false)
+const deletingExternalUsers = ref(false)
 const showApiKeysModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
@@ -1727,6 +1746,25 @@ const confirmDelete = async () => {
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
     console.error('Error deleting user:', error)
+  }
+}
+
+const confirmDeleteExternalUsers = async () => {
+  if (deletingExternalUsers.value) return
+  deletingExternalUsers.value = true
+  try {
+    const result = await adminAPI.users.deleteExternalUsers()
+    showDeleteExternalUsersDialog.value = false
+    appStore.showSuccess(t('admin.users.externalUsersDeletedSuccess', {
+      deleted: result.summary.deleted,
+      failed: result.summary.failed
+    }))
+    await loadUsers()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.failedToDeleteExternalUsers'))
+    console.error('Error deleting external users:', error)
+  } finally {
+    deletingExternalUsers.value = false
   }
 }
 

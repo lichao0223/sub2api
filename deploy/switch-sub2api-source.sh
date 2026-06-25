@@ -787,31 +787,155 @@ sql_quote_literal() {
   printf "%s" "$1" | sed "s/'/''/g"
 }
 
-postgres_exec_sql() {
-  local sql="$1"
-  local db_user db_name
-  db_user="$(parse_env_value POSTGRES_USER "$DEPLOY_DIR/.env" || true)"
-  db_name="$(parse_env_value POSTGRES_DB "$DEPLOY_DIR/.env" || true)"
+compose_has_service() {
+  local service="$1"
+  awk -v target="$service" '
+    function trim(s) { sub(/^[ \t]*/, "", s); sub(/[ \t]*$/, "", s); return s }
+    function strip_quotes(s) { gsub(/^["\047]+|["\047]+$/, "", s); return s }
+    function key_name(s) {
+      s = trim(s)
+      sub(/[ \t]*#.*/, "", s)
+      sub(/:.*/, "", s)
+      return strip_quotes(trim(s))
+    }
+    function looks_like_key(s) {
+      return s !~ /^-/ && s ~ /^[^:#][^:]*:[ \t]*(#.*)?$/
+    }
+    BEGIN {
+      in_services = 0
+      services_indent = -1
+      service_key_indent = -1
+    }
+    {
+      raw = $0
+      tmp = raw
+      sub(/^[ \t]*/, "", tmp)
+      indent = length(raw) - length(tmp)
+
+      if (tmp ~ /^services:[ \t]*(#.*)?$/) {
+        in_services = 1
+        services_indent = indent
+        service_key_indent = -1
+        next
+      }
+
+      if (!in_services) next
+
+      if (tmp !~ /^($|#)/ && indent <= services_indent) {
+        in_services = 0
+        next
+      }
+
+      if (tmp !~ /^($|#)/ && looks_like_key(tmp)) {
+        if (service_key_indent < 0 && indent > services_indent) service_key_indent = indent
+        if (indent == service_key_indent && key_name(tmp) == target) {
+          found = 1
+          exit
+        }
+      }
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$DEPLOY_DIR/$COMPOSE_FILE"
+}
+
+database_env_value() {
+  local key="$1"
+  parse_env_value "$key" "$DEPLOY_DIR/.env" || true
+}
+
+app_database_config() {
+  local db_host db_port db_user db_password db_name db_sslmode
+  db_host="$(database_env_value DATABASE_HOST)"
+  db_port="$(database_env_value DATABASE_PORT)"
+  db_user="$(database_env_value DATABASE_USER)"
+  db_password="$(database_env_value DATABASE_PASSWORD)"
+  db_name="$(database_env_value DATABASE_DBNAME)"
+  db_sslmode="$(database_env_value DATABASE_SSLMODE)"
+
+  if [ -z "$db_host" ] && compose_has_service postgres; then
+    db_host="postgres"
+  fi
+  db_port="${db_port:-5432}"
+  db_user="${db_user:-$(database_env_value POSTGRES_USER)}"
+  db_name="${db_name:-$(database_env_value POSTGRES_DB)}"
+  db_password="${db_password:-$(database_env_value POSTGRES_PASSWORD)}"
   db_user="${db_user:-sub2api}"
   db_name="${db_name:-sub2api}"
+  db_sslmode="${db_sslmode:-disable}"
 
-  if run_compose ps --services --status running | grep -qx "postgres"; then
-    run_compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c "$sql"
+  printf '%s\n' "$db_host" "$db_port" "$db_user" "$db_password" "$db_name" "$db_sslmode"
+}
+
+postgres_exec_sql() {
+  local sql="$1"
+  local db_cfg db_host db_port db_user db_password db_name db_sslmode
+  db_cfg="$(app_database_config)"
+  db_host="$(printf '%s\n' "$db_cfg" | sed -n '1p')"
+  db_port="$(printf '%s\n' "$db_cfg" | sed -n '2p')"
+  db_user="$(printf '%s\n' "$db_cfg" | sed -n '3p')"
+  db_password="$(printf '%s\n' "$db_cfg" | sed -n '4p')"
+  db_name="$(printf '%s\n' "$db_cfg" | sed -n '5p')"
+  db_sslmode="$(printf '%s\n' "$db_cfg" | sed -n '6p')"
+
+  if [ -z "$db_host" ]; then
+    die "DATABASE_HOST is required for reset-admin when the compose file has no postgres service"
+  fi
+
+  if compose_has_service postgres && [ "$db_host" = "postgres" ]; then
+    if run_compose ps --services --status running | grep -qx "postgres"; then
+      run_compose exec -T postgres env PGPASSWORD="$db_password" PGSSLMODE="$db_sslmode" psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c "$sql"
+      return
+    fi
+
+    info "Postgres service is not running; starting postgres temporarily..."
+    run_compose up -d postgres
+    info "Waiting for postgres to become ready..."
+    local i
+    for i in $(seq 1 30); do
+      if run_compose exec -T postgres env PGPASSWORD="$db_password" PGSSLMODE="$db_sslmode" pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
+        run_compose exec -T postgres env PGPASSWORD="$db_password" PGSSLMODE="$db_sslmode" psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c "$sql"
+        return
+      fi
+      sleep 2
+    done
+    die "Postgres did not become ready"
+  fi
+
+  if run_compose exec -T sub2api sh -lc 'command -v psql >/dev/null 2>&1'; then
+    run_compose exec -T sub2api env PGPASSWORD="$db_password" PGSSLMODE="$db_sslmode" psql \
+      -v ON_ERROR_STOP=1 \
+      -h "$db_host" \
+      -p "$db_port" \
+      -U "$db_user" \
+      -d "$db_name" \
+      -c "$sql"
     return
   fi
 
-  info "Postgres service is not running; starting postgres temporarily..."
-  run_compose up -d postgres
-  info "Waiting for postgres to become ready..."
-  local i
-  for i in $(seq 1 30); do
-    if run_compose exec -T postgres pg_isready -U "$db_user" -d "$db_name" >/dev/null 2>&1; then
-      run_compose exec -T postgres psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c "$sql"
-      return
-    fi
-    sleep 2
-  done
-  die "Postgres did not become ready"
+  if compose_has_service sub2api; then
+    info "Using a temporary sub2api container as PostgreSQL client..."
+    run_compose run --rm --no-deps -T sub2api env PGPASSWORD="$db_password" PGSSLMODE="$db_sslmode" psql \
+      -v ON_ERROR_STOP=1 \
+      -h "$db_host" \
+      -p "$db_port" \
+      -U "$db_user" \
+      -d "$db_name" \
+      -c "$sql"
+    return
+  fi
+
+  if command -v psql >/dev/null 2>&1; then
+    PGPASSWORD="$db_password" PGSSLMODE="$db_sslmode" psql \
+      -v ON_ERROR_STOP=1 \
+      -h "$db_host" \
+      -p "$db_port" \
+      -U "$db_user" \
+      -d "$db_name" \
+      -c "$sql"
+    return
+  fi
+
+  die "psql is not available in sub2api container or on the host"
 }
 
 reset_admin_password() {

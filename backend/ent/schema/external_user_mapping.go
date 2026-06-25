@@ -34,6 +34,9 @@ func (ExternalUserMapping) Fields() []ent.Field {
 		field.String("external_user_id").
 			MaxLen(255).
 			NotEmpty(),
+		field.String("external_organization_id").
+			MaxLen(255).
+			NotEmpty(),
 		field.Int64("user_id"),
 		field.Int64("api_key_id"),
 		field.String("username_snapshot").

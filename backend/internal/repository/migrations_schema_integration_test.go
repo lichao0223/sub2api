@@ -42,6 +42,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	require.NoError(t, tx.QueryRowContext(context.Background(), "SELECT to_regclass('public.external_user_mappings')").Scan(&externalUserMappingsRegclass))
 	require.True(t, externalUserMappingsRegclass.Valid, "expected external_user_mappings table to exist")
 	requireColumn(t, tx, "external_user_mappings", "external_user_id", "character varying", 255, false)
+	requireColumn(t, tx, "external_user_mappings", "external_organization_id", "character varying", 255, false)
 	requireColumn(t, tx, "external_user_mappings", "user_id", "bigint", 0, false)
 	requireColumn(t, tx, "external_user_mappings", "api_key_id", "bigint", 0, false)
 	requireColumn(t, tx, "external_user_mappings", "username_snapshot", "character varying", 100, false)
