@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
@@ -9,13 +10,15 @@ const {
   getAllGroups,
   getBatchUsersUsage,
   listEnabledDefinitions,
-  getBatchUserAttributes
+  getBatchUserAttributes,
+  deleteExternalUsers
 } = vi.hoisted(() => ({
   listUsers: vi.fn(),
   getAllGroups: vi.fn(),
   getBatchUsersUsage: vi.fn(),
   listEnabledDefinitions: vi.fn(),
-  getBatchUserAttributes: vi.fn()
+  getBatchUserAttributes: vi.fn(),
+  deleteExternalUsers: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -24,7 +27,7 @@ vi.mock('@/api/admin', () => ({
       list: listUsers,
       toggleStatus: vi.fn(),
       delete: vi.fn(),
-      deleteExternalUsers: vi.fn()
+      deleteExternalUsers
     },
     groups: {
       getAll: getAllGroups
@@ -99,6 +102,7 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockReset()
     listEnabledDefinitions.mockReset()
     getBatchUserAttributes.mockReset()
+    deleteExternalUsers.mockReset()
 
     listUsers.mockResolvedValue({
       items: [createAdminUser()],
@@ -111,6 +115,7 @@ describe('admin UsersView', () => {
     getBatchUsersUsage.mockResolvedValue({ stats: {} })
     listEnabledDefinitions.mockResolvedValue([])
     getBatchUserAttributes.mockResolvedValue({ values: {} })
+    deleteExternalUsers.mockResolvedValue({ summary: { deleted: 0, failed: 0 } })
   })
 
   it('shows active, used, and created activity columns in order and requests last_used_at sort', async () => {
@@ -161,5 +166,58 @@ describe('admin UsersView', () => {
       }),
       expect.any(Object)
     )
+  })
+
+  it('keeps external-user delete confirmation loading while deleting', async () => {
+    let resolveDelete: (value: { summary: { deleted: number; failed: number } }) => void = () => {}
+    deleteExternalUsers.mockReturnValue(new Promise(resolve => {
+      resolveDelete = resolve
+    }))
+
+    const wrapper = mount(UsersView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: {
+            name: 'ConfirmDialog',
+            props: ['show', 'title', 'message', 'confirmText', 'danger', 'loading'],
+            emits: ['confirm', 'cancel'],
+            template: '<div v-if="show" data-test="confirm-dialog"><button data-test="confirm-delete-external-users" @click="$emit(\'confirm\')">{{ confirmText }}</button></div>'
+          },
+          EmptyState: true,
+          GroupBadge: true,
+          Select: true,
+          UserAttributesConfigModal: true,
+          UserConcurrencyCell: true,
+          UserCreateModal: true,
+          UserEditModal: true,
+          UserApiKeysModal: true,
+          UserAllowedGroupsModal: true,
+          UserBalanceModal: true,
+          UserBalanceHistoryModal: true,
+          GroupReplaceModal: true,
+          Icon: true,
+          Teleport: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'admin.users.deleteExternalUsers')!.trigger('click')
+    await wrapper.get('[data-test="confirm-delete-external-users"]').trigger('click')
+    await nextTick()
+
+    const dialog = wrapper.findAllComponents({ name: 'ConfirmDialog' })
+      .find(component => component.props('title') === 'admin.users.deleteExternalUsers')
+    expect(dialog?.props('loading')).toBe(true)
+    expect(deleteExternalUsers).toHaveBeenCalledTimes(1)
+
+    resolveDelete({ summary: { deleted: 1, failed: 0 } })
+    await flushPromises()
   })
 })

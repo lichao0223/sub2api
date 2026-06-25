@@ -745,6 +745,7 @@
       :message="t('admin.users.deleteExternalUsersConfirm')"
       :confirm-text="t('admin.users.confirmDeleteExternalUsers')"
       :danger="true"
+      :loading="deletingExternalUsers"
       @confirm="confirmDeleteExternalUsers"
       @cancel="showDeleteExternalUsersDialog = false"
     />
