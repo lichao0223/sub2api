@@ -21,7 +21,7 @@ func TestIntegrationRoutesUseAdminAuth(t *testing.T) {
 		createResult: &service.ExternalUserResult{
 			Status:         service.ExternalUserStatusCreated,
 			ExternalUserID: "u-1",
-			APIKey:         &service.ExternalUserAPIKeyInfo{ID: 1, Key: "sk-test"},
+			APIKeys:        []service.ExternalUserAPIKeyInfo{{ID: 1, Key: "sk-test"}},
 		},
 	}
 	h := &handler.Handlers{

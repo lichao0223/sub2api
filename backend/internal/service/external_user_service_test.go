@@ -48,13 +48,13 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, ExternalUserStatusCreated, result.Status)
 	require.Equal(t, "u-1", result.ExternalUserID)
-	require.NotNil(t, result.APIKey)
-	require.Equal(t, int64(201), result.APIKey.ID)
-	require.Equal(t, "sk-created-1", result.APIKey.Key)
+	require.NotEmpty(t, result.APIKeys)
+	require.Equal(t, int64(201), result.APIKeys[0].ID)
+	require.Equal(t, "sk-created-1", result.APIKeys[0].Key)
 	require.Len(t, result.APIKeys, 2)
 	require.Equal(t, int64(7), *result.APIKeys[0].GroupID)
 	require.Equal(t, int64(9), *result.APIKeys[1].GroupID)
-	require.Equal(t, "公共一", result.APIKeys[0].Group.Name)
+	require.Equal(t, "公共一", result.APIKeys[0].GroupName)
 
 	require.Len(t, admin.createInputs, 1)
 	input := admin.createInputs[0]
@@ -68,9 +68,10 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 
 	require.Len(t, apiKeys.createCalls, 2)
 	require.Equal(t, int64(101), apiKeys.createCalls[0].userID)
-	require.Equal(t, "张三", apiKeys.createCalls[0].req.Name)
+	require.Equal(t, "张三公共一", apiKeys.createCalls[0].req.Name)
 	require.NotNil(t, apiKeys.createCalls[0].req.GroupID)
 	require.Equal(t, int64(7), *apiKeys.createCalls[0].req.GroupID)
+	require.Equal(t, "张三公共二", apiKeys.createCalls[1].req.Name)
 	require.NotNil(t, apiKeys.createCalls[1].req.GroupID)
 	require.Equal(t, int64(9), *apiKeys.createCalls[1].req.GroupID)
 
@@ -118,8 +119,8 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	require.NoError(t, err)
 	require.Equal(t, ExternalUserStatusSkipped, result.Status)
 	require.Equal(t, int64(101), result.User.ID)
-	require.Equal(t, int64(201), result.APIKey.ID)
-	require.Equal(t, "sk-existing", result.APIKey.Key)
+	require.Equal(t, int64(201), result.APIKeys[0].ID)
+	require.Equal(t, "sk-existing", result.APIKeys[0].Key)
 	require.Len(t, result.APIKeys, 1)
 	require.Equal(t, "org-1", result.ExternalOrganizationID)
 	require.Empty(t, admin.createInputs)
@@ -158,7 +159,7 @@ func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *t
 
 	require.NoError(t, err)
 	require.Equal(t, ExternalUserStatusSkipped, result.Status)
-	require.Equal(t, int64(202), result.APIKey.ID)
+	require.Equal(t, int64(202), result.APIKeys[0].ID)
 	require.Len(t, result.APIKeys, 1)
 	mapping, err := mappings.GetByExternalUserID(context.Background(), "u-3")
 	require.NoError(t, err)
@@ -210,8 +211,6 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 	require.Len(t, result.Items, 2)
 	require.Equal(t, ExternalUserStatusSkipped, result.Items[0].Status)
 	require.Equal(t, ExternalUserStatusCreated, result.Items[1].Status)
-	require.NotNil(t, result.Items[0].APIKey)
-	require.NotNil(t, result.Items[1].APIKey)
 	require.Len(t, result.Items[0].APIKeys, 1)
 	require.Len(t, result.Items[1].APIKeys, 1)
 }

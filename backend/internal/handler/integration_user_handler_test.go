@@ -104,7 +104,7 @@ func TestIntegrationUserHandler_CreateSuccessAndExisting(t *testing.T) {
 					Status:         tt.status,
 					ExternalUserID: "u-1",
 					User:           &service.ExternalUserUserInfo{ID: 10, Username: "张三"},
-					APIKey:         &service.ExternalUserAPIKeyInfo{ID: 20, Key: "sk-test", Status: service.StatusAPIKeyActive},
+					APIKeys:        []service.ExternalUserAPIKeyInfo{{ID: 20, Key: "sk-test", Status: service.StatusAPIKeyActive}},
 				},
 			}
 			router, _ := newIntegrationUserTestRouter(svc)
@@ -116,7 +116,8 @@ func TestIntegrationUserHandler_CreateSuccessAndExisting(t *testing.T) {
 
 			require.Equal(t, tt.wantStatus, rec.Code)
 			require.Equal(t, service.ExternalUserInput{ExternalUserID: "u-1", ExternalOrganizationID: "org-1", Username: "张三"}, svc.createInput)
-			require.Contains(t, rec.Body.String(), `"api_key"`)
+			require.Contains(t, rec.Body.String(), `"api_keys"`)
+			require.NotContains(t, rec.Body.String(), `"api_key":`)
 		})
 	}
 }
@@ -216,8 +217,8 @@ func TestIntegrationUserHandler_SyncSuccess(t *testing.T) {
 				Skipped: 1,
 			},
 			Items: []service.ExternalUserResult{
-				{Status: service.ExternalUserStatusCreated, ExternalUserID: "u-1", APIKey: &service.ExternalUserAPIKeyInfo{ID: 1, Key: "sk-1"}},
-				{Status: service.ExternalUserStatusSkipped, ExternalUserID: "u-2", APIKey: &service.ExternalUserAPIKeyInfo{ID: 2, Key: "sk-2"}},
+				{Status: service.ExternalUserStatusCreated, ExternalUserID: "u-1", APIKeys: []service.ExternalUserAPIKeyInfo{{ID: 1, Key: "sk-1"}}},
+				{Status: service.ExternalUserStatusSkipped, ExternalUserID: "u-2", APIKeys: []service.ExternalUserAPIKeyInfo{{ID: 2, Key: "sk-2"}}},
 			},
 		},
 	}
@@ -231,7 +232,8 @@ func TestIntegrationUserHandler_SyncSuccess(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "batch-1", svc.syncInput.BatchID)
 	require.Len(t, svc.syncInput.Users, 2)
-	require.Contains(t, rec.Body.String(), `"api_key"`)
+	require.Contains(t, rec.Body.String(), `"api_keys"`)
+	require.NotContains(t, rec.Body.String(), `"api_key":`)
 }
 
 func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine, *IntegrationUserHandler) {

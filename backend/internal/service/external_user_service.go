@@ -105,7 +105,6 @@ type ExternalUserResult struct {
 	ExternalUserID         string                   `json:"external_user_id"`
 	ExternalOrganizationID string                   `json:"external_organization_id,omitempty"`
 	User                   *ExternalUserUserInfo    `json:"user,omitempty"`
-	APIKey                 *ExternalUserAPIKeyInfo  `json:"api_key,omitempty"`
 	APIKeys                []ExternalUserAPIKeyInfo `json:"api_keys,omitempty"`
 	Error                  *ExternalUserItemError   `json:"error,omitempty"`
 }
@@ -117,19 +116,13 @@ type ExternalUserUserInfo struct {
 }
 
 type ExternalUserAPIKeyInfo struct {
-	ID      int64                  `json:"id"`
-	Name    string                 `json:"name"`
-	Key     string                 `json:"key"`
-	GroupID *int64                 `json:"group_id,omitempty"`
-	Group   *ExternalUserGroupInfo `json:"group,omitempty"`
-	Status  string                 `json:"status"`
-}
-
-type ExternalUserGroupInfo struct {
-	ID             int64   `json:"id"`
-	Name           string  `json:"name"`
-	Platform       string  `json:"platform"`
-	RateMultiplier float64 `json:"rate_multiplier"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Key       string `json:"key"`
+	GroupID   *int64 `json:"group_id,omitempty"`
+	GroupName string `json:"group_name,omitempty"`
+	Platform  string `json:"platform,omitempty"`
+	Status    string `json:"status"`
 }
 
 type ExternalUserDeleteResult struct {
@@ -235,7 +228,6 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 		ExternalUserID:         input.ExternalUserID,
 		ExternalOrganizationID: input.ExternalOrganizationID,
 		User:                   externalUserInfoFromService(user),
-		APIKey:                 externalAPIKeyInfoFromService(firstKey),
 		APIKeys:                externalAPIKeyInfosFromService(apiKeys),
 	}, nil
 }
@@ -353,7 +345,6 @@ func (s *ExternalUserService) buildExistingResult(ctx context.Context, externalU
 		ExternalUserID:         externalUserID,
 		ExternalOrganizationID: firstExternalUserNonEmpty(mapping.ExternalOrganizationID, externalOrganizationID),
 		User:                   externalUserInfoFromService(user),
-		APIKey:                 externalAPIKeyInfoFromService(firstKey),
 		APIKeys:                externalAPIKeyInfosFromService(apiKeys),
 	}, nil
 }
@@ -375,9 +366,9 @@ func (s *ExternalUserService) activeNonExclusiveGroups(ctx context.Context) ([]G
 	return out, nil
 }
 
-func (s *ExternalUserService) createDefaultAPIKey(ctx context.Context, userID int64, username string, groupID int64) (*APIKey, error) {
+func (s *ExternalUserService) createDefaultAPIKey(ctx context.Context, userID int64, name string, groupID int64) (*APIKey, error) {
 	return s.apiKeyService.Create(ctx, userID, CreateAPIKeyRequest{
-		Name:    username,
+		Name:    name,
 		GroupID: &groupID,
 	})
 }
@@ -413,7 +404,7 @@ func (s *ExternalUserService) createDefaultAPIKeys(ctx context.Context, userID i
 			keys = append(keys, key)
 			continue
 		}
-		key, err := s.createDefaultAPIKey(ctx, userID, username, group.ID)
+		key, err := s.createDefaultAPIKey(ctx, userID, externalUserAPIKeyName(username, group.Name), group.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -421,6 +412,10 @@ func (s *ExternalUserService) createDefaultAPIKeys(ctx context.Context, userID i
 		keys = append(keys, key)
 	}
 	return keys, nil
+}
+
+func externalUserAPIKeyName(username, groupName string) string {
+	return strings.TrimSpace(username) + strings.TrimSpace(groupName)
 }
 
 func externalUserGroupIDs(groups []Group) []int64 {
@@ -464,14 +459,18 @@ func externalAPIKeyInfoFromService(key *APIKey) *ExternalUserAPIKeyInfo {
 	if key == nil {
 		return nil
 	}
-	return &ExternalUserAPIKeyInfo{
+	info := &ExternalUserAPIKeyInfo{
 		ID:      key.ID,
 		Name:    key.Name,
 		Key:     key.Key,
 		GroupID: key.GroupID,
-		Group:   externalGroupInfoFromService(key.Group),
 		Status:  key.Status,
 	}
+	if key.Group != nil {
+		info.GroupName = key.Group.Name
+		info.Platform = key.Group.Platform
+	}
+	return info
 }
 
 func externalAPIKeyInfosFromService(keys []*APIKey) []ExternalUserAPIKeyInfo {
@@ -482,18 +481,6 @@ func externalAPIKeyInfosFromService(keys []*APIKey) []ExternalUserAPIKeyInfo {
 		}
 	}
 	return out
-}
-
-func externalGroupInfoFromService(group *Group) *ExternalUserGroupInfo {
-	if group == nil {
-		return nil
-	}
-	return &ExternalUserGroupInfo{
-		ID:             group.ID,
-		Name:           group.Name,
-		Platform:       group.Platform,
-		RateMultiplier: group.RateMultiplier,
-	}
 }
 
 func externalUserErrorItem(err error) *ExternalUserItemError {
