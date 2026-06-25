@@ -93,7 +93,7 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	}
 	apiKeys := &externalUserAPIKeyStub{
 		keys: map[int64]*APIKey{
-			201: {ID: 201, Key: "sk-existing", Name: "李四", GroupID: &groupID, Status: StatusAPIKeyActive},
+			201: {ID: 201, UserID: 101, Key: "sk-existing", Name: "李四", GroupID: &groupID, Status: StatusAPIKeyActive},
 		},
 	}
 	mappings := newExternalUserMappingStub()
@@ -167,6 +167,7 @@ func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *t
 }
 
 func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
+	groupID := int64(7)
 	admin := &externalUserAdminStub{
 		groups: []Group{{ID: 7, Status: StatusActive}},
 		users: map[int64]*User{
@@ -176,7 +177,7 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 	}
 	apiKeys := &externalUserAPIKeyStub{
 		keys: map[int64]*APIKey{
-			201: {ID: 201, Key: "sk-existing", Name: "已有", Status: StatusAPIKeyActive},
+			201: {ID: 201, UserID: 101, Key: "sk-existing", Name: "已有", GroupID: &groupID, Status: StatusAPIKeyActive},
 		},
 		nextKeys: []APIKey{{ID: 202, Key: "sk-new", Name: "新增", Status: StatusAPIKeyActive}},
 	}
