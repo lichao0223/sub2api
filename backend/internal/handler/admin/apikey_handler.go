@@ -57,9 +57,13 @@ type AdminUpdateAPIKeyRequest struct {
 }
 
 // Create handles creating an API key for a user.
-// POST /api/v1/admin/users/:user_id/api-keys
+// POST /api/v1/admin/users/:id/api-keys
 func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
-	userID, err := strconv.ParseInt(c.Param("user_id"), 10, 64)
+	id := c.Param("id")
+	if id == "" {
+		id = c.Param("user_id")
+	}
+	userID, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		response.BadRequest(c, "Invalid user ID")
 		return
