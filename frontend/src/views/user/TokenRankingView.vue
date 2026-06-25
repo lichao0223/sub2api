@@ -1,50 +1,6 @@
 <template>
   <AppLayout>
-    <div class="space-y-6">
-      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-            {{ t('tokenRanking.title') }}
-          </h1>
-        </div>
-        <div class="flex items-center gap-2 self-start md:self-auto">
-          <button class="btn btn-secondary" :disabled="loading" @click="loadRanking">
-            {{ t('common.refresh') }}
-          </button>
-          <div ref="exportMenuRef" class="relative">
-            <button
-              type="button"
-              class="btn btn-secondary flex items-center gap-2"
-              :disabled="loading || exporting || !rankingItems.length"
-              @click.stop="exportMenuOpen = !exportMenuOpen"
-            >
-              <Icon name="download" size="sm" />
-              {{ exporting ? t('tokenRanking.exporting') : t('tokenRanking.export') }}
-              <Icon name="chevronDown" size="xs" />
-            </button>
-            <div
-              v-if="exportMenuOpen"
-              class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-900"
-            >
-              <button
-                type="button"
-                class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-800"
-                @click="exportRanking('xlsx')"
-              >
-                {{ t('tokenRanking.exportExcel') }}
-              </button>
-              <button
-                type="button"
-                class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-800"
-                @click="exportRanking('csv')"
-              >
-                {{ t('tokenRanking.exportCsv') }}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
+    <div class="flex h-[calc(100vh-8rem)] min-h-0 flex-col gap-4 overflow-hidden">
       <div class="card p-4">
         <div class="flex flex-wrap items-center gap-4">
           <div class="flex items-center gap-2">
@@ -90,8 +46,41 @@
               @change="handleFilterChange"
             />
           </div>
-          <div class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('tokenRanking.workTime') }} 08:30 - 18:00
+          <div class="ml-auto flex items-center gap-2">
+            <button class="btn btn-secondary" :disabled="loading" @click="loadRanking">
+              {{ t('common.refresh') }}
+            </button>
+            <div ref="exportMenuRef" class="relative">
+              <button
+                type="button"
+                class="btn btn-secondary flex items-center gap-2"
+                :disabled="loading || exporting || !rankingItems.length"
+                @click.stop="exportMenuOpen = !exportMenuOpen"
+              >
+                <Icon name="download" size="sm" />
+                {{ exporting ? t('tokenRanking.exporting') : t('tokenRanking.export') }}
+                <Icon name="chevronDown" size="xs" />
+              </button>
+              <div
+                v-if="exportMenuOpen"
+                class="absolute right-0 z-20 mt-2 w-36 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-700 dark:bg-dark-900"
+              >
+                <button
+                  type="button"
+                  class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-800"
+                  @click="exportRanking('xlsx')"
+                >
+                  {{ t('tokenRanking.exportExcel') }}
+                </button>
+                <button
+                  type="button"
+                  class="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-dark-800"
+                  @click="exportRanking('csv')"
+                >
+                  {{ t('tokenRanking.exportCsv') }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -105,7 +94,7 @@
           {{ t('tokenRanking.failedToLoad') }}
         </div>
 
-        <div v-else-if="!rankingItems.length" class="card flex min-h-64 items-center justify-center p-6 text-sm text-gray-500 dark:text-gray-400">
+        <div v-else-if="!rankingItems.length" class="card flex min-h-0 flex-1 items-center justify-center p-6 text-sm text-gray-500 dark:text-gray-400">
           {{ t('tokenRanking.noData') }}
         </div>
 
@@ -143,7 +132,7 @@
             </div>
           </div>
 
-          <div class="card overflow-hidden">
+          <div class="card flex min-h-0 flex-1 flex-col overflow-hidden">
             <div class="border-b border-gray-100 px-4 py-3 dark:border-dark-700">
               <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <h2 class="text-sm font-semibold text-gray-900 dark:text-white">
@@ -161,7 +150,7 @@
                 </span>
               </div>
             </div>
-            <div ref="rankingTableScrollRef" class="max-h-[52vh] overflow-auto">
+            <div ref="rankingTableScrollRef" class="min-h-0 flex-1 overflow-auto">
               <table class="w-full min-w-[1120px] table-fixed text-sm">
                 <colgroup>
                   <col class="w-20" />
