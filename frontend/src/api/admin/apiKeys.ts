@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { ApiKey } from '@/types'
+import type { ApiKey, CreateApiKeyRequest, UpdateApiKeyRequest } from '@/types'
 
 export interface UpdateApiKeyGroupResult {
   api_key: ApiKey
@@ -26,8 +26,26 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function createForUser(userId: number, payload: CreateApiKeyRequest): Promise<ApiKey> {
+  const { data } = await apiClient.post<ApiKey>(`/admin/users/${userId}/api-keys`, payload)
+  return data
+}
+
+export async function update(id: number, updates: UpdateApiKeyRequest): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, updates)
+  return data
+}
+
+export async function deleteKey(id: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/api-keys/${id}`)
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  createForUser,
+  update,
+  delete: deleteKey
 }
 
 export default apiKeysAPI

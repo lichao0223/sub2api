@@ -7,6 +7,7 @@ import (
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
 const (
@@ -67,6 +68,7 @@ type externalUserAdminPort interface {
 type externalUserAPIKeyPort interface {
 	Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error)
 	GetByID(ctx context.Context, id int64) (*APIKey, error)
+	List(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error)
 }
 
 type ExternalUserService struct {
@@ -99,12 +101,13 @@ type ExternalUserSyncInput struct {
 }
 
 type ExternalUserResult struct {
-	Status                 string                  `json:"status"`
-	ExternalUserID         string                  `json:"external_user_id"`
-	ExternalOrganizationID string                  `json:"external_organization_id,omitempty"`
-	User                   *ExternalUserUserInfo   `json:"user,omitempty"`
-	APIKey                 *ExternalUserAPIKeyInfo `json:"api_key,omitempty"`
-	Error                  *ExternalUserItemError  `json:"error,omitempty"`
+	Status                 string                   `json:"status"`
+	ExternalUserID         string                   `json:"external_user_id"`
+	ExternalOrganizationID string                   `json:"external_organization_id,omitempty"`
+	User                   *ExternalUserUserInfo    `json:"user,omitempty"`
+	APIKey                 *ExternalUserAPIKeyInfo  `json:"api_key,omitempty"`
+	APIKeys                []ExternalUserAPIKeyInfo `json:"api_keys,omitempty"`
+	Error                  *ExternalUserItemError   `json:"error,omitempty"`
 }
 
 type ExternalUserUserInfo struct {
@@ -114,11 +117,19 @@ type ExternalUserUserInfo struct {
 }
 
 type ExternalUserAPIKeyInfo struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Key     string `json:"key"`
-	GroupID *int64 `json:"group_id,omitempty"`
-	Status  string `json:"status"`
+	ID      int64                  `json:"id"`
+	Name    string                 `json:"name"`
+	Key     string                 `json:"key"`
+	GroupID *int64                 `json:"group_id,omitempty"`
+	Group   *ExternalUserGroupInfo `json:"group,omitempty"`
+	Status  string                 `json:"status"`
+}
+
+type ExternalUserGroupInfo struct {
+	ID             int64   `json:"id"`
+	Name           string  `json:"name"`
+	Platform       string  `json:"platform"`
+	RateMultiplier float64 `json:"rate_multiplier"`
 }
 
 type ExternalUserDeleteResult struct {
@@ -174,10 +185,11 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
 
-	group, err := s.firstActiveGroup(ctx)
+	groups, err := s.activeNonExclusiveGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
+	allowedGroups := externalUserGroupIDs(groups)
 
 	balance := float64(externalUserDefaultBalance)
 	user, err := s.adminService.CreateUser(ctx, &CreateUserInput{
@@ -186,23 +198,24 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 		Username:      input.Username,
 		Balance:       &balance,
 		Concurrency:   externalUserDefaultConcurrency,
-		AllowedGroups: []int64{group.ID},
+		AllowedGroups: allowedGroups,
 	})
 	if err != nil {
 		return nil, ErrExternalUserCreateUserFailed.WithCause(err)
 	}
 
-	apiKey, err := s.createDefaultAPIKey(ctx, user.ID, input.Username, group.ID)
+	apiKeys, err := s.createDefaultAPIKeys(ctx, user.ID, input.Username, groups, nil)
 	if err != nil {
 		_ = s.adminService.DeleteUser(ctx, user.ID)
 		return nil, ErrExternalUserCreateAPIKeyFailed.WithCause(err)
 	}
+	firstKey := externalUserFirstAPIKey(apiKeys)
 
 	mapping := &ExternalUserMapping{
 		ExternalUserID:         input.ExternalUserID,
 		ExternalOrganizationID: input.ExternalOrganizationID,
 		UserID:                 user.ID,
-		APIKeyID:               apiKey.ID,
+		APIKeyID:               firstKey.ID,
 		UsernameSnapshot:       input.Username,
 	}
 	if err := s.mappingRepo.Create(ctx, mapping); err != nil {
@@ -222,7 +235,8 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 		ExternalUserID:         input.ExternalUserID,
 		ExternalOrganizationID: input.ExternalOrganizationID,
 		User:                   externalUserInfoFromService(user),
-		APIKey:                 externalAPIKeyInfoFromService(apiKey),
+		APIKey:                 externalAPIKeyInfoFromService(firstKey),
+		APIKeys:                externalAPIKeyInfosFromService(apiKeys),
 	}, nil
 }
 
@@ -315,22 +329,21 @@ func (s *ExternalUserService) buildExistingResult(ctx context.Context, externalU
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
 
-	apiKey, err := s.apiKeyService.GetByID(ctx, mapping.APIKeyID)
+	groups, err := s.activeNonExclusiveGroups(ctx)
 	if err != nil {
-		if !errors.Is(err, ErrAPIKeyNotFound) {
-			return nil, ErrExternalUserInternal.WithCause(err)
-		}
+		return nil, err
 	}
-	if err != nil || !apiKey.IsActive() {
-		group, groupErr := s.firstActiveGroup(ctx)
-		if groupErr != nil {
-			return nil, groupErr
-		}
-		apiKey, err = s.createDefaultAPIKey(ctx, mapping.UserID, username, group.ID)
-		if err != nil {
-			return nil, ErrExternalUserCreateAPIKeyFailed.WithCause(err)
-		}
-		if err := s.mappingRepo.UpdateAPIKeyID(ctx, mapping.ID, apiKey.ID); err != nil {
+	existingKeys, err := s.listUserAPIKeys(ctx, mapping.UserID)
+	if err != nil {
+		return nil, err
+	}
+	apiKeys, err := s.createDefaultAPIKeys(ctx, mapping.UserID, firstExternalUserNonEmpty(username, mapping.UsernameSnapshot, user.Username), groups, existingKeys)
+	if err != nil {
+		return nil, ErrExternalUserCreateAPIKeyFailed.WithCause(err)
+	}
+	firstKey := externalUserFirstAPIKey(apiKeys)
+	if firstKey != nil && firstKey.ID != mapping.APIKeyID {
+		if err := s.mappingRepo.UpdateAPIKeyID(ctx, mapping.ID, firstKey.ID); err != nil {
 			return nil, ErrExternalUserInternal.WithCause(err)
 		}
 	}
@@ -340,19 +353,26 @@ func (s *ExternalUserService) buildExistingResult(ctx context.Context, externalU
 		ExternalUserID:         externalUserID,
 		ExternalOrganizationID: firstExternalUserNonEmpty(mapping.ExternalOrganizationID, externalOrganizationID),
 		User:                   externalUserInfoFromService(user),
-		APIKey:                 externalAPIKeyInfoFromService(apiKey),
+		APIKey:                 externalAPIKeyInfoFromService(firstKey),
+		APIKeys:                externalAPIKeyInfosFromService(apiKeys),
 	}, nil
 }
 
-func (s *ExternalUserService) firstActiveGroup(ctx context.Context) (*Group, error) {
+func (s *ExternalUserService) activeNonExclusiveGroups(ctx context.Context) ([]Group, error) {
 	groups, err := s.adminService.GetAllGroups(ctx)
 	if err != nil {
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
-	if len(groups) == 0 {
+	out := make([]Group, 0, len(groups))
+	for _, group := range groups {
+		if group.IsActive() && !group.IsExclusive {
+			out = append(out, group)
+		}
+	}
+	if len(out) == 0 {
 		return nil, ErrExternalUserNoActiveGroup
 	}
-	return &groups[0], nil
+	return out, nil
 }
 
 func (s *ExternalUserService) createDefaultAPIKey(ctx context.Context, userID int64, username string, groupID int64) (*APIKey, error) {
@@ -360,6 +380,73 @@ func (s *ExternalUserService) createDefaultAPIKey(ctx context.Context, userID in
 		Name:    username,
 		GroupID: &groupID,
 	})
+}
+
+func (s *ExternalUserService) listUserAPIKeys(ctx context.Context, userID int64) ([]APIKey, error) {
+	keys, _, err := s.apiKeyService.List(ctx, userID, pagination.PaginationParams{
+		Page:      1,
+		PageSize:  1000,
+		SortBy:    "created_at",
+		SortOrder: "asc",
+	}, APIKeyListFilters{})
+	if err != nil {
+		return nil, ErrExternalUserInternal.WithCause(err)
+	}
+	return keys, nil
+}
+
+func (s *ExternalUserService) createDefaultAPIKeys(ctx context.Context, userID int64, username string, groups []Group, existing []APIKey) ([]*APIKey, error) {
+	byGroup := make(map[int64]*APIKey, len(existing))
+	for i := range existing {
+		key := existing[i]
+		if key.GroupID == nil || !key.IsActive() {
+			continue
+		}
+		byGroup[*key.GroupID] = &key
+	}
+
+	keys := make([]*APIKey, 0, len(groups))
+	for i := range groups {
+		group := groups[i]
+		if key := byGroup[group.ID]; key != nil {
+			attachExternalUserGroup(key, &group)
+			keys = append(keys, key)
+			continue
+		}
+		key, err := s.createDefaultAPIKey(ctx, userID, username, group.ID)
+		if err != nil {
+			return nil, err
+		}
+		attachExternalUserGroup(key, &group)
+		keys = append(keys, key)
+	}
+	return keys, nil
+}
+
+func externalUserGroupIDs(groups []Group) []int64 {
+	ids := make([]int64, 0, len(groups))
+	for _, group := range groups {
+		ids = append(ids, group.ID)
+	}
+	return ids
+}
+
+func attachExternalUserGroup(key *APIKey, group *Group) {
+	if key == nil || group == nil {
+		return
+	}
+	g := *group
+	key.Group = &g
+	if key.GroupID == nil {
+		key.GroupID = &g.ID
+	}
+}
+
+func externalUserFirstAPIKey(keys []*APIKey) *APIKey {
+	if len(keys) == 0 {
+		return nil
+	}
+	return keys[0]
 }
 
 func externalUserInfoFromService(user *User) *ExternalUserUserInfo {
@@ -382,7 +469,30 @@ func externalAPIKeyInfoFromService(key *APIKey) *ExternalUserAPIKeyInfo {
 		Name:    key.Name,
 		Key:     key.Key,
 		GroupID: key.GroupID,
+		Group:   externalGroupInfoFromService(key.Group),
 		Status:  key.Status,
+	}
+}
+
+func externalAPIKeyInfosFromService(keys []*APIKey) []ExternalUserAPIKeyInfo {
+	out := make([]ExternalUserAPIKeyInfo, 0, len(keys))
+	for _, key := range keys {
+		if item := externalAPIKeyInfoFromService(key); item != nil {
+			out = append(out, *item)
+		}
+	}
+	return out
+}
+
+func externalGroupInfoFromService(group *Group) *ExternalUserGroupInfo {
+	if group == nil {
+		return nil
+	}
+	return &ExternalUserGroupInfo{
+		ID:             group.ID,
+		Name:           group.Name,
+		Platform:       group.Platform,
+		RateMultiplier: group.RateMultiplier,
 	}
 }
 

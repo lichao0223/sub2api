@@ -9,12 +9,17 @@ import (
 	"testing"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/stretchr/testify/require"
 )
 
 func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.T) {
 	admin := &externalUserAdminStub{
-		groups: []Group{{ID: 7, Status: StatusActive}},
+		groups: []Group{
+			{ID: 7, Name: "公共一", Status: StatusActive},
+			{ID: 8, Name: "专属", Status: StatusActive, IsExclusive: true},
+			{ID: 9, Name: "公共二", Status: StatusActive},
+		},
 		nextUser: &User{
 			ID:       101,
 			Email:    "ext@example.local",
@@ -22,11 +27,9 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 		},
 	}
 	apiKeys := &externalUserAPIKeyStub{
-		nextKey: &APIKey{
-			ID:     201,
-			Key:    "sk-created",
-			Name:   "张三",
-			Status: StatusAPIKeyActive,
+		nextKeys: []APIKey{
+			{ID: 201, Key: "sk-created-1", Name: "张三", Status: StatusAPIKeyActive},
+			{ID: 202, Key: "sk-created-2", Name: "张三", Status: StatusAPIKeyActive},
 		},
 	}
 	mappings := newExternalUserMappingStub()
@@ -47,7 +50,11 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	require.Equal(t, "u-1", result.ExternalUserID)
 	require.NotNil(t, result.APIKey)
 	require.Equal(t, int64(201), result.APIKey.ID)
-	require.Equal(t, "sk-created", result.APIKey.Key)
+	require.Equal(t, "sk-created-1", result.APIKey.Key)
+	require.Len(t, result.APIKeys, 2)
+	require.Equal(t, int64(7), *result.APIKeys[0].GroupID)
+	require.Equal(t, int64(9), *result.APIKeys[1].GroupID)
+	require.Equal(t, "公共一", result.APIKeys[0].Group.Name)
 
 	require.Len(t, admin.createInputs, 1)
 	input := admin.createInputs[0]
@@ -55,15 +62,17 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	require.NotNil(t, input.Balance)
 	require.Equal(t, float64(externalUserDefaultBalance), *input.Balance)
 	require.Equal(t, externalUserDefaultConcurrency, input.Concurrency)
-	require.Equal(t, []int64{7}, input.AllowedGroups)
+	require.Equal(t, []int64{7, 9}, input.AllowedGroups)
 	require.Equal(t, "u-1@sub.com", input.Email)
 	require.Equal(t, "u-1", input.Password)
 
-	require.Len(t, apiKeys.createCalls, 1)
+	require.Len(t, apiKeys.createCalls, 2)
 	require.Equal(t, int64(101), apiKeys.createCalls[0].userID)
 	require.Equal(t, "张三", apiKeys.createCalls[0].req.Name)
 	require.NotNil(t, apiKeys.createCalls[0].req.GroupID)
 	require.Equal(t, int64(7), *apiKeys.createCalls[0].req.GroupID)
+	require.NotNil(t, apiKeys.createCalls[1].req.GroupID)
+	require.Equal(t, int64(9), *apiKeys.createCalls[1].req.GroupID)
 
 	mapping, err := mappings.GetByExternalUserID(context.Background(), "u-1")
 	require.NoError(t, err)
@@ -76,6 +85,7 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.T) {
 	groupID := int64(7)
 	admin := &externalUserAdminStub{
+		groups: []Group{{ID: 7, Name: "公共", Status: StatusActive}},
 		users: map[int64]*User{
 			101: {ID: 101, Email: "ext@example.local", Username: "李四"},
 		},
@@ -110,6 +120,7 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	require.Equal(t, int64(101), result.User.ID)
 	require.Equal(t, int64(201), result.APIKey.ID)
 	require.Equal(t, "sk-existing", result.APIKey.Key)
+	require.Len(t, result.APIKeys, 1)
 	require.Equal(t, "org-1", result.ExternalOrganizationID)
 	require.Empty(t, admin.createInputs)
 	require.Empty(t, apiKeys.createCalls)
@@ -123,8 +134,7 @@ func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *t
 		},
 	}
 	apiKeys := &externalUserAPIKeyStub{
-		getErr:  ErrAPIKeyNotFound,
-		nextKey: &APIKey{ID: 202, Key: "sk-replacement", Name: "王五", Status: StatusAPIKeyActive},
+		nextKeys: []APIKey{{ID: 202, Key: "sk-replacement", Name: "王五", Status: StatusAPIKeyActive}},
 	}
 	mappings := newExternalUserMappingStub()
 	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
@@ -149,6 +159,7 @@ func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *t
 	require.NoError(t, err)
 	require.Equal(t, ExternalUserStatusSkipped, result.Status)
 	require.Equal(t, int64(202), result.APIKey.ID)
+	require.Len(t, result.APIKeys, 1)
 	mapping, err := mappings.GetByExternalUserID(context.Background(), "u-3")
 	require.NoError(t, err)
 	require.Equal(t, int64(202), mapping.APIKeyID)
@@ -166,7 +177,7 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 		keys: map[int64]*APIKey{
 			201: {ID: 201, Key: "sk-existing", Name: "已有", Status: StatusAPIKeyActive},
 		},
-		nextKey: &APIKey{ID: 202, Key: "sk-new", Name: "新增", Status: StatusAPIKeyActive},
+		nextKeys: []APIKey{{ID: 202, Key: "sk-new", Name: "新增", Status: StatusAPIKeyActive}},
 	}
 	mappings := newExternalUserMappingStub()
 	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
@@ -201,6 +212,8 @@ func TestExternalUserService_Sync_ReturnsSummary(t *testing.T) {
 	require.Equal(t, ExternalUserStatusCreated, result.Items[1].Status)
 	require.NotNil(t, result.Items[0].APIKey)
 	require.NotNil(t, result.Items[1].APIKey)
+	require.Len(t, result.Items[0].APIKeys, 1)
+	require.Len(t, result.Items[1].APIKeys, 1)
 }
 
 func TestExternalUserService_DeleteAll_DeletesMappedUsers(t *testing.T) {
@@ -248,7 +261,7 @@ func TestExternalUserService_Create_MappingConflictRequeryFailureReturnsConflict
 		nextUser: &User{ID: 101, Email: "ext@example.local", Username: "赵六"},
 	}
 	apiKeys := &externalUserAPIKeyStub{
-		nextKey: &APIKey{ID: 201, Key: "sk-created", Name: "赵六", Status: StatusAPIKeyActive},
+		nextKeys: []APIKey{{ID: 201, Key: "sk-created", Name: "赵六", Status: StatusAPIKeyActive}},
 	}
 	mappings := newExternalUserMappingStub()
 	mappings.createErr = ErrExternalUserMappingExists
@@ -330,6 +343,7 @@ type externalUserAPIKeyCreateCall struct {
 type externalUserAPIKeyStub struct {
 	keys        map[int64]*APIKey
 	nextKey     *APIKey
+	nextKeys    []APIKey
 	getErr      error
 	createErr   error
 	createCalls []externalUserAPIKeyCreateCall
@@ -340,10 +354,15 @@ func (s *externalUserAPIKeyStub) Create(_ context.Context, userID int64, req Cre
 		return nil, s.createErr
 	}
 	s.createCalls = append(s.createCalls, externalUserAPIKeyCreateCall{userID: userID, req: req})
-	if s.nextKey == nil {
+	var key APIKey
+	if len(s.nextKeys) > 0 {
+		key = s.nextKeys[0]
+		s.nextKeys = s.nextKeys[1:]
+	} else if s.nextKey != nil {
+		key = *s.nextKey
+	} else {
 		return nil, errors.New("next api key missing")
 	}
-	key := *s.nextKey
 	key.UserID = userID
 	key.Name = req.Name
 	key.GroupID = req.GroupID
@@ -363,6 +382,16 @@ func (s *externalUserAPIKeyStub) GetByID(_ context.Context, id int64) (*APIKey, 
 		return &out, nil
 	}
 	return nil, ErrAPIKeyNotFound
+}
+
+func (s *externalUserAPIKeyStub) List(_ context.Context, userID int64, _ pagination.PaginationParams, _ APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
+	out := make([]APIKey, 0, len(s.keys))
+	for _, key := range s.keys {
+		if key != nil && key.UserID == userID {
+			out = append(out, *key)
+		}
+	}
+	return out, &pagination.PaginationResult{Total: int64(len(out))}, nil
 }
 
 type externalUserMappingStub struct {
