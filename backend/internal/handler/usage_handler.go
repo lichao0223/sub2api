@@ -390,10 +390,11 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 // Uses user's timezone if provided, otherwise falls back to server timezone
 func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 	userTZ := c.Query("timezone") // Get user's timezone from request
-	now := timezone.NowInUserLocation(userTZ)
-	startDate := c.Query("start_date")
-	endDate := c.Query("end_date")
+	return parseUserTimeRangeValues(c.Query("start_date"), c.Query("end_date"), userTZ)
+}
 
+func parseUserTimeRangeValues(startDate, endDate, userTZ string) (time.Time, time.Time) {
+	now := timezone.NowInUserLocation(userTZ)
 	var startTime, endTime time.Time
 
 	if startDate != "" {
@@ -408,7 +409,7 @@ func parseUserTimeRange(c *gin.Context) (time.Time, time.Time) {
 
 	if endDate != "" {
 		if t, err := timezone.ParseInUserLocation("2006-01-02", endDate, userTZ); err == nil {
-			endTime = t.Add(24 * time.Hour) // Include the end date
+			endTime = t.Add(24 * time.Hour)
 		} else {
 			endTime = timezone.StartOfDayInUserLocation(now.AddDate(0, 0, 1), userTZ)
 		}
@@ -552,26 +553,58 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 	})
 }
 
+type DashboardNonworkTokenRankingRequest struct {
+	StartDate               string   `json:"start_date"`
+	EndDate                 string   `json:"end_date"`
+	Limit                   int      `json:"limit"`
+	Scope                   string   `json:"scope"`
+	RankBy                  string   `json:"rank_by"`
+	SortOrder               string   `json:"sort_order"`
+	Timezone                string   `json:"timezone"`
+	ExternalOrganizationIDs []string `json:"external_organization_id"`
+	Username                string   `json:"username"`
+}
+
 // DashboardNonworkTokenRanking handles getting cross-user token usage ranking for non-work time.
-// GET /api/v1/usage/dashboard/token-ranking/nonwork
+// POST /api/v1/usage/dashboard/token-ranking/nonwork
 func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 	if _, ok := middleware2.GetAuthSubjectFromContext(c); !ok {
 		response.Unauthorized(c, "User not authenticated")
 		return
 	}
 
-	startTime, endTime := parseUserTimeRange(c)
-	limit := parseUserRankingLimit(c.Query("limit"))
-	scope := strings.TrimSpace(c.DefaultQuery("scope", usagestats.NonworkRankingScopeAll))
-	rankBy := strings.TrimSpace(c.DefaultQuery("rank_by", usagestats.NonworkRankingRankByTokens))
-	sortOrder := strings.TrimSpace(c.DefaultQuery("sort_order", "asc"))
-	userTZ := strings.TrimSpace(c.Query("timezone"))
-	externalOrganizationID := strings.TrimSpace(c.Query("external_organization_id"))
+	var req DashboardNonworkTokenRankingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	userTZ := strings.TrimSpace(req.Timezone)
 	if userTZ == "" {
 		userTZ = "Asia/Shanghai"
 	}
+	startTime, endTime := parseUserTimeRangeValues(req.StartDate, req.EndDate, userTZ)
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 0
+	} else if limit > 10000 {
+		limit = 10000
+	}
+	scope := strings.TrimSpace(req.Scope)
+	if scope == "" {
+		scope = usagestats.NonworkRankingScopeAll
+	}
+	rankBy := strings.TrimSpace(req.RankBy)
+	if rankBy == "" {
+		rankBy = usagestats.NonworkRankingRankByTokens
+	}
+	sortOrder := strings.TrimSpace(req.SortOrder)
+	if sortOrder == "" {
+		sortOrder = "asc"
+	}
+	username := strings.TrimSpace(req.Username)
 
-	ranking, err := h.usageService.GetUserNonworkTokenRanking(c.Request.Context(), startTime, endTime.Add(-24*time.Hour), scope, rankBy, sortOrder, userTZ, externalOrganizationID, limit)
+	ranking, err := h.usageService.GetUserNonworkTokenRanking(c.Request.Context(), startTime, endTime.Add(-24*time.Hour), scope, rankBy, sortOrder, userTZ, req.ExternalOrganizationIDs, username, limit)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

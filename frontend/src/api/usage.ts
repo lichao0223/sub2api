@@ -81,6 +81,8 @@ export interface UserTokenRankingParams {
   rank_by?: 'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration' | 'actual_cost'
   sort_order?: 'asc' | 'desc'
   timezone?: string
+  external_organization_id?: string[]
+  username?: string
 }
 
 export interface ApiKeyDailyUsagePoint {
@@ -284,9 +286,7 @@ export async function getDashboardTokenRanking(
 export async function getDashboardNonworkTokenRanking(
   params?: UserTokenRankingParams
 ): Promise<UserTokenRankingResponse> {
-  const { data } = await apiClient.get<UserTokenRankingResponse>('/usage/dashboard/token-ranking/nonwork', {
-    params
-  })
+  const { data } = await apiClient.post<UserTokenRankingResponse>('/usage/dashboard/token-ranking/nonwork', params || {})
   return data
 }
 

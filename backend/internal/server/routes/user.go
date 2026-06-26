@@ -16,7 +16,7 @@ func RegisterUserRoutes(
 	adminAuth middleware.AdminAuthMiddleware,
 	settingService *service.SettingService,
 ) {
-	v1.GET(
+	v1.POST(
 		"/usage/dashboard/token-ranking/nonwork",
 		jwtOrAdminAuth(jwtAuth, adminAuth),
 		middleware.BackendModeUserGuard(settingService),

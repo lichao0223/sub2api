@@ -2531,14 +2531,20 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 	}, nil
 }
 
-func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, tz, externalOrganizationID string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
+func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, tz string, externalOrganizationIDs []string, username string, limit int) (result *UserNonworkTokenRankingResponse, err error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	if strings.TrimSpace(tz) == "" {
 		tz = "Asia/Shanghai"
 	}
-	externalOrganizationID = strings.TrimSpace(externalOrganizationID)
+	externalOrganizationIDs = strings.FieldsFunc(strings.Join(externalOrganizationIDs, ","), func(r rune) bool {
+		return r == ','
+	})
+	for i := range externalOrganizationIDs {
+		externalOrganizationIDs[i] = strings.TrimSpace(externalOrganizationIDs[i])
+	}
+	username = strings.TrimSpace(username)
 	coverage, err := r.GetNonworkStatsCoverage(ctx, startDate, endDate, tz)
 	if err != nil {
 		return nil, err
@@ -2554,13 +2560,24 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			WHERE u.deleted_at IS NULL
 			  AND u.role <> $5
 			  AND (
-				  $6 = ''
+				  cardinality($6::text[]) = 0
 				  OR EXISTS (
 					  SELECT 1
 					  FROM external_user_mappings eum
 					  WHERE eum.user_id = u.id
 					    AND eum.deleted_at IS NULL
-					    AND eum.external_organization_id = $6
+					    AND eum.external_organization_id = ANY($6::text[])
+				  )
+			  )
+			  AND (
+				  $7 = ''
+				  OR u.username ILIKE '%%' || $7 || '%%'
+				  OR EXISTS (
+					  SELECT 1
+					  FROM external_user_mappings eum_name
+					  WHERE eum_name.user_id = u.id
+					    AND eum_name.deleted_at IS NULL
+					    AND eum_name.username_snapshot ILIKE '%%' || $7 || '%%'
 				  )
 			  )
 		),
@@ -2619,7 +2636,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			CROSS JOIN totals t
 			LEFT JOIN stats s ON s.user_id = u.id
 			ORDER BY %s %s, COALESCE(s.tokens, 0) %s, COALESCE(s.active_duration_ms, 0) %s, u.id ASC
-			LIMIT $7
+			LIMIT $8
 		)
 		SELECT
 			user_id,
@@ -2644,7 +2661,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		ORDER BY %s %s, tokens %s, active_duration_ms %s, user_id ASC
 	`, innerOrderExpr, innerDirection, innerDirection, innerDirection, outerOrderExpr, outerDirection, outerDirection, outerDirection)
 
-	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, externalOrganizationID, limit)
+	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, pq.Array(compactStrings(externalOrganizationIDs)), username, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -2702,6 +2719,16 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		StatsCoverage:         coverage,
 		StatsComplete:         coverage.Complete,
 	}, nil
+}
+
+func compactStrings(values []string) []string {
+	out := values[:0]
+	for _, value := range values {
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }
 
 func (r *usageLogRepository) GetNonworkStatsCoverage(ctx context.Context, startDate, endDate time.Time, tz string) (result usagestats.NonworkStatsCoverage, err error) {

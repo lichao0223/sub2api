@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -40,24 +41,26 @@ func TestTokenRankingNonworkRouteSupportsJWTOrAdminAuth(t *testing.T) {
 		nil,
 	)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
 	req.Header.Set("x-api-key", "admin-key")
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
 
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/usage/dashboard/token-ranking/nonwork", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-test-jwt", "ok")
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusInternalServerError, rec.Code)
 
-	req = httptest.NewRequest(http.MethodGet, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/usage/dashboard/token-ranking/nonwork", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", "admin-key")
 	req.Header.Set("x-test-admin", "ok")
 	rec = httptest.NewRecorder()

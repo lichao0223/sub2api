@@ -621,10 +621,10 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 	)
 
 	mock.ExpectQuery("WITH filtered_users AS \\(").
-		WithArgs(start, end, "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, "", 12).
+		WithArgs(start, end, "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, sqlmock.AnyArg(), "", 12).
 		WillReturnRows(rows)
 
-	got, err := repo.GetUserNonworkTokenRanking(context.Background(), start, end, usagestats.NonworkRankingScopeNonwork, usagestats.NonworkRankingRankByActiveDuration, "asc", "Asia/Shanghai", "", 12)
+	got, err := repo.GetUserNonworkTokenRanking(context.Background(), start, end, usagestats.NonworkRankingScopeNonwork, usagestats.NonworkRankingRankByActiveDuration, "asc", "Asia/Shanghai", nil, "", 12)
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.UserNonworkTokenRankingResponse{
 		Ranking: []usagestats.UserNonworkTokenRankingItem{
