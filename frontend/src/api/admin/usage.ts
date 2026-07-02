@@ -103,6 +103,84 @@ export interface NonworkCalendarYearStatus {
   confirmed: boolean
 }
 
+export interface ExternalUsageImportRow {
+  row_number?: number
+  date: string
+  username: string
+  requests: number
+  total_tokens: number
+  input_tokens?: number
+  output_tokens?: number
+  cache_creation_tokens?: number
+  cache_read_tokens?: number
+  actual_cost?: number
+  active_duration_ms?: number
+  nonwork_tokens?: number
+  nonwork_active_ms?: number
+  note?: string
+}
+
+export interface ExternalUsageImportRowError {
+  field: string
+  code: string
+  message: string
+}
+
+export interface ExternalUsageImportPreviewRow extends ExternalUsageImportRow {
+  status: 'matched' | 'overwrite' | 'unmatched' | 'conflict' | 'invalid'
+  matched_user_id: number
+  matched_email: string
+  matched_username: string
+  errors?: ExternalUsageImportRowError[]
+}
+
+export interface ExternalUsageImportSummary {
+  total_rows: number
+  matched_rows: number
+  overwritten_rows: number
+  unmatched_rows: number
+  conflict_rows: number
+  invalid_rows: number
+  imported_rows: number
+}
+
+export interface ExternalUsageImportPreview {
+  file_sha256: string
+  summary: ExternalUsageImportSummary
+  rows: ExternalUsageImportPreviewRow[]
+}
+
+export interface ExternalUsageImportResult extends ExternalUsageImportPreview {
+  batch_id: number
+}
+
+export interface ExternalUsageImportBatch {
+  id: number
+  file_name: string
+  file_sha256: string
+  status: string
+  total_rows: number
+  matched_rows: number
+  unmatched_rows: number
+  conflict_rows: number
+  invalid_rows: number
+  overwritten_rows: number
+  imported_rows: number
+  created_by: number
+  created_at: string
+  imported_at?: string
+  voided_at?: string
+  voided_by?: number
+  note: string
+}
+
+export interface ExternalUsageImportPayload {
+  file_name: string
+  file_sha256: string
+  note?: string
+  rows: ExternalUsageImportRow[]
+}
+
 // ==================== API Functions ====================
 
 /**
@@ -256,6 +334,43 @@ export async function backfillNonworkUsage(payload: {
   timezone?: string
 }): Promise<{ status: string }> {
   const { data } = await apiClient.post<{ status: string }>('/admin/usage/nonwork/backfill', payload)
+  return data
+}
+
+export async function previewExternalUsageImport(payload: ExternalUsageImportPayload): Promise<ExternalUsageImportPreview> {
+  const { data } = await apiClient.post<ExternalUsageImportPreview>('/admin/usage/external-imports/preview', payload)
+  return data
+}
+
+export async function importExternalUsage(payload: ExternalUsageImportPayload): Promise<ExternalUsageImportResult> {
+  const { data } = await apiClient.post<ExternalUsageImportResult>('/admin/usage/external-imports', payload)
+  return data
+}
+
+export async function listExternalUsageImportBatches(params: {
+  page?: number
+  page_size?: number
+}): Promise<PaginatedResponse<ExternalUsageImportBatch>> {
+  const { data } = await apiClient.get<PaginatedResponse<ExternalUsageImportBatch>>('/admin/usage/external-imports', {
+    params
+  })
+  return data
+}
+
+export async function voidExternalUsageImportBatch(id: number): Promise<{ id: number; status: string }> {
+  const { data } = await apiClient.delete<{ id: number; status: string }>(`/admin/usage/external-imports/${id}`)
+  return data
+}
+
+export async function exportExternalUsageRows(payload: {
+  start_date: string
+  end_date: string
+  include_nonwork: boolean
+}): Promise<{ rows: ExternalUsageImportRow[]; start_date: string; end_date: string }> {
+  const { data } = await apiClient.post<{ rows: ExternalUsageImportRow[]; start_date: string; end_date: string }>(
+    '/admin/usage/external-exports',
+    payload
+  )
   return data
 }
 

@@ -2497,18 +2497,40 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 // GetUserTokenRanking returns user ranking aggregated by token usage within the time range.
 func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserTokenRankingResponse, err error) {
 	query := `
-		WITH user_tokens AS (
+		WITH internal_stats AS (
+			SELECT
+				u.user_id,
+				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
+				COALESCE(COUNT(u.id), 0) as requests,
+				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
+			FROM usage_logs u
+			WHERE u.created_at >= $1 AND u.created_at < $2
+			GROUP BY u.user_id
+		),
+		external_stats AS (
+			SELECT
+				s.user_id,
+				COALESCE(SUM(s.actual_cost), 0) as actual_cost,
+				COALESCE(SUM(s.requests), 0) as requests,
+				COALESCE(SUM(s.total_tokens), 0) as tokens
+			FROM external_usage_daily_user_stats s
+			JOIN external_usage_import_batches b ON b.id = s.batch_id AND b.status = 'imported'
+			WHERE s.bucket_date >= ($1 AT TIME ZONE 'Asia/Shanghai')::date
+			  AND s.bucket_date < ($2 AT TIME ZONE 'Asia/Shanghai')::date
+			GROUP BY s.user_id
+		),
+		user_tokens AS (
 			SELECT
 				us.id as user_id,
 				COALESCE(us.email, '') as email,
 				COALESCE(us.username, '') as username,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
-				COALESCE(COUNT(u.id), 0) as requests,
-				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
+				COALESCE(i.actual_cost, 0) + COALESCE(e.actual_cost, 0) as actual_cost,
+				COALESCE(i.requests, 0) + COALESCE(e.requests, 0) as requests,
+				COALESCE(i.tokens, 0) + COALESCE(e.tokens, 0) as tokens
 			FROM users us
-			LEFT JOIN usage_logs u ON u.user_id = us.id AND u.created_at >= $1 AND u.created_at < $2
+			LEFT JOIN internal_stats i ON i.user_id = us.id
+			LEFT JOIN external_stats e ON e.user_id = us.id
 			WHERE us.deleted_at IS NULL AND us.role <> $3
-			GROUP BY us.id, us.email, us.username
 		),
 		ranked AS (
 			SELECT
@@ -2651,33 +2673,75 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			  AND timezone = $3
 			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = st.user_id)
 		),
-		ranked AS (
+		external_stats AS (
+			SELECT
+				s.user_id,
+				COALESCE(SUM(s.requests), 0) AS requests,
+				COALESCE(SUM(s.total_tokens), 0) AS tokens,
+				COALESCE(SUM(s.nonwork_tokens), 0) AS nonwork_tokens,
+				COALESCE(SUM(s.active_ms), 0) AS active_duration_ms,
+				COALESCE(SUM(s.nonwork_active_ms), 0) AS nonwork_active_ms,
+				COALESCE(SUM(s.actual_cost), 0) AS actual_cost
+			FROM external_usage_daily_user_stats s
+			JOIN external_usage_import_batches b ON b.id = s.batch_id AND b.status = 'imported'
+			WHERE s.bucket_date >= $1::date
+			  AND s.bucket_date <= $2::date
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = s.user_id)
+			GROUP BY s.user_id
+		),
+		external_totals AS (
+			SELECT
+				COALESCE(SUM(s.total_tokens), 0) AS total_all_tokens,
+				COALESCE(SUM(s.nonwork_tokens), 0) AS total_nonwork_tokens
+			FROM external_usage_daily_user_stats s
+			JOIN external_usage_import_batches b ON b.id = s.batch_id AND b.status = 'imported'
+			WHERE s.bucket_date >= $1::date
+			  AND s.bucket_date <= $2::date
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = s.user_id)
+		),
+		metric AS (
 			SELECT
 				u.id AS user_id,
 				COALESCE(u.email, '') AS email,
 				COALESCE(u.username, '') AS username,
-				COALESCE(s.actual_cost, 0) AS actual_cost,
-				COALESCE(s.requests, 0) AS requests,
-				COALESCE(s.tokens, 0) AS tokens,
-				COALESCE(s.nonwork_tokens, 0) AS nonwork_tokens,
-				COALESCE(s.active_duration_ms, 0) AS active_duration_ms,
-				COALESCE(s.nonwork_active_ms, 0) AS nonwork_active_ms,
-				COALESCE(s.calendar_confirmed, TRUE) AS calendar_confirmed,
-				COALESCE(SUM(COALESCE(s.actual_cost, 0)) OVER (), 0) AS total_actual_cost,
-				COALESCE(SUM(COALESCE(s.requests, 0)) OVER (), 0) AS total_requests,
-				COALESCE(SUM(COALESCE(s.tokens, 0)) OVER (), 0) AS total_tokens,
-				COALESCE(SUM(COALESCE(s.nonwork_tokens, 0)) OVER (), 0) AS total_nonwork_tokens,
-				t.total_all_tokens,
-				CASE WHEN t.total_all_tokens > 0
-					THEN t.total_nonwork_tokens::double precision / t.total_all_tokens::double precision
+				COALESCE(s.actual_cost, 0) + COALESCE(e.actual_cost, 0) AS actual_cost,
+				COALESCE(s.requests, 0) + COALESCE(e.requests, 0) AS requests,
+				COALESCE(s.tokens, 0) + CASE WHEN $9 = 'nonwork' THEN COALESCE(e.nonwork_tokens, 0) ELSE COALESCE(e.tokens, 0) END AS tokens,
+				COALESCE(s.nonwork_tokens, 0) + COALESCE(e.nonwork_tokens, 0) AS nonwork_tokens,
+				COALESCE(s.active_duration_ms, 0) + CASE WHEN $9 = 'nonwork' THEN COALESCE(e.nonwork_active_ms, 0) ELSE COALESCE(e.active_duration_ms, 0) END AS active_duration_ms,
+				COALESCE(s.nonwork_active_ms, 0) + COALESCE(e.nonwork_active_ms, 0) AS nonwork_active_ms,
+				COALESCE(s.calendar_confirmed, TRUE) AS calendar_confirmed
+			FROM filtered_users u
+			LEFT JOIN stats s ON s.user_id = u.id
+			LEFT JOIN external_stats e ON e.user_id = u.id
+		),
+		ranked AS (
+			SELECT
+				m.user_id,
+				m.email,
+				m.username,
+				m.actual_cost,
+				m.requests,
+				m.tokens,
+				m.nonwork_tokens,
+				m.active_duration_ms,
+				m.nonwork_active_ms,
+				m.calendar_confirmed,
+				COALESCE(SUM(m.actual_cost) OVER (), 0) AS total_actual_cost,
+				COALESCE(SUM(m.requests) OVER (), 0) AS total_requests,
+				COALESCE(SUM(m.tokens) OVER (), 0) AS total_tokens,
+				COALESCE(SUM(m.nonwork_tokens) OVER (), 0) AS total_nonwork_tokens,
+				t.total_all_tokens + et.total_all_tokens AS total_all_tokens,
+				CASE WHEN t.total_all_tokens + et.total_all_tokens > 0
+					THEN (t.total_nonwork_tokens + et.total_nonwork_tokens)::double precision / (t.total_all_tokens + et.total_all_tokens)::double precision
 					ELSE 0
 				END AS nonwork_token_ratio,
-				COALESCE(SUM(COALESCE(s.active_duration_ms, 0)) OVER (), 0) AS total_active_duration_ms,
-				COALESCE(BOOL_AND(COALESCE(s.calendar_confirmed, TRUE)) OVER (), TRUE) AS all_calendar_confirmed
-			FROM filtered_users u
+				COALESCE(SUM(m.active_duration_ms) OVER (), 0) AS total_active_duration_ms,
+				COALESCE(BOOL_AND(m.calendar_confirmed) OVER (), TRUE) AS all_calendar_confirmed
+			FROM metric m
 			CROSS JOIN totals t
-			LEFT JOIN stats s ON s.user_id = u.id
-			ORDER BY %s %s, COALESCE(s.tokens, 0) %s, COALESCE(s.active_duration_ms, 0) %s, u.id ASC
+			CROSS JOIN external_totals et
+			ORDER BY %s %s, tokens %s, active_duration_ms %s, user_id ASC
 			LIMIT $8
 		)
 		SELECT
@@ -2703,7 +2767,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		ORDER BY %s %s, tokens %s, active_duration_ms %s, user_id ASC
 	`, innerOrderExpr, innerDirection, innerDirection, innerDirection, outerOrderExpr, outerDirection, outerDirection, outerDirection)
 
-	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, pq.Array(compactStrings(externalOrganizationIDs)), username, limit)
+	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, pq.Array(compactStrings(externalOrganizationIDs)), username, limit, strings.TrimSpace(scope))
 	if err != nil {
 		return nil, err
 	}
@@ -2872,17 +2936,17 @@ func nonworkRankingSegments(scope string) []string {
 func nonworkRankingOrderExprs(rankBy string) (string, string) {
 	switch strings.TrimSpace(rankBy) {
 	case usagestats.NonworkRankingRankByRequests:
-		return "COALESCE(s.requests, 0)", "requests"
+		return "requests", "requests"
 	case usagestats.NonworkRankingRankByActiveDuration:
-		return "COALESCE(s.active_duration_ms, 0)", "active_duration_ms"
+		return "active_duration_ms", "active_duration_ms"
 	case usagestats.NonworkRankingRankByNonworkActive:
-		return "COALESCE(s.nonwork_active_ms, 0)", "nonwork_active_ms"
+		return "nonwork_active_ms", "nonwork_active_ms"
 	case usagestats.NonworkRankingRankByActualCost:
-		return "COALESCE(s.actual_cost, 0)", "actual_cost"
+		return "actual_cost", "actual_cost"
 	case usagestats.NonworkRankingRankByNonworkTokens:
-		return "COALESCE(s.nonwork_tokens, 0)", "nonwork_tokens"
+		return "nonwork_tokens", "nonwork_tokens"
 	default:
-		return "COALESCE(s.tokens, 0)", "tokens"
+		return "tokens", "tokens"
 	}
 }
 

@@ -237,6 +237,93 @@ type NonworkStatsCoverage struct {
 	Complete       bool                      `json:"complete"`
 }
 
+type ExternalUsageImportRow struct {
+	RowNumber           int     `json:"row_number"`
+	Date                string  `json:"date"`
+	Username            string  `json:"username"`
+	Requests            int64   `json:"requests"`
+	TotalTokens         int64   `json:"total_tokens"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	ActualCost          float64 `json:"actual_cost"`
+	ActiveDurationMs    int64   `json:"active_duration_ms"`
+	NonworkTokens       int64   `json:"nonwork_tokens"`
+	NonworkActiveMs     int64   `json:"nonwork_active_ms"`
+	Note                string  `json:"note"`
+}
+
+type ExternalUsageImportRowError struct {
+	Field   string `json:"field"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+type ExternalUsageImportPreviewRow struct {
+	ExternalUsageImportRow
+	Status        string                        `json:"status"`
+	MatchedUserID int64                         `json:"matched_user_id"`
+	MatchedEmail  string                        `json:"matched_email"`
+	MatchedName   string                        `json:"matched_username"`
+	Errors        []ExternalUsageImportRowError `json:"errors,omitempty"`
+}
+
+type ExternalUsageImportSummary struct {
+	TotalRows       int `json:"total_rows"`
+	MatchedRows     int `json:"matched_rows"`
+	OverwrittenRows int `json:"overwritten_rows"`
+	UnmatchedRows   int `json:"unmatched_rows"`
+	ConflictRows    int `json:"conflict_rows"`
+	InvalidRows     int `json:"invalid_rows"`
+	ImportedRows    int `json:"imported_rows"`
+}
+
+type ExternalUsageImportPreview struct {
+	FileSHA256 string                          `json:"file_sha256"`
+	Summary    ExternalUsageImportSummary      `json:"summary"`
+	Rows       []ExternalUsageImportPreviewRow `json:"rows"`
+}
+
+type ExternalUsageImportInput struct {
+	FileName   string                   `json:"file_name"`
+	FileSHA256 string                   `json:"file_sha256"`
+	Note       string                   `json:"note"`
+	CreatedBy  int64                    `json:"created_by"`
+	Rows       []ExternalUsageImportRow `json:"rows"`
+}
+
+type ExternalUsageImportResult struct {
+	BatchID int64 `json:"batch_id"`
+	ExternalUsageImportPreview
+}
+
+type ExternalUsageImportBatch struct {
+	ID              int64      `json:"id"`
+	FileName        string     `json:"file_name"`
+	FileSHA256      string     `json:"file_sha256"`
+	Status          string     `json:"status"`
+	TotalRows       int        `json:"total_rows"`
+	MatchedRows     int        `json:"matched_rows"`
+	UnmatchedRows   int        `json:"unmatched_rows"`
+	ConflictRows    int        `json:"conflict_rows"`
+	InvalidRows     int        `json:"invalid_rows"`
+	OverwrittenRows int        `json:"overwritten_rows"`
+	ImportedRows    int        `json:"imported_rows"`
+	CreatedBy       int64      `json:"created_by"`
+	CreatedAt       time.Time  `json:"created_at"`
+	ImportedAt      *time.Time `json:"imported_at,omitempty"`
+	VoidedAt        *time.Time `json:"voided_at,omitempty"`
+	VoidedBy        *int64     `json:"voided_by,omitempty"`
+	Note            string     `json:"note"`
+}
+
+type ExternalUsageExportInput struct {
+	StartDate      string `json:"start_date"`
+	EndDate        string `json:"end_date"`
+	IncludeNonwork bool   `json:"include_nonwork"`
+}
+
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
 	UserID      int64   `json:"user_id"`

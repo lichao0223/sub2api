@@ -79,6 +79,19 @@ type NonworkCalendarOverrideRequest struct {
 	Timezone    string `json:"timezone"`
 }
 
+type ExternalUsageImportRequest struct {
+	FileName   string                              `json:"file_name"`
+	FileSHA256 string                              `json:"file_sha256"`
+	Note       string                              `json:"note"`
+	Rows       []usagestats.ExternalUsageImportRow `json:"rows"`
+}
+
+type ExternalUsageExportRequest struct {
+	StartDate      string `json:"start_date"`
+	EndDate        string `json:"end_date"`
+	IncludeNonwork bool   `json:"include_nonwork"`
+}
+
 // List handles listing all usage records with filters
 // GET /api/v1/admin/usage
 func (h *UsageHandler) List(c *gin.Context) {
@@ -629,6 +642,140 @@ func (h *UsageHandler) CancelCleanupTask(c *gin.Context) {
 	}
 	logger.LegacyPrintf("handler.admin.usage", "[UsageCleanup] 清理任务已取消: task=%d operator=%d", taskID, subject.UserID)
 	response.Success(c, gin.H{"id": taskID, "status": service.UsageCleanupStatusCanceled})
+}
+
+// PreviewExternalUsageImport validates external Token Ranking rows before import.
+// POST /api/v1/admin/usage/external-imports/preview
+func (h *UsageHandler) PreviewExternalUsageImport(c *gin.Context) {
+	var req ExternalUsageImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.Rows) == 0 {
+		response.BadRequest(c, "rows are required")
+		return
+	}
+	preview, err := h.usageService.PreviewExternalUsageImport(c.Request.Context(), externalUsageImportInput(req, 0))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+// ImportExternalUsage imports validated external Token Ranking rows.
+// POST /api/v1/admin/usage/external-imports
+func (h *UsageHandler) ImportExternalUsage(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+	var req ExternalUsageImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.Rows) == 0 {
+		response.BadRequest(c, "rows are required")
+		return
+	}
+	result, err := h.usageService.ImportExternalUsage(c.Request.Context(), externalUsageImportInput(req, subject.UserID))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+// ListExternalUsageImportBatches lists external usage import batches.
+// GET /api/v1/admin/usage/external-imports
+func (h *UsageHandler) ListExternalUsageImportBatches(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	batches, result, err := h.usageService.ListExternalUsageImportBatches(c.Request.Context(), pagination.PaginationParams{
+		Page:     page,
+		PageSize: pageSize,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, batches, result.Total, result.Page, result.PageSize)
+}
+
+// VoidExternalUsageImportBatch voids an external usage import batch.
+// DELETE /api/v1/admin/usage/external-imports/:id
+func (h *UsageHandler) VoidExternalUsageImportBatch(c *gin.Context) {
+	subject, ok := middleware.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "Unauthorized")
+		return
+	}
+	batchID, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || batchID <= 0 {
+		response.BadRequest(c, "Invalid import batch id")
+		return
+	}
+	if err := h.usageService.VoidExternalUsageImportBatch(c.Request.Context(), batchID, subject.UserID); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"id": batchID, "status": "voided"})
+}
+
+// ExportExternalUsageRows exports native usage rows in the import-compatible shape.
+// POST /api/v1/admin/usage/external-exports
+func (h *UsageHandler) ExportExternalUsageRows(c *gin.Context) {
+	var req ExternalUsageExportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	startDate, endDate, ok := parseExternalUsageExportDates(c, req.StartDate, req.EndDate)
+	if !ok {
+		return
+	}
+	rows, err := h.usageService.ExportExternalUsageRows(c.Request.Context(), startDate, endDate, req.IncludeNonwork)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"rows": rows, "start_date": req.StartDate, "end_date": req.EndDate})
+}
+
+func externalUsageImportInput(req ExternalUsageImportRequest, createdBy int64) usagestats.ExternalUsageImportInput {
+	return usagestats.ExternalUsageImportInput{
+		FileName:   strings.TrimSpace(req.FileName),
+		FileSHA256: strings.TrimSpace(req.FileSHA256),
+		Note:       strings.TrimSpace(req.Note),
+		CreatedBy:  createdBy,
+		Rows:       req.Rows,
+	}
+}
+
+func parseExternalUsageExportDates(c *gin.Context, startRaw, endRaw string) (time.Time, time.Time, bool) {
+	startRaw = strings.TrimSpace(startRaw)
+	endRaw = strings.TrimSpace(endRaw)
+	if startRaw == "" || endRaw == "" {
+		response.BadRequest(c, "start_date and end_date are required")
+		return time.Time{}, time.Time{}, false
+	}
+	startDate, err := time.Parse("2006-01-02", startRaw)
+	if err != nil {
+		response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+		return time.Time{}, time.Time{}, false
+	}
+	endDate, err := time.Parse("2006-01-02", endRaw)
+	if err != nil {
+		response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+		return time.Time{}, time.Time{}, false
+	}
+	if endDate.Before(startDate) {
+		response.BadRequest(c, "end_date must be greater than or equal to start_date")
+		return time.Time{}, time.Time{}, false
+	}
+	return startDate, endDate, true
 }
 
 // GetNonworkCalendarStatus returns calendar confirmation/sync status for selected years.

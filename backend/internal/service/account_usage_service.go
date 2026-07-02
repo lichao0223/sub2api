@@ -58,6 +58,11 @@ type UsageLogRepository interface {
 	GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserTokenRankingResponse, error)
 	GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, timezone string, externalOrganizationIDs []string, username string, limit int) (*usagestats.UserNonworkTokenRankingResponse, error)
 	GetNonworkStatsCoverage(ctx context.Context, startDate, endDate time.Time, timezone string) (usagestats.NonworkStatsCoverage, error)
+	PreviewExternalUsageImport(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportPreview, error)
+	ImportExternalUsage(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportResult, error)
+	ListExternalUsageImportBatches(ctx context.Context, params pagination.PaginationParams) ([]usagestats.ExternalUsageImportBatch, *pagination.PaginationResult, error)
+	VoidExternalUsageImportBatch(ctx context.Context, batchID, voidedBy int64) error
+	ExportExternalUsageRows(ctx context.Context, startDate, endDate time.Time, includeNonwork bool) ([]usagestats.ExternalUsageImportRow, error)
 	GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchUserUsageStats, error)
 	GetBatchAPIKeyUsageStats(ctx context.Context, apiKeyIDs []int64, startTime, endTime time.Time) (map[int64]*usagestats.BatchAPIKeyUsageStats, error)
 

@@ -58,7 +58,7 @@
                 @click.stop="exportMenuOpen = !exportMenuOpen"
               >
                 <Icon name="download" size="sm" />
-                {{ exporting ? t('tokenRanking.exporting') : t('tokenRanking.export') }}
+                {{ exporting ? t('tokenRanking.exporting') : t('tokenRanking.exportRanking') }}
                 <Icon name="chevronDown" size="xs" />
               </button>
               <div
@@ -81,6 +81,32 @@
                 </button>
               </div>
             </div>
+            <button
+              v-if="authStore.isAdmin"
+              type="button"
+              class="btn btn-secondary"
+              :disabled="importing"
+              @click="openImportDialog"
+            >
+              {{ t('tokenRanking.importExternalData') }}
+            </button>
+            <button
+              v-if="authStore.isAdmin"
+              type="button"
+              class="btn btn-secondary"
+              :disabled="exportingExternal"
+              @click="openExternalExportDialog"
+            >
+              {{ exportingExternal ? t('tokenRanking.exporting') : t('tokenRanking.exportImportData') }}
+            </button>
+            <button
+              v-if="authStore.isAdmin"
+              type="button"
+              class="btn btn-secondary"
+              @click="openImportBatchesDialog"
+            >
+              {{ t('tokenRanking.importRecords') }}
+            </button>
           </div>
         </div>
       </div>
@@ -208,6 +234,129 @@
         </template>
       </template>
     </div>
+
+    <div v-if="importDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="flex max-h-[86vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-dark-900">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('tokenRanking.importExternalData') }}</h3>
+          <button class="btn btn-ghost" type="button" @click="closeImportDialog">{{ t('common.close') }}</button>
+        </div>
+        <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-5">
+          <div class="flex flex-wrap items-center gap-3">
+            <input ref="importFileInputRef" type="file" accept=".xlsx,.xls,.csv" class="hidden" @change="handleImportFileChange" />
+            <button class="btn btn-secondary" type="button" @click="importFileInputRef?.click()">{{ t('tokenRanking.selectExcel') }}</button>
+            <button class="btn btn-secondary" type="button" @click="downloadImportTemplate">{{ t('tokenRanking.downloadTemplate') }}</button>
+            <span class="text-sm text-gray-500 dark:text-gray-400">{{ importFileName || t('tokenRanking.noFileSelected') }}</span>
+          </div>
+          <textarea
+            v-model="importNote"
+            class="form-textarea min-h-[72px] w-full"
+            :placeholder="t('tokenRanking.importNotePlaceholder')"
+          />
+          <div v-if="importPreview" class="grid grid-cols-2 gap-3 text-sm md:grid-cols-6">
+            <div class="rounded border border-gray-200 p-3 dark:border-dark-700">{{ t('tokenRanking.totalRows') }}: {{ importPreview.summary.total_rows }}</div>
+            <div class="rounded border border-gray-200 p-3 dark:border-dark-700">{{ t('tokenRanking.matchedRows') }}: {{ importPreview.summary.matched_rows }}</div>
+            <div class="rounded border border-gray-200 p-3 dark:border-dark-700">{{ t('tokenRanking.overwriteRows') }}: {{ importPreview.summary.overwritten_rows }}</div>
+            <div class="rounded border border-gray-200 p-3 dark:border-dark-700">{{ t('tokenRanking.unmatchedRows') }}: {{ importPreview.summary.unmatched_rows }}</div>
+            <div class="rounded border border-gray-200 p-3 dark:border-dark-700">{{ t('tokenRanking.conflictRows') }}: {{ importPreview.summary.conflict_rows }}</div>
+            <div class="rounded border border-gray-200 p-3 dark:border-dark-700">{{ t('tokenRanking.invalidRows') }}: {{ importPreview.summary.invalid_rows }}</div>
+          </div>
+          <div v-if="importErrors.length" class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200">
+            <div v-for="errorItem in importErrors.slice(0, 8)" :key="errorItem">{{ errorItem }}</div>
+          </div>
+          <div v-if="importPreview" class="min-h-0 overflow-auto rounded border border-gray-200 dark:border-dark-700">
+            <table class="w-full min-w-[900px] text-sm">
+              <thead class="sticky top-0 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+                <tr>
+                  <th class="px-3 py-2 text-left">{{ t('tokenRanking.excelRow') }}</th>
+                  <th class="px-3 py-2 text-left">{{ t('tokenRanking.date') }}</th>
+                  <th class="px-3 py-2 text-left">{{ t('tokenRanking.user') }}</th>
+                  <th class="px-3 py-2 text-right">{{ t('tokenRanking.requests') }}</th>
+                  <th class="px-3 py-2 text-right">{{ t('tokenRanking.tokens') }}</th>
+                  <th class="px-3 py-2 text-left">{{ t('tokenRanking.importStatus') }}</th>
+                  <th class="px-3 py-2 text-left">{{ t('tokenRanking.importError') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in importPreview.rows.slice(0, 100)" :key="row.row_number" class="border-t border-gray-100 dark:border-dark-700">
+                  <td class="px-3 py-2">{{ row.row_number }}</td>
+                  <td class="px-3 py-2">{{ row.date }}</td>
+                  <td class="px-3 py-2">{{ row.username }}</td>
+                  <td class="px-3 py-2 text-right">{{ formatNumber(row.requests || 0) }}</td>
+                  <td class="px-3 py-2 text-right">{{ formatTokens(row.total_tokens || 0) }}</td>
+                  <td class="px-3 py-2">{{ t(`tokenRanking.status_${row.status}`) }}</td>
+                  <td class="px-3 py-2 text-red-600 dark:text-red-400">{{ row.errors?.map((item) => item.message).join('；') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 border-t border-gray-100 px-5 py-4 dark:border-dark-700">
+          <button class="btn btn-secondary" type="button" @click="closeImportDialog">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" type="button" :disabled="!canConfirmImport || importing" @click="confirmExternalImport">
+            {{ importing ? t('common.loading') : t('tokenRanking.confirmImport') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="externalExportDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl dark:bg-dark-900">
+        <div class="mb-4 flex items-center justify-between">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('tokenRanking.exportImportData') }}</h3>
+          <button class="btn btn-ghost" type="button" @click="externalExportDialogOpen = false">{{ t('common.close') }}</button>
+        </div>
+        <div class="space-y-4">
+          <DateRangePicker v-model:start-date="externalExportStartDate" v-model:end-date="externalExportEndDate" />
+          <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input v-model="externalExportIncludeNonwork" type="checkbox" />
+            {{ t('tokenRanking.includeNonworkColumns') }}
+          </label>
+        </div>
+        <div class="mt-5 flex justify-end gap-2">
+          <button class="btn btn-secondary" type="button" @click="externalExportDialogOpen = false">{{ t('common.cancel') }}</button>
+          <button class="btn btn-primary" type="button" :disabled="exportingExternal" @click="exportExternalImportData">{{ t('tokenRanking.exportImportData') }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="importBatchesDialogOpen" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="flex max-h-[80vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-dark-900">
+        <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <h3 class="text-base font-semibold text-gray-900 dark:text-white">{{ t('tokenRanking.importRecords') }}</h3>
+          <button class="btn btn-ghost" type="button" @click="importBatchesDialogOpen = false">{{ t('common.close') }}</button>
+        </div>
+        <div class="min-h-0 flex-1 overflow-auto p-5">
+          <table class="w-full min-w-[760px] text-sm">
+            <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
+              <tr>
+                <th class="px-3 py-2 text-left">ID</th>
+                <th class="px-3 py-2 text-left">{{ t('tokenRanking.fileName') }}</th>
+                <th class="px-3 py-2 text-right">{{ t('tokenRanking.importedRows') }}</th>
+                <th class="px-3 py-2 text-left">{{ t('tokenRanking.importedAt') }}</th>
+                <th class="px-3 py-2 text-left">{{ t('tokenRanking.importStatus') }}</th>
+                <th class="px-3 py-2 text-right">{{ t('common.actions') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="batch in importBatches" :key="batch.id" class="border-t border-gray-100 dark:border-dark-700">
+                <td class="px-3 py-2">{{ batch.id }}</td>
+                <td class="px-3 py-2">{{ batch.file_name }}</td>
+                <td class="px-3 py-2 text-right">{{ batch.imported_rows }}</td>
+                <td class="px-3 py-2">{{ batch.imported_at ? formatDateTime(batch.imported_at) : '-' }}</td>
+                <td class="px-3 py-2">{{ batch.status }}</td>
+                <td class="px-3 py-2 text-right">
+                  <button class="btn btn-danger btn-sm" type="button" :disabled="batch.status !== 'imported'" @click="voidImportBatch(batch.id)">
+                    {{ t('tokenRanking.voidBatch') }}
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="!importBatches.length" class="py-8 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('tokenRanking.noImportRecords') }}</div>
+        </div>
+      </div>
+    </div>
   </AppLayout>
 </template>
 
@@ -222,14 +371,18 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
+import * as adminUsageAPI from '@/api/admin/usage'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatDateTime } from '@/utils/format'
 import type { SelectOption } from '@/components/common/Select.vue'
 import type { NonworkStatsCoverage, UserTokenRankingItem } from '@/types'
+import type { ExternalUsageImportBatch, ExternalUsageImportPreview, ExternalUsageImportRow } from '@/api/admin/usage'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const formatDate = (date: Date) => date.toISOString().split('T')[0]
 const startDate = ref(formatDate(new Date(Date.now() - 6 * 86400000)))
@@ -253,6 +406,22 @@ const responseStartDate = ref('')
 const responseEndDate = ref('')
 const calendarConfirmed = ref<boolean | null>(null)
 const statsCoverage = ref<NonworkStatsCoverage | null>(null)
+const importDialogOpen = ref(false)
+const importFileInputRef = ref<HTMLInputElement | null>(null)
+const importFileName = ref('')
+const importFileSHA256 = ref('')
+const importRows = ref<ExternalUsageImportRow[]>([])
+const importPreview = ref<ExternalUsageImportPreview | null>(null)
+const importErrors = ref<string[]>([])
+const importNote = ref('')
+const importing = ref(false)
+const externalExportDialogOpen = ref(false)
+const externalExportStartDate = ref(startDate.value)
+const externalExportEndDate = ref(endDate.value)
+const externalExportIncludeNonwork = ref(true)
+const exportingExternal = ref(false)
+const importBatchesDialogOpen = ref(false)
+const importBatches = ref<ExternalUsageImportBatch[]>([])
 
 const rankingScopeOptions = computed<SelectOption[]>(() => [
   { value: 'all', label: t('tokenRanking.scopeAll') },
@@ -299,6 +468,31 @@ const statsCoverageMissingSummary = computed(() => {
 })
 
 type ExportFormat = 'xlsx' | 'csv'
+
+const importHeaders = [
+  '日期',
+  '用户中文名',
+  '请求数',
+  '总Token',
+  '输入Token',
+  '输出Token',
+  '缓存创建Token',
+  '缓存读取Token',
+  '实际消费',
+  '活跃时长毫秒',
+  '非工作时间Token',
+  '非工作时间活跃时长毫秒',
+  '备注'
+]
+
+const canConfirmImport = computed(() => {
+  const summary = importPreview.value?.summary
+  if (!summary) return false
+  return summary.matched_rows + summary.overwritten_rows > 0 &&
+    summary.invalid_rows === 0 &&
+    summary.unmatched_rows === 0 &&
+    summary.conflict_rows === 0
+})
 
 function userLabel(item: UserTokenRankingItem): string {
   if (item.username?.trim()) return item.username.trim()
@@ -412,6 +606,249 @@ async function exportRanking(format: ExportFormat) {
     appStore.showError(t('tokenRanking.exportFailed'))
   } finally {
     exporting.value = false
+  }
+}
+
+function openImportDialog() {
+  importDialogOpen.value = true
+}
+
+function closeImportDialog() {
+  if (importing.value) return
+  importDialogOpen.value = false
+  importFileName.value = ''
+  importFileSHA256.value = ''
+  importRows.value = []
+  importPreview.value = null
+  importErrors.value = []
+  importNote.value = ''
+  if (importFileInputRef.value) {
+    importFileInputRef.value.value = ''
+  }
+}
+
+async function handleImportFileChange(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  importFileName.value = file.name
+  importPreview.value = null
+  importErrors.value = []
+  try {
+    const buffer = await file.arrayBuffer()
+    importFileSHA256.value = await sha256Hex(buffer)
+    const rows = await parseImportWorkbook(buffer)
+    if (!rows.length) {
+      importErrors.value = [t('tokenRanking.emptyExcel')]
+      return
+    }
+    importRows.value = rows
+    importPreview.value = await adminUsageAPI.previewExternalUsageImport(importPayload())
+  } catch (err) {
+    console.error('Failed to parse external usage import:', err)
+    importErrors.value = [err instanceof Error ? err.message : t('tokenRanking.importParseFailed')]
+  }
+}
+
+async function parseImportWorkbook(buffer: ArrayBuffer): Promise<ExternalUsageImportRow[]> {
+  const XLSX = await import('xlsx')
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: true })
+  const sheet = workbook.Sheets[workbook.SheetNames[0]]
+  if (!sheet) return []
+  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: true })
+  const headerRow = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: '' })[0] || []
+  const missingHeaders = ['日期', '用户中文名', '请求数', '总Token'].filter((header) => !headerRow.includes(header))
+  if (missingHeaders.length) {
+    throw new Error(t('tokenRanking.missingRequiredColumns', { columns: missingHeaders.join(', ') }))
+  }
+
+  const rows: ExternalUsageImportRow[] = []
+  const errors: string[] = []
+  rawRows.forEach((raw, index) => {
+    const rowNumber = index + 2
+    const date = normalizeImportDate(raw['日期'])
+    const username = String(raw['用户中文名'] ?? '').trim()
+    const requestsRaw = raw['请求数']
+    const totalTokensRaw = raw['总Token']
+    if (!date || !username || isBlank(requestsRaw) || isBlank(totalTokensRaw)) {
+      errors.push(t('tokenRanking.requiredCellMissing', { row: rowNumber }))
+      return
+    }
+    rows.push({
+      row_number: rowNumber,
+      date,
+      username,
+      requests: parseIntegerCell(requestsRaw),
+      total_tokens: parseIntegerCell(totalTokensRaw),
+      input_tokens: parseIntegerCell(raw['输入Token']),
+      output_tokens: parseIntegerCell(raw['输出Token']),
+      cache_creation_tokens: parseIntegerCell(raw['缓存创建Token']),
+      cache_read_tokens: parseIntegerCell(raw['缓存读取Token']),
+      actual_cost: parseNumberCell(raw['实际消费']),
+      active_duration_ms: parseDurationMs(raw['活跃时长毫秒'], raw['活跃时长秒']),
+      nonwork_tokens: parseIntegerCell(raw['非工作时间Token']),
+      nonwork_active_ms: parseDurationMs(raw['非工作时间活跃时长毫秒'], raw['非工作时间活跃时长秒']),
+      note: String(raw['备注'] ?? '').trim()
+    })
+  })
+  if (errors.length) {
+    importErrors.value = errors
+    return []
+  }
+  return rows
+}
+
+function isBlank(value: unknown): boolean {
+  return value === undefined || value === null || String(value).trim() === ''
+}
+
+function normalizeImportDate(value: unknown): string {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return formatDate(value)
+  }
+  const raw = String(value ?? '').trim()
+  if (!raw) return ''
+  const normalized = raw.replace(/\//g, '-')
+  const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/)
+  if (match) {
+    return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
+  }
+  const serial = Number(raw)
+  if (Number.isFinite(serial) && serial > 25569) {
+    return formatDate(new Date((serial - 25569) * 86400000))
+  }
+  return raw
+}
+
+function parseIntegerCell(value: unknown): number {
+  if (isBlank(value)) return 0
+  const parsed = Number(String(value).replace(/,/g, '').trim())
+  if (!Number.isFinite(parsed)) return -1
+  return Math.trunc(parsed)
+}
+
+function parseNumberCell(value: unknown): number {
+  if (isBlank(value)) return 0
+  const parsed = Number(String(value).replace(/,/g, '').trim())
+  return Number.isFinite(parsed) ? parsed : -1
+}
+
+function parseDurationMs(msValue: unknown, secondsValue: unknown): number {
+  if (!isBlank(msValue)) return parseIntegerCell(msValue)
+  if (!isBlank(secondsValue)) return parseIntegerCell(secondsValue) * 1000
+  return 0
+}
+
+async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
+  if (!crypto?.subtle) return ''
+  const hash = await crypto.subtle.digest('SHA-256', buffer)
+  return Array.from(new Uint8Array(hash)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function importPayload(): adminUsageAPI.ExternalUsageImportPayload {
+  return {
+    file_name: importFileName.value,
+    file_sha256: importFileSHA256.value,
+    note: importNote.value,
+    rows: importRows.value
+  }
+}
+
+async function confirmExternalImport() {
+  if (!canConfirmImport.value || importing.value) return
+  importing.value = true
+  try {
+    const result = await adminUsageAPI.importExternalUsage(importPayload())
+    appStore.showSuccess(t('tokenRanking.importSuccess', { count: result.summary.imported_rows }))
+    closeImportDialog()
+    loadRanking()
+  } catch (err) {
+    console.error('Failed to import external usage:', err)
+    appStore.showError(t('tokenRanking.importFailed'))
+  } finally {
+    importing.value = false
+  }
+}
+
+async function downloadImportTemplate() {
+  const XLSX = await import('xlsx')
+  const sampleRows = [
+    ['2026-06-21', '张三', 18, 123456, 60000, 60000, 2000, 1456, 1.23, 1800000, 50000, 900000, '周末导入示例'],
+    ['2026-06-21', '张三', 7, 34567, 12000, 20000, 1000, 1567, 0.35, 600000, 12000, 300000, '同日同用户示例，导入时会与上一行叠加'],
+    ['2026-06-22', '李四', 9, 45678, 20000, 25000, 500, 178, 0.46, 600000, 0, 0, '工作日导入示例']
+  ]
+  const worksheet = XLSX.utils.aoa_to_sheet([importHeaders, ...sampleRows])
+  const workbook = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(workbook, worksheet, '导入模板')
+  const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+  saveAs(new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'Token使用排名外部导入模板.xlsx')
+}
+
+function openExternalExportDialog() {
+  externalExportStartDate.value = startDate.value
+  externalExportEndDate.value = endDate.value
+  externalExportDialogOpen.value = true
+}
+
+async function exportExternalImportData() {
+  if (exportingExternal.value) return
+  exportingExternal.value = true
+  try {
+    const result = await adminUsageAPI.exportExternalUsageRows({
+      start_date: externalExportStartDate.value,
+      end_date: externalExportEndDate.value,
+      include_nonwork: externalExportIncludeNonwork.value
+    })
+    const XLSX = await import('xlsx')
+    const body = result.rows.map((row) => [
+      row.date,
+      row.username,
+      row.requests,
+      row.total_tokens,
+      row.input_tokens || 0,
+      row.output_tokens || 0,
+      row.cache_creation_tokens || 0,
+      row.cache_read_tokens || 0,
+      row.actual_cost || 0,
+      row.active_duration_ms || 0,
+      row.nonwork_tokens || 0,
+      row.nonwork_active_ms || 0,
+      row.note || ''
+    ])
+    const worksheet = XLSX.utils.aoa_to_sheet([importHeaders, ...body])
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, '导入数据')
+    const data = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+    saveAs(new Blob([data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `token-ranking-import-data_${result.start_date}_to_${result.end_date}.xlsx`)
+    appStore.showSuccess(t('tokenRanking.exportSuccess'))
+    externalExportDialogOpen.value = false
+  } catch (err) {
+    console.error('Failed to export external usage rows:', err)
+    appStore.showError(t('tokenRanking.exportFailed'))
+  } finally {
+    exportingExternal.value = false
+  }
+}
+
+async function openImportBatchesDialog() {
+  importBatchesDialogOpen.value = true
+  await loadImportBatches()
+}
+
+async function loadImportBatches() {
+  const result = await adminUsageAPI.listExternalUsageImportBatches({ page: 1, page_size: 50 })
+  importBatches.value = result.items || []
+}
+
+async function voidImportBatch(id: number) {
+  if (!window.confirm(t('tokenRanking.voidBatchConfirm'))) return
+  try {
+    await adminUsageAPI.voidExternalUsageImportBatch(id)
+    appStore.showSuccess(t('tokenRanking.voidBatchSuccess'))
+    await loadImportBatches()
+    loadRanking()
+  } catch (err) {
+    console.error('Failed to void external usage import batch:', err)
+    appStore.showError(t('tokenRanking.voidBatchFailed'))
   }
 }
 

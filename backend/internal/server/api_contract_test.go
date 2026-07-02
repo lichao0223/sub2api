@@ -2411,6 +2411,26 @@ func (r *stubUsageLogRepo) GetNonworkStatsCoverage(ctx context.Context, startDat
 	return usagestats.NonworkStatsCoverage{Complete: true}, nil
 }
 
+func (r *stubUsageLogRepo) PreviewExternalUsageImport(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportPreview, error) {
+	return &usagestats.ExternalUsageImportPreview{}, nil
+}
+
+func (r *stubUsageLogRepo) ImportExternalUsage(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportResult, error) {
+	return &usagestats.ExternalUsageImportResult{}, nil
+}
+
+func (r *stubUsageLogRepo) ListExternalUsageImportBatches(ctx context.Context, params pagination.PaginationParams) ([]usagestats.ExternalUsageImportBatch, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{}, nil
+}
+
+func (r *stubUsageLogRepo) VoidExternalUsageImportBatch(ctx context.Context, batchID, voidedBy int64) error {
+	return nil
+}
+
+func (r *stubUsageLogRepo) ExportExternalUsageRows(ctx context.Context, startDate, endDate time.Time, includeNonwork bool) ([]usagestats.ExternalUsageImportRow, error) {
+	return nil, nil
+}
+
 func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {
 	logs := r.userLogs[userID]
 	if len(logs) == 0 {

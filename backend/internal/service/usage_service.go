@@ -369,6 +369,45 @@ func (s *UsageService) GetNonworkStatsCoverage(ctx context.Context, startDate, e
 	return coverage, nil
 }
 
+func (s *UsageService) PreviewExternalUsageImport(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportPreview, error) {
+	preview, err := s.usageRepo.PreviewExternalUsageImport(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("preview external usage import: %w", err)
+	}
+	return preview, nil
+}
+
+func (s *UsageService) ImportExternalUsage(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportResult, error) {
+	result, err := s.usageRepo.ImportExternalUsage(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("import external usage: %w", err)
+	}
+	return result, nil
+}
+
+func (s *UsageService) ListExternalUsageImportBatches(ctx context.Context, params pagination.PaginationParams) ([]usagestats.ExternalUsageImportBatch, *pagination.PaginationResult, error) {
+	batches, page, err := s.usageRepo.ListExternalUsageImportBatches(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list external usage import batches: %w", err)
+	}
+	return batches, page, nil
+}
+
+func (s *UsageService) VoidExternalUsageImportBatch(ctx context.Context, batchID, voidedBy int64) error {
+	if err := s.usageRepo.VoidExternalUsageImportBatch(ctx, batchID, voidedBy); err != nil {
+		return fmt.Errorf("void external usage import batch: %w", err)
+	}
+	return nil
+}
+
+func (s *UsageService) ExportExternalUsageRows(ctx context.Context, startDate, endDate time.Time, includeNonwork bool) ([]usagestats.ExternalUsageImportRow, error) {
+	rows, err := s.usageRepo.ExportExternalUsageRows(ctx, startDate, endDate, includeNonwork)
+	if err != nil {
+		return nil, fmt.Errorf("export external usage rows: %w", err)
+	}
+	return rows, nil
+}
+
 // GetModelStatsWithFiltersBySource returns model stats using the shared usage filter shape.
 func (s *UsageService) GetModelStatsWithFiltersBySource(ctx context.Context, startTime, endTime time.Time, filters usagestats.UsageLogFilters, modelSource string) ([]usagestats.ModelStat, error) {
 	normalizedSource := usagestats.NormalizeModelSource(modelSource)

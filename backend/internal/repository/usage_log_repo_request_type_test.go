@@ -714,7 +714,7 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600)).
 		AddRow(int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600))
 
-	mock.ExpectQuery("WITH user_tokens AS \\(").
+	mock.ExpectQuery("WITH internal_stats AS \\(").
 		WithArgs(start, end, service.RoleAdmin, 12).
 		WillReturnRows(rows)
 
@@ -782,7 +782,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 	)
 
 	mock.ExpectQuery("WITH filtered_users AS \\(").
-		WithArgs(start, end, "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, sqlmock.AnyArg(), "", 12).
+		WithArgs(start, end, "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, sqlmock.AnyArg(), "", 12, usagestats.NonworkRankingScopeNonwork).
 		WillReturnRows(rows)
 
 	got, err := repo.GetUserNonworkTokenRanking(context.Background(), start, end, usagestats.NonworkRankingScopeNonwork, usagestats.NonworkRankingRankByActiveDuration, "asc", "Asia/Shanghai", nil, "", 12)
@@ -829,6 +829,53 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		StatsComplete: true,
 	}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAggregateExternalUsageRowsSumsSameDateAndUsername(t *testing.T) {
+	got := aggregateExternalUsageRows([]usagestats.ExternalUsageImportRow{
+		{
+			RowNumber:        2,
+			Date:             "2026-07-01",
+			Username:         "张三",
+			Requests:         2,
+			TotalTokens:      100,
+			InputTokens:      40,
+			ActualCost:       0.1,
+			ActiveDurationMs: 60000,
+			NonworkTokens:    20,
+			Note:             "a",
+		},
+		{
+			RowNumber:        3,
+			Date:             "2026-07-01",
+			Username:         "张三",
+			Requests:         3,
+			TotalTokens:      200,
+			OutputTokens:     120,
+			ActualCost:       0.2,
+			ActiveDurationMs: 120000,
+			NonworkTokens:    30,
+			Note:             "b",
+		},
+		{
+			RowNumber:   4,
+			Date:        "2026-07-01",
+			Username:    "李四",
+			Requests:    1,
+			TotalTokens: 50,
+		},
+	})
+
+	require.Len(t, got, 2)
+	require.Equal(t, int64(5), got[0].Requests)
+	require.Equal(t, int64(300), got[0].TotalTokens)
+	require.Equal(t, int64(40), got[0].InputTokens)
+	require.Equal(t, int64(120), got[0].OutputTokens)
+	require.InDelta(t, 0.3, got[0].ActualCost, 0.000001)
+	require.Equal(t, int64(180000), got[0].ActiveDurationMs)
+	require.Equal(t, int64(50), got[0].NonworkTokens)
+	require.Equal(t, "a；b", got[0].Note)
+	require.Equal(t, int64(50), got[1].TotalTokens)
 }
 
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
