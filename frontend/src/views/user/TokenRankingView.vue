@@ -250,7 +250,7 @@
           </div>
           <textarea
             v-model="importNote"
-            class="form-textarea min-h-[72px] w-full"
+            class="input min-h-[72px] resize-y"
             :placeholder="t('tokenRanking.importNotePlaceholder')"
           />
           <div v-if="importPreview" class="grid grid-cols-2 gap-3 text-sm md:grid-cols-6">
