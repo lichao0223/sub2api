@@ -71,6 +71,18 @@
                     (option as unknown as GroupOption).subscriptionType
                   "
                   :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :peak-rate-enabled="
+                    (option as unknown as GroupOption).peakRateEnabled
+                  "
+                  :peak-start="
+                    (option as unknown as GroupOption).peakStart || undefined
+                  "
+                  :peak-end="
+                    (option as unknown as GroupOption).peakEnd || undefined
+                  "
+                  :peak-rate-multiplier="
+                    (option as unknown as GroupOption).peakRateMultiplier
+                  "
                 />
               </template>
               <template #option="{ option, selected }">
@@ -88,6 +100,18 @@
                     (option as unknown as GroupOption).subscriptionType
                   "
                   :rate-multiplier="(option as unknown as GroupOption).rate"
+                  :peak-rate-enabled="
+                    (option as unknown as GroupOption).peakRateEnabled
+                  "
+                  :peak-start="
+                    (option as unknown as GroupOption).peakStart || undefined
+                  "
+                  :peak-end="
+                    (option as unknown as GroupOption).peakEnd || undefined
+                  "
+                  :peak-rate-multiplier="
+                    (option as unknown as GroupOption).peakRateMultiplier
+                  "
                   :description="(option as unknown as GroupOption).description"
                   :selected="selected"
                 />
@@ -431,6 +455,10 @@
                     :platform="key.group.platform"
                     :subscription-type="key.group.subscription_type"
                     :rate-multiplier="key.group.rate_multiplier"
+                    :peak-rate-enabled="key.group.peak_rate_enabled"
+                    :peak-start="key.group.peak_start"
+                    :peak-end="key.group.peak_end"
+                    :peak-rate-multiplier="key.group.peak_rate_multiplier"
                   />
                   <span v-else class="text-gray-400 italic">{{
                     t('admin.users.none')
@@ -512,6 +540,10 @@ interface GroupOption extends Record<string, unknown> {
   rate: number
   subscriptionType: SubscriptionType
   platform: GroupPlatform
+  peakRateEnabled?: boolean
+  peakStart?: string | null
+  peakEnd?: string | null
+  peakRateMultiplier?: number
 }
 
 const emptyForm = () => ({
@@ -543,6 +575,10 @@ const groupOptions = computed<GroupOption[]>(() => [
     rate: 1,
     subscriptionType: 'standard',
     platform: 'anthropic',
+    peakRateEnabled: false,
+    peakStart: null,
+    peakEnd: null,
+    peakRateMultiplier: 1,
   },
   ...allGroups.value.map((group) => ({
     value: group.id,
@@ -551,6 +587,10 @@ const groupOptions = computed<GroupOption[]>(() => [
     rate: group.rate_multiplier,
     subscriptionType: group.subscription_type,
     platform: group.platform,
+    peakRateEnabled: group.peak_rate_enabled,
+    peakStart: group.peak_start,
+    peakEnd: group.peak_end,
+    peakRateMultiplier: group.peak_rate_multiplier,
   })),
 ])
 
