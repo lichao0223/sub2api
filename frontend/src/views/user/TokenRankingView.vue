@@ -99,14 +99,6 @@
             >
               {{ exportingExternal ? t('tokenRanking.exporting') : t('tokenRanking.exportImportData') }}
             </button>
-            <button
-              v-if="authStore.isAdmin"
-              type="button"
-              class="btn btn-secondary"
-              @click="openImportBatchesDialog"
-            >
-              {{ t('tokenRanking.importRecords') }}
-            </button>
           </div>
         </div>
       </div>
@@ -827,11 +819,6 @@ async function exportExternalImportData() {
   } finally {
     exportingExternal.value = false
   }
-}
-
-async function openImportBatchesDialog() {
-  importBatchesDialogOpen.value = true
-  await loadImportBatches()
 }
 
 async function loadImportBatches() {
