@@ -756,7 +756,7 @@ export default {
     export: 'Export',
     exportRanking: 'Export Ranking',
     importExternalData: 'Import External Data',
-    exportImportData: 'Export Import Data',
+    exportImportData: 'Export Importable Excel',
     importRecords: 'Import Records',
     exporting: 'Exporting...',
     exportExcel: 'Export Excel',

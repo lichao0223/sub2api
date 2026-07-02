@@ -755,7 +755,7 @@ export default {
     export: '导出',
     exportRanking: '导出排名',
     importExternalData: '导入外部数据',
-    exportImportData: '导出导入数据',
+    exportImportData: '导出可导入 Excel',
     importRecords: '导入记录',
     exporting: '导出中...',
     exportExcel: '导出 Excel',
