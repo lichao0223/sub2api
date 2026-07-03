@@ -31,6 +31,37 @@ func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, 
 	return nil
 }
 
+func TestBuildGLMClaudeUsageResponse(t *testing.T) {
+	t.Parallel()
+
+	payload := &glmUsageResponse{}
+	payload.Data.Limits = append(payload.Data.Limits,
+		struct {
+			Type          string  `json:"type"`
+			Unit          int     `json:"unit"`
+			Percentage    float64 `json:"percentage"`
+			NextResetTime int64   `json:"nextResetTime"`
+		}{Type: "TOKENS_LIMIT", Unit: 3, Percentage: 100, NextResetTime: 1783075612365},
+		struct {
+			Type          string  `json:"type"`
+			Unit          int     `json:"unit"`
+			Percentage    float64 `json:"percentage"`
+			NextResetTime int64   `json:"nextResetTime"`
+		}{Type: "TOKENS_LIMIT", Unit: 6, Percentage: 46, NextResetTime: 1783562399981},
+	)
+
+	resp := buildGLMClaudeUsageResponse(payload)
+	if resp.FiveHour.Utilization != 100 {
+		t.Fatalf("FiveHour.Utilization = %v, want 100", resp.FiveHour.Utilization)
+	}
+	if resp.SevenDay.Utilization != 46 {
+		t.Fatalf("SevenDay.Utilization = %v, want 46", resp.SevenDay.Utilization)
+	}
+	if resp.FiveHour.ResetsAt == "" || resp.SevenDay.ResetsAt == "" {
+		t.Fatalf("expected reset times, got five_hour=%q seven_day=%q", resp.FiveHour.ResetsAt, resp.SevenDay.ResetsAt)
+	}
+}
+
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 	t.Parallel()
 

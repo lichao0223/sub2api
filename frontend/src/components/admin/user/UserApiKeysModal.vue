@@ -438,7 +438,11 @@
                     key.status === 'active' ? 'badge-success' : 'badge-danger',
                   ]"
                 >
-                  {{ key.status }}
+                  {{
+                    key.status === 'active'
+                      ? t('common.active')
+                      : t('common.inactive')
+                  }}
                 </span>
               </div>
               <p class="truncate font-mono text-sm text-gray-500">
@@ -480,6 +484,9 @@
               </button>
               <button
                 class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700"
+                :title="
+                  key.status === 'active' ? t('keys.disable') : t('keys.enable')
+                "
                 @click="toggleStatus(key)"
               >
                 <Icon
@@ -489,12 +496,14 @@
               </button>
               <button
                 class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700"
+                :title="t('common.edit')"
                 @click="openEditForm(key)"
               >
                 <Icon name="edit" size="sm" />
               </button>
               <button
                 class="rounded-lg p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                :title="t('common.delete')"
                 @click="deleteKey(key)"
               >
                 <Icon name="trash" size="sm" />

@@ -120,6 +120,7 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	openAICodexProbeVersion = "0.125.0"
+	glmUsageURL             = "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -331,6 +332,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
 		usage, err := s.getOpenAIUsage(ctx, account, forceProbe)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if isGLMAPIKeyAccount(account) {
+		usage, err := s.getGLMUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -756,6 +765,150 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	for k, v := range updates {
 		account.Extra[k] = v
 	}
+}
+
+type glmUsageResponse struct {
+	Code int    `json:"code"`
+	Msg  string `json:"msg"`
+	Data struct {
+		Limits []struct {
+			Type          string  `json:"type"`
+			Unit          int     `json:"unit"`
+			Percentage    float64 `json:"percentage"`
+			NextResetTime int64   `json:"nextResetTime"`
+		} `json:"limits"`
+		Level string `json:"level"`
+	} `json:"data"`
+	Success bool `json:"success"`
+}
+
+func isGLMAPIKeyAccount(account *Account) bool {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	if account.Platform != PlatformAnthropic && account.Platform != PlatformOpenAI {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "glm")
+}
+
+func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, fmt.Errorf("glm api key is empty")
+	}
+
+	if s.cache == nil {
+		resp, err := s.fetchGLMUsageRaw(ctx, account, apiKey)
+		if err != nil {
+			return nil, err
+		}
+		now := time.Now()
+		usage := s.buildUsageInfo(resp, &now)
+		s.addWindowStats(ctx, account, usage)
+		return usage, nil
+	}
+
+	if cached, ok := s.cache.apiCache.Load(account.ID); ok {
+		if cache, ok := cached.(*apiUsageCache); ok {
+			age := time.Since(cache.timestamp)
+			if cache.err != nil && age < apiErrorCacheTTL {
+				return nil, cache.err
+			}
+			if cache.response != nil && age < apiCacheTTL {
+				usage := s.buildUsageInfo(cache.response, &cache.timestamp)
+				s.addWindowStats(ctx, account, usage)
+				return usage, nil
+			}
+		}
+	}
+
+	flightKey := fmt.Sprintf("glm-usage:%d", account.ID)
+	result, err, _ := s.cache.apiFlight.Do(flightKey, func() (any, error) {
+		resp, fetchErr := s.fetchGLMUsageRaw(ctx, account, apiKey)
+		if fetchErr != nil {
+			s.cache.apiCache.Store(account.ID, &apiUsageCache{err: fetchErr, timestamp: time.Now()})
+			return nil, fetchErr
+		}
+		s.cache.apiCache.Store(account.ID, &apiUsageCache{response: resp, timestamp: time.Now()})
+		return resp, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	resp, _ := result.(*ClaudeUsageResponse)
+	now := time.Now()
+	usage := s.buildUsageInfo(resp, &now)
+	s.addWindowStats(ctx, account, usage)
+	return usage, nil
+}
+
+func (s *AccountUsageService) fetchGLMUsageRaw(ctx context.Context, account *Account, apiKey string) (*ClaudeUsageResponse, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, glmUsageURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create glm usage request: %w", err)
+	}
+	req.Header.Set("Authorization", apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build glm usage client: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("glm usage request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("glm usage returned status %d", resp.StatusCode)
+	}
+
+	var payload glmUsageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode glm usage response: %w", err)
+	}
+	if payload.Code != 0 && payload.Code != http.StatusOK {
+		return nil, fmt.Errorf("glm usage returned code %d: %s", payload.Code, payload.Msg)
+	}
+	return buildGLMClaudeUsageResponse(&payload), nil
+}
+
+func buildGLMClaudeUsageResponse(payload *glmUsageResponse) *ClaudeUsageResponse {
+	resp := &ClaudeUsageResponse{}
+	if payload == nil {
+		return resp
+	}
+	for _, limit := range payload.Data.Limits {
+		if limit.Type != "TOKENS_LIMIT" {
+			continue
+		}
+		resetAt := ""
+		if limit.NextResetTime > 0 {
+			resetAt = time.UnixMilli(limit.NextResetTime).UTC().Format(time.RFC3339)
+		}
+		switch limit.Unit {
+		case 3:
+			resp.FiveHour.Utilization = limit.Percentage
+			resp.FiveHour.ResetsAt = resetAt
+		case 6:
+			resp.SevenDay.Utilization = limit.Percentage
+			resp.SevenDay.ResetsAt = resetAt
+		}
+	}
+	return resp
 }
 
 // applyExtraToUsage rebuilds the codex 5h/7d windows in usage from the

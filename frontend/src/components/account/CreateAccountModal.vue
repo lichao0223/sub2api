@@ -1110,6 +1110,15 @@
           <p class="input-hint">{{ apiKeyHint }}</p>
         </div>
 
+        <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
+          <label class="input-label">模型提供商</label>
+          <select v-model="modelProvider" class="input">
+            <option value="none">无</option>
+            <option value="glm">GLM</option>
+          </select>
+          <p class="input-hint">选择 GLM 后，会按 GLM Coding Plan 查询 5 小时和周限额。</p>
+        </div>
+
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini'">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
@@ -3462,6 +3471,7 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const modelProvider = ref<'none' | 'glm'>('none')
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -3970,6 +3980,9 @@ watch(
       anthropicAPIKeyAuthScheme.value = 'x_api_key'
       webSearchEmulationMode.value = 'default'
     }
+    if (newPlatform !== 'anthropic' && newPlatform !== 'openai') {
+      modelProvider.value = 'none'
+    }
     // Reset OAuth states
     oauth.resetState()
     openaiOAuth.resetState()
@@ -4334,6 +4347,7 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  modelProvider.value = 'none'
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -4502,6 +4516,17 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildModelProviderExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (
+    accountCategory.value !== 'apikey' ||
+    (form.platform !== 'anthropic' && form.platform !== 'openai') ||
+    modelProvider.value === 'none'
+  ) {
+    return base
+  }
+  return { ...(base || {}), model_provider: modelProvider.value }
 }
 
 // Helper function to create account with mixed channel warning handling
@@ -4795,7 +4820,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildModelProviderExtra(buildAnthropicExtra(buildOpenAIExtra()))
 
   await doCreateAccount({
     ...form,
