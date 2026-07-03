@@ -878,6 +878,53 @@ func TestAggregateExternalUsageRowsSumsSameDateAndUsername(t *testing.T) {
 	require.Equal(t, int64(50), got[1].TotalTokens)
 }
 
+func TestUsageLogRepositoryExportExternalUsageRowsUsesSessionActiveMs(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	start := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	end := start
+
+	rows := sqlmock.NewRows([]string{
+		"date",
+		"username",
+		"requests",
+		"total_tokens",
+		"input_tokens",
+		"output_tokens",
+		"cache_creation_tokens",
+		"cache_read_tokens",
+		"actual_cost",
+		"active_ms",
+		"nonwork_tokens",
+		"nonwork_active_ms",
+	}).AddRow("2026-05-11", "李超", int64(13), int64(542148), int64(98981), int64(9119), int64(0), int64(434048), 0.985499, int64(382591), int64(542148), int64(382591))
+
+	mock.ExpectQuery("response_duration_ms").
+		WithArgs(start, end, true, service.RoleAdmin).
+		WillReturnRows(rows)
+
+	got, err := repo.ExportExternalUsageRows(context.Background(), start, end, true)
+	require.NoError(t, err)
+	require.Equal(t, []usagestats.ExternalUsageImportRow{
+		{
+			RowNumber:           2,
+			Date:                "2026-05-11",
+			Username:            "李超",
+			Requests:            13,
+			TotalTokens:         542148,
+			InputTokens:         98981,
+			OutputTokens:        9119,
+			CacheCreationTokens: 0,
+			CacheReadTokens:     434048,
+			ActualCost:          0.985499,
+			ActiveDurationMs:    382591,
+			NonworkTokens:       542148,
+			NonworkActiveMs:     382591,
+		},
+	}, got)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string

@@ -207,7 +207,7 @@ func (r *usageLogRepository) ExportExternalUsageRows(ctx context.Context, startD
 				COALESCE(SUM(ul.cache_read_tokens), 0)::bigint AS cache_read_tokens,
 				COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0)::bigint AS total_tokens,
 				COALESCE(SUM(ul.actual_cost), 0) AS actual_cost,
-				COALESCE(SUM(ul.duration_ms), 0)::bigint AS active_ms
+				COALESCE(SUM(ul.duration_ms), 0)::bigint AS response_duration_ms
 			FROM usage_logs ul
 			WHERE (ul.created_at AT TIME ZONE 'Asia/Shanghai')::date >= $1::date
 			  AND (ul.created_at AT TIME ZONE 'Asia/Shanghai')::date <= $2::date
@@ -217,6 +217,7 @@ func (r *usageLogRepository) ExportExternalUsageRows(ctx context.Context, startD
 			SELECT
 				user_id,
 				bucket_date,
+				COALESCE(SUM(active_ms), 0)::bigint AS active_ms,
 				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0)::bigint AS nonwork_tokens,
 				COALESCE(SUM(active_ms) FILTER (WHERE segment IN ('offday', 'after_hours')), 0)::bigint AS nonwork_active_ms
 			FROM usage_nonwork_daily_user_stats
@@ -233,9 +234,9 @@ func (r *usageLogRepository) ExportExternalUsageRows(ctx context.Context, startD
 			ns.cache_creation_tokens,
 			ns.cache_read_tokens,
 			ns.actual_cost,
-			ns.active_ms,
-			CASE WHEN $3 THEN COALESCE(nws.nonwork_tokens, 0) ELSE 0 END AS nonwork_tokens,
-			CASE WHEN $3 THEN COALESCE(nws.nonwork_active_ms, 0) ELSE 0 END AS nonwork_active_ms
+			COALESCE(nws.active_ms, ns.response_duration_ms) AS active_ms,
+			CASE WHEN $3 THEN LEAST(COALESCE(nws.nonwork_tokens, 0), ns.total_tokens) ELSE 0 END AS nonwork_tokens,
+			CASE WHEN $3 THEN LEAST(COALESCE(nws.nonwork_active_ms, 0), COALESCE(nws.active_ms, ns.response_duration_ms)) ELSE 0 END AS nonwork_active_ms
 		FROM native_stats ns
 		JOIN users u ON u.id = ns.user_id
 		LEFT JOIN nonwork_stats nws ON nws.user_id = ns.user_id AND nws.bucket_date = ns.bucket_date
