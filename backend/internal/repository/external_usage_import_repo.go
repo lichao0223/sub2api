@@ -48,7 +48,7 @@ func (r *usageLogRepository) ImportExternalUsage(ctx context.Context, input usag
 	if err != nil {
 		return nil, err
 	}
-	if preview.Summary.InvalidRows > 0 || preview.Summary.UnmatchedRows > 0 || preview.Summary.ConflictRows > 0 {
+	if preview.Summary.InvalidRows > 0 || preview.Summary.ConflictRows > 0 {
 		return nil, infraerrors.New(http.StatusBadRequest, "EXTERNAL_USAGE_IMPORT_INVALID", "external usage import contains invalid rows")
 	}
 

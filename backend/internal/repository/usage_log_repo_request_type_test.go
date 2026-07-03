@@ -925,6 +925,35 @@ func TestUsageLogRepositoryExportExternalUsageRowsUsesSessionActiveMs(t *testing
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryImportExternalUsageIgnoresUnmatchedRows(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+
+	mock.ExpectQuery("SELECT id, COALESCE\\(email, ''\\), COALESCE\\(username, ''\\)").
+		WithArgs(service.RoleAdmin, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "username"}))
+	mock.ExpectQuery("INSERT INTO external_usage_import_batches").
+		WithArgs("import.xlsx", "hash", 1, 0, 1, 0, 0, 0, int64(7), "").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(99)))
+	mock.ExpectExec("UPDATE external_usage_import_batches").
+		WithArgs(int64(99), 0).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	got, err := repo.ImportExternalUsage(context.Background(), usagestats.ExternalUsageImportInput{
+		FileName:   "import.xlsx",
+		FileSHA256: "hash",
+		CreatedBy:  int64(7),
+		Rows: []usagestats.ExternalUsageImportRow{
+			{RowNumber: 2, Date: "2026-05-18", Username: "不存在", Requests: 1, TotalTokens: 100},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(99), got.BatchID)
+	require.Equal(t, 1, got.Summary.UnmatchedRows)
+	require.Equal(t, 0, got.Summary.ImportedRows)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestBuildRequestTypeFilterConditionLegacyFallback(t *testing.T) {
 	tests := []struct {
 		name      string
