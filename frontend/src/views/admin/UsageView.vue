@@ -45,11 +45,8 @@
             <button class="btn btn-secondary" :disabled="nonworkBusy" @click="backfillNonworkUsage">
               {{ t('admin.usage.backfillCurrentRange') }}
             </button>
-            <input v-model="manualCalendarDate" type="date" class="input h-9 w-36 text-sm" />
-            <select v-model="manualCalendarIsWorkday" class="input h-9 w-28 text-sm">
-              <option :value="false">{{ t('admin.usage.offday') }}</option>
-              <option :value="true">{{ t('admin.usage.workday') }}</option>
-            </select>
+            <Input v-model="manualCalendarDate" type="date" class="w-36" />
+            <Select v-model="manualCalendarIsWorkday" class="w-28" :options="manualCalendarDayOptions" />
             <button class="btn btn-secondary" :disabled="nonworkBusy || !manualCalendarDate" @click="overrideNonworkCalendarDay">
               {{ t('admin.usage.saveCalendarDay') }}
             </button>
@@ -213,7 +210,7 @@ import { useAppStore } from '@/stores/app'; import { adminAPI } from '@/api/admi
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
-import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
+import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Input from '@/components/common/Input.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
@@ -260,6 +257,10 @@ const nonworkCalendarYears = ref<NonworkCalendarYearStatus[]>([])
 const nonworkStatsCoverage = ref<NonworkStatsCoverage | null>(null)
 const manualCalendarDate = ref('')
 const manualCalendarIsWorkday = ref(false)
+const manualCalendarDayOptions = computed(() => [
+  { value: false, label: t('admin.usage.offday') },
+  { value: true, label: t('admin.usage.workday') },
+])
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
