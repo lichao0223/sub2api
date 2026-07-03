@@ -256,7 +256,7 @@
           <div v-if="importErrors.length" class="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-200">
             <div v-for="errorItem in importErrors.slice(0, 8)" :key="errorItem">{{ errorItem }}</div>
           </div>
-          <div v-if="importPreview" class="max-h-[42vh] min-h-0 overflow-auto rounded border border-gray-200 dark:border-dark-700">
+          <div v-if="problemImportRows.length" class="max-h-[42vh] min-h-0 overflow-auto rounded border border-gray-200 dark:border-dark-700">
             <table class="w-full min-w-[900px] text-sm">
               <thead class="sticky top-0 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                 <tr>
@@ -270,7 +270,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="row in importPreview.rows" :key="row.row_number" class="border-t border-gray-100 dark:border-dark-700">
+                <tr v-for="row in problemImportRows" :key="row.row_number" class="border-t border-gray-100 dark:border-dark-700">
                   <td class="px-3 py-2">{{ row.row_number }}</td>
                   <td class="px-3 py-2">{{ row.date }}</td>
                   <td class="px-3 py-2">{{ row.username }}</td>
@@ -484,6 +484,7 @@ const canConfirmImport = computed(() => {
     summary.invalid_rows === 0 &&
     summary.conflict_rows === 0
 })
+const problemImportRows = computed(() => importPreview.value?.rows.filter((row) => row.status !== 'matched' && row.status !== 'overwrite') ?? [])
 
 function userLabel(item: UserTokenRankingItem): string {
   if (item.username?.trim()) return item.username.trim()
@@ -750,6 +751,7 @@ async function confirmExternalImport() {
   try {
     const result = await adminUsageAPI.importExternalUsage(importPayload())
     appStore.showSuccess(t('tokenRanking.importSuccess', { count: result.summary.imported_rows }))
+    importing.value = false
     closeImportDialog()
     loadRanking()
   } catch (err) {
