@@ -473,6 +473,13 @@
             <div class="flex shrink-0 flex-wrap justify-end gap-1">
               <button
                 class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700"
+                :title="t('keys.copyToClipboard')"
+                @click="copyKey(key.key)"
+              >
+                <Icon name="copy" size="sm" />
+              </button>
+              <button
+                class="rounded-lg p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-700"
                 @click="toggleStatus(key)"
               >
                 <Icon
@@ -505,6 +512,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
+import { useClipboard } from '@/composables/useClipboard'
 import { formatDateTime } from '@/utils/format'
 import type {
   AdminUser,
@@ -525,6 +533,7 @@ const props = defineProps<{ show: boolean; user: AdminUser | null }>()
 const emit = defineEmits(['close'])
 const { t } = useI18n()
 const appStore = useAppStore()
+const { copyToClipboard } = useClipboard()
 
 const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
@@ -617,6 +626,10 @@ const formatDateTimeLocal = (isoDate: string): string => {
   const date = new Date(isoDate)
   const pad = (n: number) => n.toString().padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+const copyKey = (key: string) => {
+  copyToClipboard(key, t('keys.copied'))
 }
 
 const setExpirationDays = (days: number) => {

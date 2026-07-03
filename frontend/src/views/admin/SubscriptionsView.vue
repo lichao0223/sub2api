@@ -1137,7 +1137,9 @@ const searchUsers = async () => {
 
   userSearchLoading.value = true
   try {
-    userSearchResults.value = await adminAPI.usage.searchUsers(keyword)
+    userSearchResults.value = (await adminAPI.usage.searchUsers(keyword)).filter(
+      (user) => !user.deleted
+    )
   } catch (error) {
     console.error('Failed to search users:', error)
     userSearchResults.value = []
