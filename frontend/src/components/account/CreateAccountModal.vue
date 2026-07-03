@@ -1076,6 +1076,15 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+        <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
+          <label class="input-label">模型提供商</label>
+          <select v-model="modelProvider" class="input">
+            <option value="none">无</option>
+            <option value="glm">GLM</option>
+          </select>
+          <p class="input-hint">选择 GLM 后，会按 GLM Coding Plan 查询 5 小时和周限额。</p>
+        </div>
+
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -1108,15 +1117,6 @@
             "
           />
           <p class="input-hint">{{ apiKeyHint }}</p>
-        </div>
-
-        <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
-          <label class="input-label">模型提供商</label>
-          <select v-model="modelProvider" class="input">
-            <option value="none">无</option>
-            <option value="glm">GLM</option>
-          </select>
-          <p class="input-hint">选择 GLM 后，会按 GLM Coding Plan 查询 5 小时和周限额。</p>
         </div>
 
         <!-- Gemini API Key tier selection -->

@@ -28,6 +28,15 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <div v-if="account.platform === 'anthropic' || account.platform === 'openai'">
+          <label class="input-label">模型提供商</label>
+          <select v-model="editModelProvider" class="input">
+            <option value="none">无</option>
+            <option value="glm">GLM</option>
+          </select>
+          <p class="input-hint">选择 GLM 后，会按 GLM Coding Plan 查询 5 小时和周限额。</p>
+        </div>
+
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -2505,6 +2514,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editModelProvider = ref<'none' | 'glm'>('none')
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3018,6 +3028,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+  editModelProvider.value = 'none'
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
@@ -3168,6 +3179,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   // Initialize API Key fields for apikey type
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
+    const extra = (newAccount.extra as Record<string, unknown>) || {}
+    editModelProvider.value = extra.model_provider === 'glm' ? 'glm' : 'none'
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
@@ -3258,6 +3271,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeRetryStatusCodesInput.value = ''
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
+    editModelProvider.value = 'none'
   }
   editApiKey.value = ''
 }
@@ -4272,6 +4286,21 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    if (
+      props.account.type === 'apikey' &&
+      (props.account.platform === 'anthropic' || props.account.platform === 'openai')
+    ) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (editModelProvider.value === 'glm') {
+        newExtra.model_provider = 'glm'
+      } else {
+        delete newExtra.model_provider
+      }
       updatePayload.extra = newExtra
     }
 
