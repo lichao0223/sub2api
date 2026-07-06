@@ -913,6 +913,56 @@ func (s *AccountUsageService) persistGLMCodexSnapshot(ctx context.Context, accou
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
 		slog.Warn("glm_codex_snapshot_persist_failed", "account_id", account.ID, "error", err)
 	}
+	if resetAt := glmCodexQuotaRateLimitResetAt(resp, now); resetAt != nil {
+		if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+			slog.Warn("glm_codex_rate_limit_persist_failed", "account_id", account.ID, "reset_at", resetAt.Format(time.RFC3339), "error", err)
+		} else {
+			account.RateLimitedAt = &now
+			account.RateLimitResetAt = resetAt
+		}
+	}
+}
+
+func glmCodexQuotaRateLimitResetAt(resp *ClaudeUsageResponse, now time.Time) *time.Time {
+	if resp == nil {
+		return nil
+	}
+	var resetAt *time.Time
+	if reachedCodexQuota(resp.FiveHour.Utilization) {
+		resetAt = laterReset(resetAt, parseGLMCodexResetAt(resp.FiveHour.ResetsAt, now.Add(5*time.Hour), now))
+	}
+	if reachedCodexQuota(resp.SevenDay.Utilization) {
+		resetAt = laterReset(resetAt, parseGLMCodexResetAt(resp.SevenDay.ResetsAt, now.Add(7*24*time.Hour), now))
+	}
+	return resetAt
+}
+
+func reachedCodexQuota(utilization float64) bool {
+	return utilization >= 100
+}
+
+func parseGLMCodexResetAt(raw string, fallback time.Time, now time.Time) *time.Time {
+	if strings.TrimSpace(raw) == "" {
+		return &fallback
+	}
+	resetAt, err := parseTime(raw)
+	if err != nil {
+		return &fallback
+	}
+	if !resetAt.After(now) {
+		return nil
+	}
+	return &resetAt
+}
+
+func laterReset(current *time.Time, next *time.Time) *time.Time {
+	if next == nil {
+		return current
+	}
+	if current == nil || next.After(*current) {
+		return next
+	}
+	return current
 }
 
 func (s *AccountUsageService) fetchGLMUsageRaw(ctx context.Context, account *Account, apiKey string) (*ClaudeUsageResponse, error) {

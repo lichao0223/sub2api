@@ -90,6 +90,137 @@ func TestBuildGLMCodexExtraUpdates(t *testing.T) {
 	}
 }
 
+func TestGLMCodexQuotaRateLimitResetAt(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	fiveHourReset := now.Add(30 * time.Minute).Format(time.RFC3339)
+	sevenDayReset := now.Add(48 * time.Hour).Format(time.RFC3339)
+
+	tests := []struct {
+		name      string
+		resp      *ClaudeUsageResponse
+		wantNil   bool
+		wantReset time.Time
+	}{
+		{
+			name: "5h quota reached",
+			resp: func() *ClaudeUsageResponse {
+				resp := &ClaudeUsageResponse{}
+				resp.FiveHour.Utilization = 100
+				resp.FiveHour.ResetsAt = fiveHourReset
+				resp.SevenDay.Utilization = 88
+				resp.SevenDay.ResetsAt = sevenDayReset
+				return resp
+			}(),
+			wantReset: now.Add(30 * time.Minute),
+		},
+		{
+			name: "7d quota reached",
+			resp: func() *ClaudeUsageResponse {
+				resp := &ClaudeUsageResponse{}
+				resp.FiveHour.Utilization = 0
+				resp.FiveHour.ResetsAt = fiveHourReset
+				resp.SevenDay.Utilization = 100
+				resp.SevenDay.ResetsAt = sevenDayReset
+				return resp
+			}(),
+			wantReset: now.Add(48 * time.Hour),
+		},
+		{
+			name: "both quotas reached uses later reset",
+			resp: func() *ClaudeUsageResponse {
+				resp := &ClaudeUsageResponse{}
+				resp.FiveHour.Utilization = 100
+				resp.FiveHour.ResetsAt = fiveHourReset
+				resp.SevenDay.Utilization = 100
+				resp.SevenDay.ResetsAt = sevenDayReset
+				return resp
+			}(),
+			wantReset: now.Add(48 * time.Hour),
+		},
+		{
+			name: "below quota does not rate limit",
+			resp: func() *ClaudeUsageResponse {
+				resp := &ClaudeUsageResponse{}
+				resp.FiveHour.Utilization = 99
+				resp.FiveHour.ResetsAt = fiveHourReset
+				resp.SevenDay.Utilization = 88
+				resp.SevenDay.ResetsAt = sevenDayReset
+				return resp
+			}(),
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := glmCodexQuotaRateLimitResetAt(tt.resp, now)
+			if tt.wantNil {
+				if got != nil {
+					t.Fatalf("glmCodexQuotaRateLimitResetAt() = %v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("glmCodexQuotaRateLimitResetAt() = nil, want reset time")
+			}
+			if !got.Equal(tt.wantReset) {
+				t.Fatalf("glmCodexQuotaRateLimitResetAt() = %s, want %s", got.Format(time.RFC3339), tt.wantReset.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
+func TestAccountUsageService_PersistGLMCodexSnapshotPromotesExhaustedQuotaToRateLimit(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	resetAt := now.Add(30 * time.Minute)
+	repo := &accountUsageCodexProbeRepo{
+		updateExtraCh: make(chan map[string]any, 1),
+		rateLimitCh:   make(chan time.Time, 1),
+	}
+	svc := &AccountUsageService{accountRepo: repo}
+	account := &Account{
+		ID:       701,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"model_provider": "glm"},
+	}
+	resp := &ClaudeUsageResponse{}
+	resp.FiveHour.Utilization = 100
+	resp.FiveHour.ResetsAt = resetAt.Format(time.RFC3339)
+	resp.SevenDay.Utilization = 88
+	resp.SevenDay.ResetsAt = now.Add(2 * time.Hour).Format(time.RFC3339)
+
+	svc.persistGLMCodexSnapshot(context.Background(), account, resp, now)
+
+	select {
+	case updates := <-repo.updateExtraCh:
+		if got := updates["codex_5h_used_percent"]; got != 100.0 {
+			t.Fatalf("codex_5h_used_percent = %v, want 100", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiting for GLM codex snapshot update timed out")
+	}
+
+	select {
+	case got := <-repo.rateLimitCh:
+		if !got.Equal(resetAt) {
+			t.Fatalf("rate limit reset = %s, want %s", got.Format(time.RFC3339), resetAt.Format(time.RFC3339))
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiting for GLM rate limit update timed out")
+	}
+	if account.RateLimitResetAt == nil || !account.RateLimitResetAt.Equal(resetAt) {
+		t.Fatalf("account.RateLimitResetAt = %v, want %s", account.RateLimitResetAt, resetAt.Format(time.RFC3339))
+	}
+}
+
 func TestShouldAutoPauseGLMAPIKeyAtDefault100Percent(t *testing.T) {
 	t.Parallel()
 
