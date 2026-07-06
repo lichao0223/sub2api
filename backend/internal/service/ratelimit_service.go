@@ -1748,9 +1748,15 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 		}
 	}
 
+	clearCodexSnapshot := hasRecoverableCodexQuotaSnapshot(account)
 	if hasRecoverableRuntimeState(account) {
 		if err := s.ClearRateLimit(ctx, accountID); err != nil {
 			return nil, err
+		}
+		if clearCodexSnapshot {
+			if err := s.accountRepo.UpdateExtra(ctx, accountID, codexUsageSnapshotClearUpdates()); err != nil {
+				return nil, err
+			}
 		}
 		result.ClearedRateLimit = true
 	}
@@ -1798,7 +1804,49 @@ func hasRecoverableRuntimeState(account *Account) bool {
 		return false
 	}
 	return hasNonEmptyMapValue(account.Extra, "model_rate_limits") ||
-		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
+		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes") ||
+		hasRecoverableCodexQuotaSnapshot(account)
+}
+
+func hasRecoverableCodexQuotaSnapshot(account *Account) bool {
+	if !isGLMAPIKeyAccount(account) || len(account.Extra) == 0 {
+		return false
+	}
+	for _, key := range codexUsageSnapshotKeys() {
+		if value, ok := account.Extra[key]; ok && value != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func codexUsageSnapshotClearUpdates() map[string]any {
+	updates := make(map[string]any, len(codexUsageSnapshotKeys()))
+	for _, key := range codexUsageSnapshotKeys() {
+		updates[key] = nil
+	}
+	return updates
+}
+
+func codexUsageSnapshotKeys() []string {
+	return []string{
+		"codex_5h_used_percent",
+		"codex_5h_reset_after_seconds",
+		"codex_5h_reset_at",
+		"codex_5h_window_minutes",
+		"codex_7d_used_percent",
+		"codex_7d_reset_after_seconds",
+		"codex_7d_reset_at",
+		"codex_7d_window_minutes",
+		"codex_primary_used_percent",
+		"codex_primary_reset_after_seconds",
+		"codex_primary_window_minutes",
+		"codex_secondary_used_percent",
+		"codex_secondary_reset_after_seconds",
+		"codex_secondary_window_minutes",
+		"codex_primary_over_secondary_percent",
+		"codex_usage_updated_at",
+	}
 }
 
 func hasNonEmptyMapValue(extra map[string]any, key string) bool {

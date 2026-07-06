@@ -82,8 +82,27 @@ const isRateLimited = computed(() => {
 const isOverloaded = computed(() => props.account?.overload_until && new Date(props.account.overload_until) > new Date())
 const isTempUnschedulable = computed(() => props.account?.temp_unschedulable_until && new Date(props.account.temp_unschedulable_until) > new Date())
 const hasRecoverableState = computed(() => {
-  return props.account?.status === 'error' || Boolean(isRateLimited.value) || Boolean(isOverloaded.value) || Boolean(isTempUnschedulable.value)
+  return props.account?.status === 'error' || Boolean(isRateLimited.value) || Boolean(isOverloaded.value) || Boolean(isTempUnschedulable.value) || isGLMQuotaPaused.value
 })
+const accountExtra = computed(() => props.account?.extra as Record<string, unknown> | undefined)
+const isGLMAPIKey = computed(() => {
+  return props.account?.type === 'apikey' &&
+    (props.account?.platform === 'anthropic' || props.account?.platform === 'openai') &&
+    accountExtra.value?.model_provider === 'glm'
+})
+const isGLMQuotaPaused = computed(() => {
+  if (!isGLMAPIKey.value) return false
+  return isCodexWindowPaused('5h') || isCodexWindowPaused('7d')
+})
+const isCodexWindowPaused = (window: '5h' | '7d') => {
+  const extra = accountExtra.value
+  if (extra?.[`auto_pause_${window}_disabled`] === true) return false
+  const used = Number(extra?.[`codex_${window}_used_percent`] ?? 0)
+  const threshold = Number(extra?.[`auto_pause_${window}_threshold`] ?? 1)
+  if (!Number.isFinite(used) || used <= 0 || used / 100 < threshold) return false
+  const resetAt = extra?.[`codex_${window}_reset_at`]
+  return typeof resetAt !== 'string' || new Date(resetAt) > new Date()
+}
 const isAntigravityOAuth = computed(() => props.account?.platform === 'antigravity' && props.account?.type === 'oauth')
 const isOpenAIOAuth = computed(() => props.account?.platform === 'openai' && props.account?.type === 'oauth')
 // 影子账号(链接型,持 parent_account_id)不持凭据、type 不可变,凭据/隐私类操作对其无效。

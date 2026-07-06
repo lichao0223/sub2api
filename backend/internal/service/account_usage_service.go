@@ -350,7 +350,7 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 	}
 
 	if isGLMAPIKeyAccount(account) {
-		usage, err := s.getGLMUsage(ctx, account)
+		usage, err := s.getGLMUsage(ctx, account, forceProbe)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -825,7 +825,7 @@ func isGLMAPIKeyAccount(account *Account) bool {
 	return strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "glm")
 }
 
-func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
 	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
 	if apiKey == "" {
 		return nil, fmt.Errorf("glm api key is empty")
@@ -837,27 +837,43 @@ func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account)
 			return nil, err
 		}
 		now := time.Now()
+		s.persistGLMCodexSnapshot(ctx, account, resp, now)
 		usage := s.buildUsageInfo(resp, &now)
 		s.addWindowStats(ctx, account, usage)
 		return usage, nil
 	}
 
-	if cached, ok := s.cache.apiCache.Load(account.ID); ok {
-		if cache, ok := cached.(*apiUsageCache); ok {
-			age := time.Since(cache.timestamp)
-			if cache.err != nil && age < apiErrorCacheTTL {
-				return nil, cache.err
-			}
-			if cache.response != nil && age < apiCacheTTL {
-				usage := s.buildUsageInfo(cache.response, &cache.timestamp)
-				s.addWindowStats(ctx, account, usage)
-				return usage, nil
+	if !force {
+		if cached, ok := s.cache.apiCache.Load(account.ID); ok {
+			if cache, ok := cached.(*apiUsageCache); ok {
+				age := time.Since(cache.timestamp)
+				if cache.err != nil && age < apiErrorCacheTTL {
+					return nil, cache.err
+				}
+				if cache.response != nil && age < apiCacheTTL {
+					usage := s.buildUsageInfo(cache.response, &cache.timestamp)
+					s.addWindowStats(ctx, account, usage)
+					return usage, nil
+				}
 			}
 		}
 	}
 
 	flightKey := fmt.Sprintf("glm-usage:%d", account.ID)
 	result, err, _ := s.cache.apiFlight.Do(flightKey, func() (any, error) {
+		if !force {
+			if cached, ok := s.cache.apiCache.Load(account.ID); ok {
+				if cache, ok := cached.(*apiUsageCache); ok {
+					age := time.Since(cache.timestamp)
+					if cache.err != nil && age < apiErrorCacheTTL {
+						return nil, cache.err
+					}
+					if cache.response != nil && age < apiCacheTTL {
+						return cache.response, nil
+					}
+				}
+			}
+		}
 		resp, fetchErr := s.fetchGLMUsageRaw(ctx, account, apiKey)
 		if fetchErr != nil {
 			s.cache.apiCache.Store(account.ID, &apiUsageCache{err: fetchErr, timestamp: time.Now()})
@@ -871,9 +887,32 @@ func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account)
 	}
 	resp, _ := result.(*ClaudeUsageResponse)
 	now := time.Now()
+	if force {
+		s.persistGLMCodexSnapshot(ctx, account, resp, now)
+	} else if cached, ok := s.cache.apiCache.Load(account.ID); ok {
+		if cache, ok := cached.(*apiUsageCache); ok {
+			if cache.response == resp && time.Since(cache.timestamp) < time.Second {
+				s.persistGLMCodexSnapshot(ctx, account, resp, now)
+			}
+		}
+	}
 	usage := s.buildUsageInfo(resp, &now)
 	s.addWindowStats(ctx, account, usage)
 	return usage, nil
+}
+
+func (s *AccountUsageService) persistGLMCodexSnapshot(ctx context.Context, account *Account, resp *ClaudeUsageResponse, now time.Time) {
+	if s == nil || s.accountRepo == nil || account == nil || resp == nil {
+		return
+	}
+	updates := buildGLMCodexExtraUpdates(resp, now)
+	if len(updates) == 0 {
+		return
+	}
+	mergeAccountExtra(account, updates)
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("glm_codex_snapshot_persist_failed", "account_id", account.ID, "error", err)
+	}
 }
 
 func (s *AccountUsageService) fetchGLMUsageRaw(ctx context.Context, account *Account, apiKey string) (*ClaudeUsageResponse, error) {
@@ -942,6 +981,31 @@ func buildGLMClaudeUsageResponse(payload *glmUsageResponse) *ClaudeUsageResponse
 		}
 	}
 	return resp
+}
+
+func buildGLMCodexExtraUpdates(resp *ClaudeUsageResponse, now time.Time) map[string]any {
+	if resp == nil {
+		return nil
+	}
+	updates := make(map[string]any, 7)
+	if resp.FiveHour.ResetsAt != "" || resp.FiveHour.Utilization > 0 {
+		updates["codex_5h_used_percent"] = resp.FiveHour.Utilization
+		updates["codex_5h_window_minutes"] = 5 * 60
+		if resp.FiveHour.ResetsAt != "" {
+			updates["codex_5h_reset_at"] = resp.FiveHour.ResetsAt
+		}
+	}
+	if resp.SevenDay.ResetsAt != "" || resp.SevenDay.Utilization > 0 {
+		updates["codex_7d_used_percent"] = resp.SevenDay.Utilization
+		updates["codex_7d_window_minutes"] = 7 * 24 * 60
+		if resp.SevenDay.ResetsAt != "" {
+			updates["codex_7d_reset_at"] = resp.SevenDay.ResetsAt
+		}
+	}
+	if len(updates) > 0 {
+		updates["codex_usage_updated_at"] = now.UTC().Format(time.RFC3339)
+	}
+	return updates
 }
 
 // applyExtraToUsage rebuilds the codex 5h/7d windows in usage from the

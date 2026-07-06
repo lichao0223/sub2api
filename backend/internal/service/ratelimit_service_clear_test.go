@@ -22,6 +22,7 @@ type rateLimitClearRepoStub struct {
 	clearAntigravityCalls     int
 	clearModelRateLimitCalls  int
 	clearTempUnschedCalls     int
+	updateExtraCalls          []map[string]any
 	clearErrorErr             error
 	clearRateLimitErr         error
 	clearAntigravityErr       error
@@ -60,6 +61,15 @@ func (r *rateLimitClearRepoStub) ClearModelRateLimits(ctx context.Context, id in
 func (r *rateLimitClearRepoStub) ClearTempUnschedulable(ctx context.Context, id int64) error {
 	r.clearTempUnschedCalls++
 	return r.clearTempUnschedulableErr
+}
+
+func (r *rateLimitClearRepoStub) UpdateExtra(ctx context.Context, id int64, updates map[string]any) error {
+	copied := make(map[string]any, len(updates))
+	for key, value := range updates {
+		copied[key] = value
+	}
+	r.updateExtraCalls = append(r.updateExtraCalls, copied)
+	return nil
 }
 
 type tempUnschedCacheRecorder struct {
@@ -306,4 +316,34 @@ func TestRateLimitService_RecoverAccountState_InvalidatesOAuthTokenOnErrorRecove
 	require.Equal(t, 1, repo.clearErrorCalls)
 	require.Len(t, invalidator.accounts, 1)
 	require.Equal(t, int64(21), invalidator.accounts[0].ID)
+}
+
+func TestRateLimitService_RecoverAccountState_ClearsGLMCodexSnapshot(t *testing.T) {
+	repo := &rateLimitClearRepoStub{
+		getByIDAccount: &Account{
+			ID:          22,
+			Platform:    PlatformAnthropic,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Extra: map[string]any{
+				"model_provider":          "glm",
+				"codex_5h_used_percent":   100.0,
+				"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
+				"codex_usage_updated_at":  time.Now().Format(time.RFC3339),
+				"auto_pause_5h_threshold": 1.0,
+			},
+		},
+	}
+	svc := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+
+	result, err := svc.RecoverAccountState(context.Background(), 22, AccountRecoveryOptions{})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.ClearedRateLimit)
+	require.Equal(t, 1, repo.clearRateLimitCalls)
+	require.Len(t, repo.updateExtraCalls, 1)
+	require.Contains(t, repo.updateExtraCalls[0], "codex_5h_used_percent")
+	require.Nil(t, repo.updateExtraCalls[0]["codex_5h_used_percent"])
+	require.Nil(t, repo.updateExtraCalls[0]["codex_usage_updated_at"])
 }

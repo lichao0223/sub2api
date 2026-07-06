@@ -62,6 +62,61 @@ func TestBuildGLMClaudeUsageResponse(t *testing.T) {
 	}
 }
 
+func TestBuildGLMCodexExtraUpdates(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	resp := &ClaudeUsageResponse{}
+	resp.FiveHour.Utilization = 100
+	resp.FiveHour.ResetsAt = "2026-07-06T15:00:00Z"
+	resp.SevenDay.Utilization = 46
+	resp.SevenDay.ResetsAt = "2026-07-13T10:00:00Z"
+
+	updates := buildGLMCodexExtraUpdates(resp, now)
+	if got := updates["codex_5h_used_percent"]; got != 100.0 {
+		t.Fatalf("codex_5h_used_percent = %v, want 100", got)
+	}
+	if got := updates["codex_5h_window_minutes"]; got != 300 {
+		t.Fatalf("codex_5h_window_minutes = %v, want 300", got)
+	}
+	if got := updates["codex_7d_used_percent"]; got != 46.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 46", got)
+	}
+	if got := updates["codex_7d_window_minutes"]; got != 10080 {
+		t.Fatalf("codex_7d_window_minutes = %v, want 10080", got)
+	}
+	if got := updates["codex_usage_updated_at"]; got != "2026-07-06T10:00:00Z" {
+		t.Fatalf("codex_usage_updated_at = %v, want 2026-07-06T10:00:00Z", got)
+	}
+}
+
+func TestShouldAutoPauseGLMAPIKeyAtDefault100Percent(t *testing.T) {
+	t.Parallel()
+
+	account := &Account{
+		Platform:    PlatformAnthropic,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"model_provider":          "glm",
+			"codex_5h_used_percent":   100.0,
+			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
+			"codex_usage_updated_at":  time.Now().Format(time.RFC3339),
+			"auto_pause_7d_disabled":  true,
+			"auto_pause_5h_threshold": nil,
+		},
+	}
+
+	paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
+	if !paused {
+		t.Fatal("expected GLM API key account to pause at 100% by default")
+	}
+	if decision.window != "5h" {
+		t.Fatalf("decision.window = %q, want 5h", decision.window)
+	}
+}
+
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 	t.Parallel()
 
