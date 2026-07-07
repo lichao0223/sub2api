@@ -58,8 +58,9 @@
                   @click="selectFilterUser(user)"
                   class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
-                  <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                  <span class="block font-medium text-gray-900 dark:text-white">{{ simpleUserLabel(user) }}</span>
+                  <span v-if="user.username?.trim()" class="block text-xs text-gray-500 dark:text-gray-400">{{ user.email }}</span>
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
                 </button>
               </div>
             </div>
@@ -494,8 +495,9 @@
                 @click="selectUser(user)"
                 class="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-gray-700"
               >
-                <span class="font-medium text-gray-900 dark:text-white">{{ user.email }}</span>
-                <span class="ml-2 text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
+                <span class="block font-medium text-gray-900 dark:text-white">{{ simpleUserLabel(user) }}</span>
+                <span v-if="user.username?.trim()" class="block text-xs text-gray-500 dark:text-gray-400">{{ user.email }}</span>
+                <span class="block text-xs text-gray-500 dark:text-gray-400">#{{ user.id }}</span>
               </button>
             </div>
           </div>
@@ -936,6 +938,8 @@ const showUserDropdown = ref(false)
 const selectedUser = ref<SimpleUser | null>(null)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
+const simpleUserLabel = (user: SimpleUser) => user.username?.trim() || user.email
+
 const filters = reactive({
   status: 'active',
   group_id: '',
@@ -1074,7 +1078,7 @@ const searchFilterUsers = async () => {
   const keyword = filterUserKeyword.value.trim()
 
   // Clear active user filter if user modified the search keyword
-  if (selectedFilterUser.value && keyword !== selectedFilterUser.value.email) {
+  if (selectedFilterUser.value && keyword !== simpleUserLabel(selectedFilterUser.value)) {
     selectedFilterUser.value = null
     filters.user_id = null
     applyFilters()
@@ -1098,7 +1102,7 @@ const searchFilterUsers = async () => {
 
 const selectFilterUser = (user: SimpleUser) => {
   selectedFilterUser.value = user
-  filterUserKeyword.value = user.email
+  filterUserKeyword.value = simpleUserLabel(user)
   showFilterUserDropdown.value = false
   filters.user_id = user.id
   applyFilters()
@@ -1125,7 +1129,7 @@ const searchUsers = async () => {
   const keyword = userSearchKeyword.value.trim()
 
   // Clear selection if user modified the search keyword
-  if (selectedUser.value && keyword !== selectedUser.value.email) {
+  if (selectedUser.value && keyword !== simpleUserLabel(selectedUser.value)) {
     selectedUser.value = null
     assignForm.user_id = null
   }
@@ -1150,7 +1154,7 @@ const searchUsers = async () => {
 
 const selectUser = (user: SimpleUser) => {
   selectedUser.value = user
-  userSearchKeyword.value = user.email
+  userSearchKeyword.value = simpleUserLabel(user)
   showUserDropdown.value = false
   assignForm.user_id = user.id
 }

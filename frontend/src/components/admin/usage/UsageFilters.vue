@@ -35,8 +35,9 @@
               @click="selectUser(u)"
               class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              <span>{{ u.email }}<span v-if="u.deleted" class="ml-1 text-xs text-gray-400">（{{ t('admin.usage.userDeletedBadge') }}）</span></span>
-              <span class="ml-2 text-xs text-gray-400">#{{ u.id }}</span>
+              <span class="block">{{ simpleUserLabel(u) }}<span v-if="u.deleted" class="ml-1 text-xs text-gray-400">（{{ t('admin.usage.userDeletedBadge') }}）</span></span>
+              <span v-if="u.username?.trim()" class="block text-xs text-gray-400">{{ u.email }}</span>
+              <span class="block text-xs text-gray-400">#{{ u.id }}</span>
             </button>
           </div>
         </div>
@@ -232,6 +233,7 @@ const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
 const showUserDropdown = ref(false)
 let userSearchTimeout: ReturnType<typeof setTimeout> | null = null
+const simpleUserLabel = (user: SimpleUser) => user.username?.trim() || user.email
 
 const apiKeyKeyword = ref('')
 const apiKeyResults = ref<SimpleApiKey[]>([])
@@ -330,7 +332,7 @@ const debounceApiKeySearch = () => {
 }
 
 const selectUser = async (u: SimpleUser) => {
-  userKeyword.value = u.email
+  userKeyword.value = simpleUserLabel(u)
   showUserDropdown.value = false
   filters.value.user_id = u.id
   clearApiKey()
