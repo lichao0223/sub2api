@@ -127,6 +127,76 @@ func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.
 	require.Empty(t, apiKeys.createCalls)
 }
 
+func TestExternalUserService_Create_ExistingReturnsExclusiveAPIKeysWithoutCreatingThem(t *testing.T) {
+	publicGroupID := int64(7)
+	missingPublicGroupID := int64(9)
+	exclusiveGroupID := int64(8)
+	admin := &externalUserAdminStub{
+		groups: []Group{
+			{ID: publicGroupID, Name: "公共一", Status: StatusActive},
+			{ID: exclusiveGroupID, Name: "专属", Status: StatusActive, IsExclusive: true},
+			{ID: missingPublicGroupID, Name: "公共二", Status: StatusActive},
+		},
+		users: map[int64]*User{
+			101: {ID: 101, Email: "ext@example.local", Username: "李四"},
+		},
+	}
+	apiKeys := &externalUserAPIKeyStub{
+		keys: map[int64]*APIKey{
+			201: {
+				ID:      201,
+				UserID:  101,
+				Key:     "sk-public",
+				Name:    "李四公共一",
+				GroupID: &publicGroupID,
+				Group:   &Group{ID: publicGroupID, Name: "公共一", Status: StatusActive},
+				Status:  StatusAPIKeyActive,
+			},
+			202: {
+				ID:      202,
+				UserID:  101,
+				Key:     "sk-exclusive",
+				Name:    "李四专属",
+				GroupID: &exclusiveGroupID,
+				Group:   &Group{ID: exclusiveGroupID, Name: "专属", Status: StatusActive, IsExclusive: true},
+				Status:  StatusAPIKeyActive,
+			},
+		},
+		nextKeys: []APIKey{{ID: 203, Key: "sk-public-missing", Status: StatusAPIKeyActive}},
+	}
+	mappings := newExternalUserMappingStub()
+	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{
+		ID:                     1,
+		ExternalUserID:         "u-2",
+		ExternalOrganizationID: "org-1",
+		UserID:                 101,
+		APIKeyID:               201,
+	}))
+	svc := &ExternalUserService{
+		adminService:  admin,
+		apiKeyService: apiKeys,
+		mappingRepo:   mappings,
+	}
+
+	result, err := svc.Create(context.Background(), ExternalUserInput{
+		ExternalUserID:         "u-2",
+		ExternalOrganizationID: "org-1",
+		Username:               "李四",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, ExternalUserStatusSkipped, result.Status)
+	require.Len(t, result.APIKeys, 3)
+	require.ElementsMatch(t, []string{"sk-public", "sk-public-missing", "sk-exclusive"}, []string{
+		result.APIKeys[0].Key,
+		result.APIKeys[1].Key,
+		result.APIKeys[2].Key,
+	})
+	require.Len(t, apiKeys.createCalls, 1)
+	require.NotNil(t, apiKeys.createCalls[0].req.GroupID)
+	require.Equal(t, missingPublicGroupID, *apiKeys.createCalls[0].req.GroupID)
+}
+
 func TestExternalUserService_Create_ExistingMissingAPIKeyCreatesReplacement(t *testing.T) {
 	admin := &externalUserAdminStub{
 		groups: []Group{{ID: 7, Status: StatusActive}},

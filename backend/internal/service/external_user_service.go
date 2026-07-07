@@ -388,6 +388,7 @@ func (s *ExternalUserService) listUserAPIKeys(ctx context.Context, userID int64)
 
 func (s *ExternalUserService) createDefaultAPIKeys(ctx context.Context, userID int64, username string, groups []Group, existing []APIKey) ([]*APIKey, error) {
 	byGroup := make(map[int64]*APIKey, len(existing))
+	defaultGroupIDs := make(map[int64]struct{}, len(groups))
 	for i := range existing {
 		key := existing[i]
 		if key.GroupID == nil || !key.IsActive() {
@@ -399,6 +400,7 @@ func (s *ExternalUserService) createDefaultAPIKeys(ctx context.Context, userID i
 	keys := make([]*APIKey, 0, len(groups))
 	for i := range groups {
 		group := groups[i]
+		defaultGroupIDs[group.ID] = struct{}{}
 		if key := byGroup[group.ID]; key != nil {
 			attachExternalUserGroup(key, &group)
 			keys = append(keys, key)
@@ -411,7 +413,34 @@ func (s *ExternalUserService) createDefaultAPIKeys(ctx context.Context, userID i
 		attachExternalUserGroup(key, &group)
 		keys = append(keys, key)
 	}
+	keys = appendExistingNonDefaultAPIKeys(keys, existing, defaultGroupIDs)
 	return keys, nil
+}
+
+func appendExistingNonDefaultAPIKeys(keys []*APIKey, existing []APIKey, defaultGroupIDs map[int64]struct{}) []*APIKey {
+	seen := make(map[int64]struct{}, len(keys))
+	for _, key := range keys {
+		if key != nil {
+			seen[key.ID] = struct{}{}
+		}
+	}
+	for i := range existing {
+		key := existing[i]
+		if !key.IsActive() {
+			continue
+		}
+		if _, ok := seen[key.ID]; ok {
+			continue
+		}
+		if key.GroupID != nil {
+			if _, ok := defaultGroupIDs[*key.GroupID]; ok {
+				continue
+			}
+		}
+		keys = append(keys, &key)
+		seen[key.ID] = struct{}{}
+	}
+	return keys
 }
 
 func externalUserAPIKeyName(username, groupName string) string {
