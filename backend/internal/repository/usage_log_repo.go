@@ -3839,6 +3839,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		SELECT
 			COALESCE(ul.user_id, 0) as user_id,
 			COALESCE(u.email, '') as email,
+			COALESCE(u.username, '') as username,
 			COUNT(*) as requests,
 			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens), 0) as total_tokens,
 			COALESCE(SUM(ul.total_cost), 0) as cost,
@@ -3888,7 +3889,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		args = append(args, *dim.BillingType)
 	}
 
-	query += " GROUP BY ul.user_id, u.email ORDER BY actual_cost DESC"
+	query += " GROUP BY ul.user_id, u.email, u.username ORDER BY actual_cost DESC"
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
@@ -3910,6 +3911,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 		if err := rows.Scan(
 			&row.UserID,
 			&row.Email,
+			&row.Username,
 			&row.Requests,
 			&row.TotalTokens,
 			&row.Cost,
