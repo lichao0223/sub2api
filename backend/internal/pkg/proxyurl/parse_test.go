@@ -41,6 +41,7 @@ func TestParse_有效HTTP代理(t *testing.T) {
 	}
 	if parsed == nil {
 		t.Fatal("parsed 不应为 nil")
+		return
 	}
 	if parsed.Host != "proxy.example.com:8080" {
 		t.Errorf("Host 不匹配: got %q", parsed.Host)
@@ -51,6 +52,10 @@ func TestParse_有效HTTPS代理(t *testing.T) {
 	_, parsed, err := Parse("https://proxy.example.com:443")
 	if err != nil {
 		t.Fatalf("有效 HTTPS 代理应成功: %v", err)
+	}
+	if parsed == nil {
+		t.Fatal("parsed 不应为 nil")
+		return
 	}
 	if parsed.Scheme != "https" {
 		t.Errorf("Scheme 不匹配: got %q", parsed.Scheme)
