@@ -85,6 +85,7 @@ func TestBuildCreateOrderResponseCopiesJSAPIPayload(t *testing.T) {
 	}
 	if resp.JSAPI == nil || resp.JSAPIPayload == nil {
 		t.Fatal("expected jsapi payload aliases to be populated")
+		return
 	}
 	if resp.JSAPI != jsapiPayload || resp.JSAPIPayload != jsapiPayload {
 		t.Fatal("expected jsapi aliases to preserve the original pointer")

@@ -49,6 +49,7 @@ func TestListUserErrorRequests_ForcesScopeAndRedacts(t *testing.T) {
 	// 强制按用户
 	if stub.gotFilter.UserID == nil || *stub.gotFilter.UserID != uid {
 		t.Fatalf("UserID not forced: %+v", stub.gotFilter.UserID)
+		return
 	}
 	// 强制 View=all（含业务限流/余额）
 	if stub.gotFilter.View != "all" {
@@ -206,6 +207,7 @@ func TestGetUserErrorRequestDetail_DeletedKeyOwnerAccess(t *testing.T) {
 	}
 	if got == nil || got.ID != 55 {
 		t.Fatalf("expected detail ID=55, got %+v", got)
+		return
 	}
 	if !got.KeyDeleted || got.KeyName != "my-old-key" {
 		t.Fatalf("expected KeyDeleted=true KeyName=my-old-key, got %+v", got)

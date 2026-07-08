@@ -110,6 +110,7 @@ func TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedul
 	}
 	if selection == nil || selection.Account == nil {
 		t.Fatalf("expected selected account")
+		return
 	}
 	if got := selection.Account.GetOpenAIApiKey(); got != "sk-live" {
 		t.Fatalf("expected hydrated api key, got %q", got)
@@ -183,6 +184,7 @@ func TestGatewaySelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedu
 	}
 	if result == nil || result.Account == nil {
 		t.Fatalf("expected selected account")
+		return
 	}
 	if got := result.Account.GetCredential("api_key"); got != "anthropic-live-key" {
 		t.Fatalf("expected hydrated api key, got %q", got)
@@ -269,6 +271,7 @@ func TestGatewaySelectAccountWithLoadAwareness_SkipsAntigravityGeminiFamilyRateL
 	}
 	if result == nil || result.Account == nil {
 		t.Fatalf("expected selected account")
+		return
 	}
 	if result.Account.ID != 2 {
 		t.Fatalf("expected scheduler to skip Gemini-family limited antigravity account 1, got %d", result.Account.ID)

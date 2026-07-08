@@ -463,6 +463,7 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T)
 	}
 	if selection == nil || selection.Account == nil {
 		t.Fatalf("expected selection with account")
+		return
 	}
 	if selection.Account.ID != available.ID {
 		t.Fatalf("expected account %d, got %d", available.ID, selection.Account.ID)
@@ -559,6 +560,7 @@ func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulableWhenNoConcurre
 	}
 	if selection == nil || selection.Account == nil {
 		t.Fatalf("expected selection with account")
+		return
 	}
 	if selection.Account.ID != available.ID {
 		t.Fatalf("expected account %d, got %d", available.ID, selection.Account.ID)
@@ -660,6 +662,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyUnschedulableClearsSession(t
 	}
 	if selection == nil || selection.Account == nil || selection.Account.ID != 2 {
 		t.Fatalf("expected account 2, got %+v", selection)
+		return
 	}
 	if cache.deletedSessions["openai:"+sessionHash] != 1 {
 		t.Fatalf("expected sticky session to be deleted")
@@ -699,6 +702,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyOutsideGroupClearsSession(t 
 	}
 	if selection == nil || selection.Account == nil || selection.Account.ID != 2 {
 		t.Fatalf("expected account 2, got %+v", selection)
+		return
 	}
 	if cache.deletedSessions["openai:"+sessionHash] != 1 {
 		t.Fatalf("expected sticky session to be deleted")
@@ -767,6 +771,7 @@ func TestOpenAISelectAccountWithLoadAwareness_LoadBatchErrorFallback(t *testing.
 	}
 	if selection == nil || selection.Account == nil {
 		t.Fatalf("expected selection")
+		return
 	}
 	if selection.Account.ID != 2 {
 		t.Fatalf("expected account 2, got %d", selection.Account.ID)
@@ -806,6 +811,7 @@ func TestOpenAISelectAccountWithLoadAwareness_NoSlotFallbackWait(t *testing.T) {
 	}
 	if selection == nil || selection.WaitPlan == nil {
 		t.Fatalf("expected wait plan fallback")
+		return
 	}
 	if selection.Account == nil || selection.Account.ID != 1 {
 		t.Fatalf("expected account 1")
@@ -866,6 +872,7 @@ func TestOpenAISelectAccountWithLoadAwareness_StickyWaitPlan(t *testing.T) {
 	}
 	if selection == nil || selection.WaitPlan == nil {
 		t.Fatalf("expected sticky wait plan")
+		return
 	}
 	if selection.Account == nil || selection.Account.ID != 1 {
 		t.Fatalf("expected account 1")
@@ -1682,6 +1689,7 @@ func TestOpenAIStreamingClientDisconnectDrainsUpstreamUsage(t *testing.T) {
 	}
 	if result == nil || result.usage == nil {
 		t.Fatalf("expected usage result")
+		return
 	}
 	if result.usage.InputTokens != 3 || result.usage.OutputTokens != 5 || result.usage.CacheReadInputTokens != 1 {
 		t.Fatalf("unexpected usage: %+v", *result.usage)

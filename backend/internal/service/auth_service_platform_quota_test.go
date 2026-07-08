@@ -106,6 +106,7 @@ func TestSnapshotPlatformQuotaDefaults_DetachesCallerTransaction(t *testing.T) {
 
 	if fakeRepo.lastCtx == nil {
 		t.Fatal("expected BulkInsertInitial to be called")
+		return
 	}
 	if dbent.TxFromContext(fakeRepo.lastCtx) != nil {
 		t.Error("快照必须脱离调用方事务执行（best-effort，失败不得毒化注册事务），但 repo 收到了仍携带事务的 ctx")
@@ -165,10 +166,12 @@ func TestResolveSignupGrantPlan_GlobalQuotaLoadedBeforeAuthSource(t *testing.T) 
 	plan := svc.resolveSignupGrantPlan(context.Background(), "email")
 	if plan.PlatformQuotas == nil {
 		t.Fatal("expected PlatformQuotas to be non-nil after loading global quota KVs")
+		return
 	}
 	q := plan.PlatformQuotas["anthropic"]
 	if q == nil {
 		t.Fatal("expected anthropic quota to be set")
+		return
 	}
 	if q.DailyLimitUSD == nil || *q.DailyLimitUSD != 10 {
 		t.Errorf("expected anthropic daily=10, got %v", q.DailyLimitUSD)
@@ -188,6 +191,7 @@ func TestResolveSignupGrantPlan_DisabledAuthSourceStillCarriesGlobalQuota(t *tes
 	// !enabled 路径：plan.PlatformQuotas 应已含全局层（不是 nil）
 	if plan.PlatformQuotas == nil {
 		t.Fatal("P1 violated: PlatformQuotas is nil even with global quota KVs set")
+		return
 	}
 	// P1 核心断言：disabled auth source 路径不能丢失全局 quota
 	if _, ok := plan.PlatformQuotas["anthropic"]; !ok {

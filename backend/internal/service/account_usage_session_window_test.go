@@ -53,6 +53,7 @@ func TestEstimateSetupTokenUsage_ExpiredWindowZeroes(t *testing.T) {
 
 	if info.FiveHour == nil {
 		t.Fatal("expected non-nil FiveHour info")
+		return
 	}
 	if info.FiveHour.Utilization != 0 {
 		t.Fatalf("expected Utilization=0 for expired window, got %v", info.FiveHour.Utilization)
@@ -79,12 +80,14 @@ func TestEstimateSetupTokenUsage_ActiveWindowPreservesUtilization(t *testing.T) 
 
 	if info.FiveHour == nil {
 		t.Fatal("expected non-nil FiveHour info")
+		return
 	}
 	if info.FiveHour.Utilization != 53 {
 		t.Fatalf("expected Utilization=53, got %v", info.FiveHour.Utilization)
 	}
 	if info.FiveHour.ResetsAt == nil || !info.FiveHour.ResetsAt.Equal(future) {
 		t.Fatalf("expected ResetsAt=%v, got %v", future, info.FiveHour.ResetsAt)
+		return
 	}
 	if info.FiveHour.RemainingSeconds <= 0 {
 		t.Fatalf("expected positive RemainingSeconds, got %v", info.FiveHour.RemainingSeconds)

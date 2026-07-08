@@ -37,6 +37,7 @@ func TestApplyAntigravityPrivacyMode_SetsInMemoryExtra(t *testing.T) {
 
 	if account.Extra == nil {
 		t.Fatal("expected account.Extra to be initialized")
+		return
 	}
 	if got := account.Extra["privacy_mode"]; got != AntigravityPrivacySet {
 		t.Fatalf("expected privacy_mode %q, got %v", AntigravityPrivacySet, got)

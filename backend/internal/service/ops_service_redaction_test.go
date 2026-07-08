@@ -66,6 +66,7 @@ func TestSanitizeAndTrimJSONPayload_PreservesTokenBudgetFields(t *testing.T) {
 	thinking, ok := decoded["thinking"].(map[string]any)
 	if !ok || thinking == nil {
 		t.Fatalf("expected thinking object to be preserved, got %#v", decoded["thinking"])
+		return
 	}
 	if got, ok := thinking["budget_tokens"].(float64); !ok || got != 456 {
 		t.Fatalf("expected thinking.budget_tokens=456, got %#v", thinking["budget_tokens"])

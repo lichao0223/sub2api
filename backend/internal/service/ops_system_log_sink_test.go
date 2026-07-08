@@ -177,12 +177,15 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 	}
 	if item.UserID == nil || *item.UserID != 12 {
 		t.Fatalf("unexpected user_id: %+v", item.UserID)
+		return
 	}
 	if item.APIKeyID == nil || *item.APIKeyID != 56 {
 		t.Fatalf("unexpected api_key_id: %+v", item.APIKeyID)
+		return
 	}
 	if item.AccountID == nil || *item.AccountID != 34 {
 		t.Fatalf("unexpected account_id: %+v", item.AccountID)
+		return
 	}
 	if strings.TrimSpace(item.Message) == "" {
 		t.Fatalf("message should not be empty")
@@ -318,6 +321,7 @@ func TestOpsSystemLogSink_HelperFunctions(t *testing.T) {
 		if tc.ok {
 			if got == nil || *got != tc.want {
 				t.Fatalf("asInt64Ptr(%v) = %+v, want %d", tc.in, got, tc.want)
+				return
 			}
 		} else if got != nil {
 			t.Fatalf("asInt64Ptr(%v) should be nil, got %d", tc.in, *got)

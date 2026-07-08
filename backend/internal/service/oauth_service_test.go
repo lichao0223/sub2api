@@ -123,6 +123,7 @@ func TestNewOAuthService(t *testing.T) {
 
 	if svc == nil {
 		t.Fatal("NewOAuthService 返回 nil")
+		return
 	}
 	if svc.proxyRepo != proxyRepo {
 		t.Fatal("proxyRepo 未正确设置")
@@ -132,6 +133,7 @@ func TestNewOAuthService(t *testing.T) {
 	}
 	if svc.sessionStore == nil {
 		t.Fatal("sessionStore 应被自动初始化")
+		return
 	}
 
 	// 清理
@@ -150,6 +152,7 @@ func TestOAuthService_GenerateAuthURL(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("GenerateAuthURL 返回 nil")
+		return
 	}
 	if result.AuthURL == "" {
 		t.Fatal("AuthURL 为空")
@@ -211,6 +214,7 @@ func TestOAuthService_GenerateSetupTokenURL(t *testing.T) {
 	}
 	if result == nil {
 		t.Fatal("GenerateSetupTokenURL 返回 nil")
+		return
 	}
 
 	// 验证 scope 是 inference
