@@ -139,6 +139,8 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 	segments := nonworkRankingSegments(scope)
 	innerOrderExpr, outerOrderExpr := nonworkRankingOrderExprs(rankBy)
 	innerDirection, outerDirection := nonworkRankingDirections(sortOrder)
+	startDateArg := startDate.Format("2006-01-02")
+	endDateArg := endDate.Format("2006-01-02")
 
 	query := fmt.Sprintf(`
 		WITH filtered_users AS (
@@ -290,7 +292,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		ORDER BY %s %s, tokens %s, active_duration_ms %s, user_id ASC
 	`, innerOrderExpr, innerDirection, innerDirection, innerDirection, outerOrderExpr, outerDirection, outerDirection, outerDirection)
 
-	rows, err := r.sql.QueryContext(ctx, query, startDate, endDate, tz, pq.Array(segments), service.RoleAdmin, pq.Array(compactStrings(externalOrganizationIDs)), username, limit, strings.TrimSpace(scope))
+	rows, err := r.sql.QueryContext(ctx, query, startDateArg, endDateArg, tz, pq.Array(segments), service.RoleAdmin, pq.Array(compactStrings(externalOrganizationIDs)), username, limit, strings.TrimSpace(scope))
 	if err != nil {
 		return nil, err
 	}
@@ -367,6 +369,8 @@ func (r *usageLogRepository) GetNonworkStatsCoverage(ctx context.Context, startD
 	if strings.TrimSpace(tz) == "" {
 		tz = "Asia/Shanghai"
 	}
+	startDateArg := startDate.Format("2006-01-02")
+	endDateArg := endDate.Format("2006-01-02")
 	rows, err := r.sql.QueryContext(ctx, `
 		WITH days AS (
 			SELECT generate_series($1::date, $2::date, interval '1 day')::date AS bucket_date
@@ -382,7 +386,7 @@ func (r *usageLogRepository) GetNonworkStatsCoverage(ctx context.Context, startD
 		FROM days d
 		LEFT JOIN marked m ON m.bucket_date = d.bucket_date
 		ORDER BY d.bucket_date ASC
-	`, startDate, endDate, tz)
+	`, startDateArg, endDateArg, tz)
 	if err != nil {
 		return result, err
 	}

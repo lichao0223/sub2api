@@ -738,8 +738,9 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}
 
-	start := time.Date(2026, 6, 18, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 6, 24, 0, 0, 0, 0, time.UTC)
+	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
+	start := time.Date(2026, 6, 18, 0, 0, 0, 0, shanghai)
+	end := time.Date(2026, 6, 24, 0, 0, 0, 0, shanghai)
 	computedAt := time.Date(2026, 6, 24, 10, 30, 0, 0, time.UTC)
 
 	coverageRows := sqlmock.NewRows([]string{"bucket_date", "aggregated", "computed_at"}).
@@ -751,7 +752,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		AddRow("2026-06-23", true, computedAt.Add(-1*time.Hour)).
 		AddRow("2026-06-24", true, computedAt)
 	mock.ExpectQuery("WITH days AS \\(").
-		WithArgs(start, end, "Asia/Shanghai").
+		WithArgs("2026-06-18", "2026-06-24", "Asia/Shanghai").
 		WillReturnRows(coverageRows)
 
 	rows := sqlmock.NewRows([]string{
@@ -782,7 +783,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 	)
 
 	mock.ExpectQuery("WITH filtered_users AS \\(").
-		WithArgs(start, end, "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, sqlmock.AnyArg(), "", 12, usagestats.NonworkRankingScopeNonwork).
+		WithArgs("2026-06-18", "2026-06-24", "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, sqlmock.AnyArg(), "", 12, usagestats.NonworkRankingScopeNonwork).
 		WillReturnRows(rows)
 
 	got, err := repo.GetUserNonworkTokenRanking(context.Background(), start, end, usagestats.NonworkRankingScopeNonwork, usagestats.NonworkRankingRankByActiveDuration, "asc", "Asia/Shanghai", nil, "", 12)
