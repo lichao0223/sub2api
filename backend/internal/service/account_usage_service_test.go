@@ -167,6 +167,7 @@ func TestGLMCodexQuotaRateLimitResetAt(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatal("glmCodexQuotaRateLimitResetAt() = nil, want reset time")
+				return
 			}
 			if !got.Equal(tt.wantReset) {
 				t.Fatalf("glmCodexQuotaRateLimitResetAt() = %s, want %s", got.Format(time.RFC3339), tt.wantReset.Format(time.RFC3339))
