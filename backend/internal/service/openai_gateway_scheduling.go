@@ -301,7 +301,7 @@ func grokQuotaSnapshotStaleForPause(snapshot *xai.QuotaSnapshot, now time.Time) 
 }
 
 func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) (bool, openAIQuotaAutoPauseDecision) {
-	if account == nil || !account.IsOpenAI() {
+	if account == nil || (!account.IsOpenAI() && !isGLMAPIKeyAccount(account)) {
 		return false, openAIQuotaAutoPauseDecision{}
 	}
 	// Per-account explicit-disable flags must take precedence over the global default.
@@ -373,6 +373,14 @@ func resolveOpenAIQuotaAutoPauseThresholds(ctx context.Context, account *Account
 	}
 	if threshold7d <= 0 {
 		threshold7d = clamp01(settings.DefaultThreshold7d)
+	}
+	if isGLMAPIKeyAccount(account) {
+		if threshold5h <= 0 {
+			threshold5h = 1
+		}
+		if threshold7d <= 0 {
+			threshold7d = 1
+		}
 	}
 	return threshold5h, threshold7d
 }
