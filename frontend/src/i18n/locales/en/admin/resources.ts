@@ -504,6 +504,20 @@ export default {
       nonworkBackfillFailed: 'Failed to submit non-work stats backfill',
       calendarOverrideSaved: 'Calendar day override saved',
       calendarOverrideFailed: 'Failed to save calendar day override',
+      tokenRanking: {
+        subtitle: 'Per-user token usage for the current filters and time range',
+        rowHint: "Click to view this user's usage details",
+        userCount: '{count} users',
+        columns: {
+          user: 'User',
+          requests: 'Requests',
+          inputTokens: 'Input Tokens',
+          outputTokens: 'Output Tokens',
+          cacheTokens: 'Cache Tokens',
+          totalTokens: 'Total Tokens',
+          cost: 'Cost'
+        }
+      },
       cleanup: {
         button: 'Cleanup',
         title: 'Cleanup Usage Records',
