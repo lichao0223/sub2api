@@ -197,6 +197,12 @@
                     v-for="(item, index) in paginatedRankingItems"
                     :key="`${item.user_id}-${index}`"
                     class="border-t border-gray-100 dark:border-dark-700"
+                    :class="{ 'cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-dark-700/40': authStore.isAdmin }"
+                    :title="authStore.isAdmin ? t('admin.usage.tokenRanking.rowHint') : undefined"
+                    :role="authStore.isAdmin ? 'link' : undefined"
+                    :tabindex="authStore.isAdmin ? 0 : undefined"
+                    @click="goToUserUsage(item)"
+                    @keydown.enter="goToUserUsage(item)"
                   >
                     <td class="px-4 py-3 font-semibold text-gray-500 dark:text-gray-400">#{{ paginationStart + index + 1 }}</td>
                     <td class="px-4 py-3">
@@ -355,6 +361,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { saveAs } from 'file-saver'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
@@ -373,6 +380,7 @@ import type { NonworkStatsCoverage, UserTokenRankingItem } from '@/types'
 import type { ExternalUsageImportBatch, ExternalUsageImportPreview, ExternalUsageImportRow } from '@/api/admin/usage'
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
@@ -490,6 +498,18 @@ function userLabel(item: UserTokenRankingItem): string {
   if (item.username?.trim()) return item.username.trim()
   if (item.email) return item.email
   return t('tokenRanking.userFallback', { id: item.user_id })
+}
+
+function goToUserUsage(item: UserTokenRankingItem) {
+  if (!authStore.isAdmin) return
+  void router.push({
+    path: '/admin/usage',
+    query: {
+      user_id: String(item.user_id),
+      start_date: responseStartDate.value || startDate.value,
+      end_date: responseEndDate.value || endDate.value
+    }
+  })
 }
 
 function formatNumber(value: number): string {
