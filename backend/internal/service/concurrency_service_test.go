@@ -31,6 +31,8 @@ type stubConcurrencyCacheForTest struct {
 	usersLoadErr         error
 	cleanupErr           error
 	apiKeyTrackErr       error
+	apiKeyAcquireResult  bool
+	apiKeyAcquireErr     error
 	apiKeyReleaseErr     error
 	apiKeyConcurrency    map[int64]int
 	apiKeyConcurrencyErr error
@@ -130,6 +132,11 @@ func (c *stubConcurrencyCacheForTest) TrackAPIKeySlot(_ context.Context, apiKeyI
 	c.trackedAPIKeyIDs = append(c.trackedAPIKeyIDs, apiKeyID)
 	c.trackedAPIKeyRequestIDs = append(c.trackedAPIKeyRequestIDs, requestID)
 	return c.apiKeyTrackErr
+}
+func (c *stubConcurrencyCacheForTest) AcquireAPIKeySlot(_ context.Context, apiKeyID int64, _ int, requestID string) (bool, error) {
+	c.trackedAPIKeyIDs = append(c.trackedAPIKeyIDs, apiKeyID)
+	c.trackedAPIKeyRequestIDs = append(c.trackedAPIKeyRequestIDs, requestID)
+	return c.apiKeyAcquireResult, c.apiKeyAcquireErr
 }
 func (c *stubConcurrencyCacheForTest) ReleaseAPIKeySlot(_ context.Context, apiKeyID int64, requestID string) error {
 	c.releasedAPIKeyIDs = append(c.releasedAPIKeyIDs, apiKeyID)
@@ -294,6 +301,26 @@ func TestTrackAPIKeySlot_FailOpen(t *testing.T) {
 	require.Equal(t, []int64{88}, cache.trackedAPIKeyIDs)
 
 	require.NotPanics(t, release)
+	require.Empty(t, cache.releasedAPIKeyIDs)
+}
+
+func TestAcquireAPIKeySlot_EnforcesLimitAndReleases(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{apiKeyAcquireResult: true}
+	result, err := NewConcurrencyService(cache).AcquireAPIKeySlot(context.Background(), 88, 2)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.Equal(t, []int64{88}, cache.trackedAPIKeyIDs)
+
+	result.ReleaseFunc()
+	require.Equal(t, []int64{88}, cache.releasedAPIKeyIDs)
+	require.Equal(t, cache.trackedAPIKeyRequestIDs, cache.releasedAPIKeyRequestIDs)
+}
+
+func TestAcquireAPIKeySlot_LimitReached(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{apiKeyAcquireResult: false}
+	result, err := NewConcurrencyService(cache).AcquireAPIKeySlot(context.Background(), 88, 1)
+	require.NoError(t, err)
+	require.False(t, result.Acquired)
 	require.Empty(t, cache.releasedAPIKeyIDs)
 }
 

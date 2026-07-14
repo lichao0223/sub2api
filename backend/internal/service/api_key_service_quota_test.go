@@ -198,3 +198,16 @@ func TestAPIKeyService_Update_ReactivatesQuotaExhaustedWhenQuotaUnlimited(t *tes
 	require.Equal(t, StatusActive, repo.updatedKeys[0].Status)
 	require.Equal(t, 0.0, repo.updatedKeys[0].Quota)
 }
+
+func TestAPIKeyService_Update_SetsConcurrencyLimit(t *testing.T) {
+	repo := &apiKeyRepoStub{apiKey: &APIKey{ID: 10, UserID: 7, Key: "sk-test", Status: StatusActive}}
+	svc := &APIKeyService{apiKeyRepo: repo}
+	limit := 2
+
+	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{Concurrency: &limit})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, updated.Concurrency)
+	require.Len(t, repo.updatedKeys, 1)
+	require.Equal(t, 2, repo.updatedKeys[0].Concurrency)
+}

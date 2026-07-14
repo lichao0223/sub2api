@@ -599,6 +599,7 @@ export interface ApiKey {
   created_at: string
   updated_at: string
   current_concurrency: number
+  concurrency: number // Concurrent request limit (0 = unlimited)
   group?: Group
   rate_limit_5h: number
   rate_limit_1d: number
@@ -625,6 +626,7 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
+  concurrency?: number
 }
 
 export interface UpdateApiKeyRequest {
@@ -640,6 +642,7 @@ export interface UpdateApiKeyRequest {
   rate_limit_1d?: number
   rate_limit_7d?: number
   reset_rate_limit_usage?: boolean
+  concurrency?: number
 }
 
 export interface CreateGroupRequest {

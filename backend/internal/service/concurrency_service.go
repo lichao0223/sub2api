@@ -56,6 +56,7 @@ type ConcurrencyCache interface {
 }
 
 type APIKeyConcurrencyCache interface {
+	AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int, requestID string) (bool, error)
 	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	GetAPIKeyConcurrencyBatch(ctx context.Context, apiKeyIDs []int64) (map[int64]int, error)
@@ -227,7 +228,7 @@ const (
 	apiKeySlotTrackTimeout          = 2 * time.Second
 )
 
-// ConcurrencyService 管理账号和用户的并发限制。
+// ConcurrencyService 管理账号、用户和 API Key 的并发限制。
 type ConcurrencyService struct {
 	cache ConcurrencyCache
 
@@ -446,6 +447,35 @@ func (s *ConcurrencyService) TrackAPIKeySlot(ctx context.Context, apiKeyID int64
 			logger.LegacyPrintf("service.concurrency", "Warning: failed to release api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
 		}
 	}
+}
+
+// AcquireAPIKeySlot tracks an API key request and enforces its optional limit.
+func (s *ConcurrencyService) AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, maxConcurrency int) (*AcquireResult, error) {
+	if maxConcurrency <= 0 {
+		return &AcquireResult{Acquired: true, ReleaseFunc: s.TrackAPIKeySlot(ctx, apiKeyID)}, nil
+	}
+	if s == nil || s.cache == nil || apiKeyID <= 0 {
+		return nil, errors.New("api key concurrency cache is unavailable")
+	}
+	cache, ok := s.cache.(APIKeyConcurrencyCache)
+	if !ok {
+		return nil, errors.New("api key concurrency cache is unsupported")
+	}
+	requestID := generateRequestID()
+	acquired, err := cache.AcquireAPIKeySlot(ctx, apiKeyID, maxConcurrency, requestID)
+	if err != nil || !acquired {
+		return &AcquireResult{Acquired: false}, err
+	}
+	return &AcquireResult{
+		Acquired: true,
+		ReleaseFunc: func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := cache.ReleaseAPIKeySlot(bgCtx, apiKeyID, requestID); err != nil {
+				logger.LegacyPrintf("service.concurrency", "Warning: failed to release api key slot for %d (req=%s): %v", apiKeyID, requestID, err)
+			}
+		},
+	}, nil
 }
 
 // GetAPIKeyConcurrencyBatch gets real-time active request counts for API keys.

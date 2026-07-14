@@ -259,6 +259,7 @@ func TestAPIContracts(t *testing.T) {
 							"ip_blacklist": null,
 							"last_used_at": null,
 							"last_used_ip": null,
+							"concurrency": 0,
 							"current_concurrency": 0,
 							"quota": 0,
 							"quota_used": 0,

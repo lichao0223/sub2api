@@ -49,6 +49,18 @@ func TestAdminAPIKeyHandler_UpdateGroup_InvalidJSON(t *testing.T) {
 	require.Contains(t, rec.Body.String(), "Invalid request")
 }
 
+func TestAdminAPIKeyHandler_UpdateGroup_RejectsNegativeConcurrency(t *testing.T) {
+	router := setupAPIKeyHandler(newStubAdminService())
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString("{\"concurrency\":-1}"))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "Invalid request")
+}
+
 func TestAdminAPIKeyHandler_UpdateGroup_KeyNotFound(t *testing.T) {
 	router := setupAPIKeyHandler(newStubAdminService())
 	body := `{"group_id": 2}`

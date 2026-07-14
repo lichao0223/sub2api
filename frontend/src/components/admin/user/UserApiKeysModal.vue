@@ -119,7 +119,7 @@
             </Select>
           </div>
         </div>
-        <div class="grid gap-3 md:grid-cols-2">
+        <div class="grid gap-3 md:grid-cols-3">
           <div>
             <label class="input-label">{{ t('common.status') }}</label>
             <Select v-model="form.status" :options="statusOptions" />
@@ -141,6 +141,18 @@
               />
             </div>
             <p class="input-hint">{{ t('keys.quotaAmountHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('keys.concurrencyLimit') }}</label>
+            <input
+              v-model.number="form.concurrency"
+              type="number"
+              min="0"
+              step="1"
+              class="input"
+              placeholder="0"
+            />
+            <p class="input-hint">{{ t('keys.concurrencyLimitHint') }}</p>
           </div>
         </div>
 
@@ -472,6 +484,12 @@
                   {{ t('admin.users.columns.created') }}:
                   {{ formatDateTime(key.created_at) }}
                 </div>
+                <div>
+                  {{ t('keys.concurrencyLimit') }}:
+                  {{ key.current_concurrency || 0 }}/{{
+                    key.concurrency || t('keys.concurrencyUnlimited')
+                  }}
+                </div>
               </div>
             </div>
             <div class="flex shrink-0 flex-wrap justify-end gap-1">
@@ -574,6 +592,7 @@ const emptyForm = () => ({
   ip_whitelist: '',
   ip_blacklist: '',
   quota: 0,
+  concurrency: 0,
   enable_rate_limit: false,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
@@ -704,6 +723,7 @@ const openEditForm = (key: ApiKey) => {
     ip_whitelist: (key.ip_whitelist || []).join('\n'),
     ip_blacklist: (key.ip_blacklist || []).join('\n'),
     quota: key.quota || 0,
+    concurrency: key.concurrency || 0,
     enable_rate_limit: hasRateLimit,
     rate_limit_5h: key.rate_limit_5h || 0,
     rate_limit_1d: key.rate_limit_1d || 0,
@@ -762,6 +782,10 @@ const submitForm = async () => {
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: Number(form.value.quota) || 0,
+        concurrency: Math.max(
+          0,
+          Math.trunc(Number(form.value.concurrency) || 0),
+        ),
         expires_at: expiresAt,
         ...rateLimits,
       }
@@ -783,6 +807,10 @@ const submitForm = async () => {
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: Number(form.value.quota) || 0,
+        concurrency: Math.max(
+          0,
+          Math.trunc(Number(form.value.concurrency) || 0),
+        ),
         expires_in_days: expiresInDays,
         ...rateLimits,
       }
