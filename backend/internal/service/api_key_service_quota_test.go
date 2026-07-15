@@ -204,10 +204,10 @@ func TestAPIKeyService_Update_SetsConcurrencyLimit(t *testing.T) {
 	svc := &APIKeyService{apiKeyRepo: repo}
 	limit := 2
 
-	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{Concurrency: &limit})
+	updated, err := svc.Update(context.Background(), 10, 7, UpdateAPIKeyRequest{ConcurrencyLimit: &limit})
 
 	require.NoError(t, err)
-	require.Equal(t, 2, updated.Concurrency)
+	require.Equal(t, 2, updated.ConcurrencyLimit)
 	require.Len(t, repo.updatedKeys, 1)
-	require.Equal(t, 2, repo.updatedKeys[0].Concurrency)
+	require.Equal(t, 2, repo.updatedKeys[0].ConcurrencyLimit)
 }

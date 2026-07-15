@@ -10,7 +10,6 @@ type APIKeyAuthSnapshot struct {
 	GroupID     *int64                   `json:"group_id,omitempty"`
 	Name        string                   `json:"name"`
 	Status      string                   `json:"status"`
-	Concurrency int                      `json:"concurrency"`
 	IPWhitelist []string                 `json:"ip_whitelist,omitempty"`
 	IPBlacklist []string                 `json:"ip_blacklist,omitempty"`
 	User        APIKeyAuthUserSnapshot   `json:"user"`
@@ -22,6 +21,9 @@ type APIKeyAuthSnapshot struct {
 
 	// Expiration field for API Key expiration feature
 	ExpiresAt *time.Time `json:"expires_at,omitempty"` // Expiration time (nil = never expires)
+
+	// Maximum concurrent requests for this API key (0 = unlimited).
+	ConcurrencyLimit int `json:"concurrency_limit"`
 
 	// Rate limit configuration (only limits, not usage - usage read from Redis at check time)
 	RateLimit5h float64 `json:"rate_limit_5h"`

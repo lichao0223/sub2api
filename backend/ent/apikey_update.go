@@ -135,27 +135,6 @@ func (_u *APIKeyUpdate) SetNillableStatus(v *string) *APIKeyUpdate {
 	return _u
 }
 
-// SetConcurrency sets the "concurrency" field.
-func (_u *APIKeyUpdate) SetConcurrency(v int) *APIKeyUpdate {
-	_u.mutation.ResetConcurrency()
-	_u.mutation.SetConcurrency(v)
-	return _u
-}
-
-// SetNillableConcurrency sets the "concurrency" field if the given value is not nil.
-func (_u *APIKeyUpdate) SetNillableConcurrency(v *int) *APIKeyUpdate {
-	if v != nil {
-		_u.SetConcurrency(*v)
-	}
-	return _u
-}
-
-// AddConcurrency adds value to the "concurrency" field.
-func (_u *APIKeyUpdate) AddConcurrency(v int) *APIKeyUpdate {
-	_u.mutation.AddConcurrency(v)
-	return _u
-}
-
 // SetLastUsedAt sets the "last_used_at" field.
 func (_u *APIKeyUpdate) SetLastUsedAt(v time.Time) *APIKeyUpdate {
 	_u.mutation.SetLastUsedAt(v)
@@ -271,6 +250,27 @@ func (_u *APIKeyUpdate) SetNillableExpiresAt(v *time.Time) *APIKeyUpdate {
 // ClearExpiresAt clears the value of the "expires_at" field.
 func (_u *APIKeyUpdate) ClearExpiresAt() *APIKeyUpdate {
 	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
+// SetConcurrencyLimit sets the "concurrency_limit" field.
+func (_u *APIKeyUpdate) SetConcurrencyLimit(v int) *APIKeyUpdate {
+	_u.mutation.ResetConcurrencyLimit()
+	_u.mutation.SetConcurrencyLimit(v)
+	return _u
+}
+
+// SetNillableConcurrencyLimit sets the "concurrency_limit" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableConcurrencyLimit(v *int) *APIKeyUpdate {
+	if v != nil {
+		_u.SetConcurrencyLimit(*v)
+	}
+	return _u
+}
+
+// AddConcurrencyLimit adds value to the "concurrency_limit" field.
+func (_u *APIKeyUpdate) AddConcurrencyLimit(v int) *APIKeyUpdate {
+	_u.mutation.AddConcurrencyLimit(v)
 	return _u
 }
 
@@ -618,9 +618,9 @@ func (_u *APIKeyUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.Concurrency(); ok {
-		if err := apikey.ConcurrencyValidator(v); err != nil {
-			return &ValidationError{Name: "concurrency", err: fmt.Errorf(`ent: validator failed for field "APIKey.concurrency": %w`, err)}
+	if v, ok := _u.mutation.ConcurrencyLimit(); ok {
+		if err := apikey.ConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "concurrency_limit", err: fmt.Errorf(`ent: validator failed for field "APIKey.concurrency_limit": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -658,12 +658,6 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
-	}
-	if value, ok := _u.mutation.Concurrency(); ok {
-		_spec.SetField(apikey.FieldConcurrency, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedConcurrency(); ok {
-		_spec.AddField(apikey.FieldConcurrency, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -710,6 +704,12 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ExpiresAtCleared() {
 		_spec.ClearField(apikey.FieldExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ConcurrencyLimit(); ok {
+		_spec.SetField(apikey.FieldConcurrencyLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedConcurrencyLimit(); ok {
+		_spec.AddField(apikey.FieldConcurrencyLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.RateLimit5h(); ok {
 		_spec.SetField(apikey.FieldRateLimit5h, field.TypeFloat64, value)
@@ -1035,27 +1035,6 @@ func (_u *APIKeyUpdateOne) SetNillableStatus(v *string) *APIKeyUpdateOne {
 	return _u
 }
 
-// SetConcurrency sets the "concurrency" field.
-func (_u *APIKeyUpdateOne) SetConcurrency(v int) *APIKeyUpdateOne {
-	_u.mutation.ResetConcurrency()
-	_u.mutation.SetConcurrency(v)
-	return _u
-}
-
-// SetNillableConcurrency sets the "concurrency" field if the given value is not nil.
-func (_u *APIKeyUpdateOne) SetNillableConcurrency(v *int) *APIKeyUpdateOne {
-	if v != nil {
-		_u.SetConcurrency(*v)
-	}
-	return _u
-}
-
-// AddConcurrency adds value to the "concurrency" field.
-func (_u *APIKeyUpdateOne) AddConcurrency(v int) *APIKeyUpdateOne {
-	_u.mutation.AddConcurrency(v)
-	return _u
-}
-
 // SetLastUsedAt sets the "last_used_at" field.
 func (_u *APIKeyUpdateOne) SetLastUsedAt(v time.Time) *APIKeyUpdateOne {
 	_u.mutation.SetLastUsedAt(v)
@@ -1171,6 +1150,27 @@ func (_u *APIKeyUpdateOne) SetNillableExpiresAt(v *time.Time) *APIKeyUpdateOne {
 // ClearExpiresAt clears the value of the "expires_at" field.
 func (_u *APIKeyUpdateOne) ClearExpiresAt() *APIKeyUpdateOne {
 	_u.mutation.ClearExpiresAt()
+	return _u
+}
+
+// SetConcurrencyLimit sets the "concurrency_limit" field.
+func (_u *APIKeyUpdateOne) SetConcurrencyLimit(v int) *APIKeyUpdateOne {
+	_u.mutation.ResetConcurrencyLimit()
+	_u.mutation.SetConcurrencyLimit(v)
+	return _u
+}
+
+// SetNillableConcurrencyLimit sets the "concurrency_limit" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableConcurrencyLimit(v *int) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetConcurrencyLimit(*v)
+	}
+	return _u
+}
+
+// AddConcurrencyLimit adds value to the "concurrency_limit" field.
+func (_u *APIKeyUpdateOne) AddConcurrencyLimit(v int) *APIKeyUpdateOne {
+	_u.mutation.AddConcurrencyLimit(v)
 	return _u
 }
 
@@ -1531,9 +1531,9 @@ func (_u *APIKeyUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
 	}
-	if v, ok := _u.mutation.Concurrency(); ok {
-		if err := apikey.ConcurrencyValidator(v); err != nil {
-			return &ValidationError{Name: "concurrency", err: fmt.Errorf(`ent: validator failed for field "APIKey.concurrency": %w`, err)}
+	if v, ok := _u.mutation.ConcurrencyLimit(); ok {
+		if err := apikey.ConcurrencyLimitValidator(v); err != nil {
+			return &ValidationError{Name: "concurrency_limit", err: fmt.Errorf(`ent: validator failed for field "APIKey.concurrency_limit": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1589,12 +1589,6 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 	}
-	if value, ok := _u.mutation.Concurrency(); ok {
-		_spec.SetField(apikey.FieldConcurrency, field.TypeInt, value)
-	}
-	if value, ok := _u.mutation.AddedConcurrency(); ok {
-		_spec.AddField(apikey.FieldConcurrency, field.TypeInt, value)
-	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 	}
@@ -1640,6 +1634,12 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if _u.mutation.ExpiresAtCleared() {
 		_spec.ClearField(apikey.FieldExpiresAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ConcurrencyLimit(); ok {
+		_spec.SetField(apikey.FieldConcurrencyLimit, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedConcurrencyLimit(); ok {
+		_spec.AddField(apikey.FieldConcurrencyLimit, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.RateLimit5h(); ok {
 		_spec.SetField(apikey.FieldRateLimit5h, field.TypeFloat64, value)

@@ -45,13 +45,13 @@ type APIKey struct {
 	UpdatedAt           time.Time
 	User                *User
 	Group               *Group
-	Concurrency         int // Concurrent request limit (0 = unlimited)
 	CurrentConcurrency  int
 
 	// Quota fields
-	Quota     float64    // Quota limit in USD (0 = unlimited)
-	QuotaUsed float64    // Used quota amount
-	ExpiresAt *time.Time // Expiration time (nil = never expires)
+	Quota            float64    // Quota limit in USD (0 = unlimited)
+	QuotaUsed        float64    // Used quota amount
+	ExpiresAt        *time.Time // Expiration time (nil = never expires)
+	ConcurrencyLimit int        // Concurrent request limit (0 = unlimited)
 
 	// Rate limit fields
 	RateLimit5h   float64    // Rate limit in USD per 5h (0 = unlimited)

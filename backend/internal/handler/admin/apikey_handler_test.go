@@ -53,7 +53,7 @@ func TestAdminAPIKeyHandler_UpdateGroup_RejectsNegativeConcurrency(t *testing.T)
 	router := setupAPIKeyHandler(newStubAdminService())
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString("{\"concurrency\":-1}"))
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/api-keys/10", bytes.NewBufferString("{\"concurrency_limit\":-1}"))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 

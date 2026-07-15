@@ -286,7 +286,7 @@ func (h *ConcurrencyHelper) acquireAPIKeySlotFromGin(c *gin.Context, releaseFunc
 	if !ok || apiKey == nil {
 		return releaseFunc, nil
 	}
-	release, acquired, err := h.acquireAPIKeySlot(c.Request.Context(), apiKey.ID, apiKey.Concurrency, releaseFunc)
+	release, acquired, err := h.acquireAPIKeySlot(c.Request.Context(), apiKey.ID, apiKey.ConcurrencyLimit, releaseFunc)
 	if err != nil {
 		return nil, err
 	}

@@ -29,17 +29,17 @@ func NewAdminAPIKeyHandler(adminService service.AdminService, apiKeyServices ...
 }
 
 type AdminCreateAPIKeyRequest struct {
-	Name          string   `json:"name" binding:"required"`
-	GroupID       *int64   `json:"group_id"`
-	CustomKey     *string  `json:"custom_key"`
-	IPWhitelist   []string `json:"ip_whitelist"`
-	IPBlacklist   []string `json:"ip_blacklist"`
-	Quota         *float64 `json:"quota"`
-	ExpiresInDays *int     `json:"expires_in_days"`
-	RateLimit5h   *float64 `json:"rate_limit_5h"`
-	RateLimit1d   *float64 `json:"rate_limit_1d"`
-	RateLimit7d   *float64 `json:"rate_limit_7d"`
-	Concurrency   *int     `json:"concurrency" binding:"omitempty,gte=0"`
+	Name             string   `json:"name" binding:"required"`
+	GroupID          *int64   `json:"group_id"`
+	CustomKey        *string  `json:"custom_key"`
+	IPWhitelist      []string `json:"ip_whitelist"`
+	IPBlacklist      []string `json:"ip_blacklist"`
+	Quota            *float64 `json:"quota"`
+	ExpiresInDays    *int     `json:"expires_in_days"`
+	RateLimit5h      *float64 `json:"rate_limit_5h"`
+	RateLimit1d      *float64 `json:"rate_limit_1d"`
+	RateLimit7d      *float64 `json:"rate_limit_7d"`
+	ConcurrencyLimit *int     `json:"concurrency_limit" binding:"omitempty,gte=0"`
 }
 
 type AdminUpdateAPIKeyRequest struct {
@@ -55,7 +55,7 @@ type AdminUpdateAPIKeyRequest struct {
 	RateLimit1d         *float64 `json:"rate_limit_1d"`
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"`
-	Concurrency         *int     `json:"concurrency" binding:"omitempty,gte=0"`
+	ConcurrencyLimit    *int     `json:"concurrency_limit" binding:"omitempty,gte=0"`
 }
 
 // Create handles creating an API key for a user.
@@ -96,8 +96,8 @@ func (h *AdminAPIKeyHandler) Create(c *gin.Context) {
 	if req.RateLimit7d != nil {
 		svcReq.RateLimit7d = *req.RateLimit7d
 	}
-	if req.Concurrency != nil {
-		svcReq.Concurrency = *req.Concurrency
+	if req.ConcurrencyLimit != nil {
+		svcReq.ConcurrencyLimit = *req.ConcurrencyLimit
 	}
 
 	key, err := h.apiKeyService.Create(c.Request.Context(), userID, svcReq)
@@ -253,7 +253,7 @@ func (req AdminUpdateAPIKeyRequest) hasGeneralUpdates() bool {
 		req.RateLimit5h != nil ||
 		req.RateLimit1d != nil ||
 		req.RateLimit7d != nil ||
-		req.Concurrency != nil
+		req.ConcurrencyLimit != nil
 }
 
 func adminUpdateAPIKeyServiceRequest(req AdminUpdateAPIKeyRequest, current *service.APIKey) (service.UpdateAPIKeyRequest, error) {
@@ -264,7 +264,7 @@ func adminUpdateAPIKeyServiceRequest(req AdminUpdateAPIKeyRequest, current *serv
 		RateLimit1d:         req.RateLimit1d,
 		RateLimit7d:         req.RateLimit7d,
 		ResetRateLimitUsage: req.ResetRateLimitUsage,
-		Concurrency:         req.Concurrency,
+		ConcurrencyLimit:    req.ConcurrencyLimit,
 	}
 	if req.IPWhitelist != nil {
 		svcReq.IPWhitelist = req.IPWhitelist

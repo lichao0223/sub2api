@@ -145,7 +145,7 @@
           <div>
             <label class="input-label">{{ t('keys.concurrencyLimit') }}</label>
             <input
-              v-model.number="form.concurrency"
+              v-model.number="form.concurrency_limit"
               type="number"
               min="0"
               step="1"
@@ -487,7 +487,7 @@
                 <div>
                   {{ t('keys.concurrencyLimit') }}:
                   {{ key.current_concurrency || 0 }}/{{
-                    key.concurrency || t('keys.concurrencyUnlimited')
+                    key.concurrency_limit || t('keys.concurrencyUnlimited')
                   }}
                 </div>
               </div>
@@ -592,7 +592,7 @@ const emptyForm = () => ({
   ip_whitelist: '',
   ip_blacklist: '',
   quota: 0,
-  concurrency: 0,
+  concurrency_limit: 0,
   enable_rate_limit: false,
   rate_limit_5h: 0,
   rate_limit_1d: 0,
@@ -723,7 +723,7 @@ const openEditForm = (key: ApiKey) => {
     ip_whitelist: (key.ip_whitelist || []).join('\n'),
     ip_blacklist: (key.ip_blacklist || []).join('\n'),
     quota: key.quota || 0,
-    concurrency: key.concurrency || 0,
+    concurrency_limit: key.concurrency_limit || 0,
     enable_rate_limit: hasRateLimit,
     rate_limit_5h: key.rate_limit_5h || 0,
     rate_limit_1d: key.rate_limit_1d || 0,
@@ -782,9 +782,9 @@ const submitForm = async () => {
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: Number(form.value.quota) || 0,
-        concurrency: Math.max(
+        concurrency_limit: Math.max(
           0,
-          Math.trunc(Number(form.value.concurrency) || 0),
+          Math.trunc(Number(form.value.concurrency_limit) || 0),
         ),
         expires_at: expiresAt,
         ...rateLimits,
@@ -807,9 +807,9 @@ const submitForm = async () => {
         ip_whitelist: ipWhitelist,
         ip_blacklist: ipBlacklist,
         quota: Number(form.value.quota) || 0,
-        concurrency: Math.max(
+        concurrency_limit: Math.max(
           0,
-          Math.trunc(Number(form.value.concurrency) || 0),
+          Math.trunc(Number(form.value.concurrency_limit) || 0),
         ),
         expires_in_days: expiresInDays,
         ...rateLimits,
