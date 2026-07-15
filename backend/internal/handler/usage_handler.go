@@ -552,12 +552,13 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{
-		"ranking":           ranking.Ranking,
-		"total_actual_cost": ranking.TotalActualCost,
-		"total_requests":    ranking.TotalRequests,
-		"total_tokens":      ranking.TotalTokens,
-		"start_date":        startTime.Format("2006-01-02"),
-		"end_date":          endTime.Add(-24 * time.Hour).Format("2006-01-02"),
+		"ranking":               ranking.Ranking,
+		"total_actual_cost":     ranking.TotalActualCost,
+		"total_requests":        ranking.TotalRequests,
+		"total_tokens":          ranking.TotalTokens,
+		"zero_token_user_count": ranking.ZeroTokenUserCount,
+		"start_date":            startTime.Format("2006-01-02"),
+		"end_date":              endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	})
 }
 
@@ -623,6 +624,7 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 		"total_actual_cost":        ranking.TotalActualCost,
 		"total_requests":           ranking.TotalRequests,
 		"total_tokens":             ranking.TotalTokens,
+		"zero_token_user_count":    ranking.ZeroTokenUserCount,
 		"total_nonwork_tokens":     ranking.TotalNonworkTokens,
 		"total_all_tokens":         ranking.TotalAllTokens,
 		"nonwork_token_ratio":      ranking.NonworkTokenRatio,

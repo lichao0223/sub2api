@@ -2,8 +2,10 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,15 +19,25 @@ import (
 
 type userUsageRepoCapture struct {
 	service.UsageLogRepository
-	listParams   pagination.PaginationParams
-	listFilters  usagestats.UsageLogFilters
-	statsFilters usagestats.UsageLogFilters
-	trendFilters usagestats.UsageLogFilters
-	groupFilters usagestats.UsageLogFilters
-	listRows     []service.UsageLog
-	stats        *usagestats.UsageStats
-	modelStats   []usagestats.ModelStat
-	groupStats   []usagestats.GroupStat
+	listParams     pagination.PaginationParams
+	listFilters    usagestats.UsageLogFilters
+	statsFilters   usagestats.UsageLogFilters
+	trendFilters   usagestats.UsageLogFilters
+	groupFilters   usagestats.UsageLogFilters
+	listRows       []service.UsageLog
+	stats          *usagestats.UsageStats
+	modelStats     []usagestats.ModelStat
+	groupStats     []usagestats.GroupStat
+	tokenRanking   *usagestats.UserTokenRankingResponse
+	nonworkRanking *usagestats.UserNonworkTokenRankingResponse
+}
+
+func (s *userUsageRepoCapture) GetUserTokenRanking(context.Context, time.Time, time.Time, int) (*usagestats.UserTokenRankingResponse, error) {
+	return s.tokenRanking, nil
+}
+
+func (s *userUsageRepoCapture) GetUserNonworkTokenRanking(context.Context, time.Time, time.Time, string, string, string, string, []string, string, int) (*usagestats.UserNonworkTokenRankingResponse, error) {
+	return s.nonworkRanking, nil
 }
 
 func (s *userUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
@@ -91,7 +103,42 @@ func newUserUsageRequestTypeTestRouter(repo *userUsageRepoCapture) *gin.Engine {
 	router.GET("/usage/stats", handler.Stats)
 	router.GET("/usage/dashboard/models", handler.DashboardModels)
 	router.GET("/usage/dashboard/snapshot-v2", handler.DashboardSnapshotV2)
+	router.GET("/usage/dashboard/token-ranking", handler.DashboardTokenRanking)
+	router.POST("/usage/dashboard/token-ranking/nonwork", handler.DashboardNonworkTokenRanking)
 	return router
+}
+
+func TestUserTokenRankingResponsesIncludeZeroTokenUserCount(t *testing.T) {
+	repo := &userUsageRepoCapture{
+		tokenRanking:   &usagestats.UserTokenRankingResponse{ZeroTokenUserCount: 7},
+		nonworkRanking: &usagestats.UserNonworkTokenRankingResponse{ZeroTokenUserCount: 7},
+	}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodGet, path: "/usage/dashboard/token-ranking"},
+		{method: http.MethodPost, path: "/usage/dashboard/token-ranking/nonwork", body: `{}`},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			var response struct {
+				Data struct {
+					ZeroTokenUserCount int64 `json:"zero_token_user_count"`
+				} `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &response))
+			require.Equal(t, int64(7), response.Data.ZeroTokenUserCount)
+		})
+	}
 }
 
 func TestUserUsageListRequestTypePriority(t *testing.T) {
