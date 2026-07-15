@@ -1710,6 +1710,7 @@ export interface UserTokenRankingResponse {
   total_actual_cost: number
   total_requests: number
   total_tokens: number
+  zero_token_user_count: number
   total_nonwork_tokens?: number
   total_all_tokens?: number
   nonwork_token_ratio?: number

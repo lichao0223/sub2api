@@ -721,11 +721,11 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
-		AddRow(int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), 40.0, int64(30), int64(2600)).
-		AddRow(int64(1), "alpha@example.com", "", 12.5, int64(8), int64(900), 40.0, int64(30), int64(2600)).
-		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600)).
-		AddRow(int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600))
+	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens", "zero_token_user_count"}).
+		AddRow(int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), 40.0, int64(30), int64(2600), int64(1)).
+		AddRow(int64(1), "alpha@example.com", "", 12.5, int64(8), int64(900), 40.0, int64(30), int64(2600), int64(1)).
+		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600), int64(1)).
+		AddRow(int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600), int64(1))
 
 	mock.ExpectQuery("WITH internal_stats AS \\(").
 		WithArgs(start, end, service.RoleAdmin, 12).
@@ -740,9 +740,10 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 			{UserID: 3, Email: "gamma@example.com", Username: "Gamma", ActualCost: 4.25, Requests: 5, Tokens: 500},
 			{UserID: 4, Email: "zero@example.com", Username: "Zero"},
 		},
-		TotalActualCost: 40.0,
-		TotalRequests:   30,
-		TotalTokens:     2600,
+		TotalActualCost:    40.0,
+		TotalRequests:      30,
+		TotalTokens:        2600,
+		ZeroTokenUserCount: 1,
 	}, got)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -782,6 +783,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		"total_actual_cost",
 		"total_requests",
 		"total_tokens",
+		"zero_token_user_count",
 		"total_nonwork_tokens",
 		"total_all_tokens",
 		"nonwork_token_ratio",
@@ -789,10 +791,10 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		"all_calendar_confirmed",
 	}).AddRow(
 		int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), int64(1200), int64(360000), int64(240000), true,
-		40.0, int64(30), int64(2600), int64(2600), int64(4000), 0.65, int64(900000), true,
+		40.0, int64(30), int64(2600), int64(1), int64(2600), int64(4000), 0.65, int64(900000), true,
 	).AddRow(
 		int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), int64(0), int64(0), int64(0), true,
-		40.0, int64(30), int64(2600), int64(2600), int64(4000), 0.65, int64(900000), true,
+		40.0, int64(30), int64(2600), int64(1), int64(2600), int64(4000), 0.65, int64(900000), true,
 	)
 
 	mock.ExpectQuery("WITH filtered_users AS \\(").
@@ -825,6 +827,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		TotalActualCost:       40.0,
 		TotalRequests:         30,
 		TotalTokens:           2600,
+		ZeroTokenUserCount:    1,
 		TotalNonworkTokens:    2600,
 		TotalAllTokens:        4000,
 		NonworkTokenRatio:     0.65,

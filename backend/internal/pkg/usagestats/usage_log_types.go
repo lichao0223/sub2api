@@ -175,10 +175,11 @@ type UserTokenRankingItem struct {
 
 // UserTokenRankingResponse represents token ranking rows plus totals for the time range.
 type UserTokenRankingResponse struct {
-	Ranking         []UserTokenRankingItem `json:"ranking"`
-	TotalActualCost float64                `json:"total_actual_cost"`
-	TotalRequests   int64                  `json:"total_requests"`
-	TotalTokens     int64                  `json:"total_tokens"`
+	Ranking            []UserTokenRankingItem `json:"ranking"`
+	TotalActualCost    float64                `json:"total_actual_cost"`
+	TotalRequests      int64                  `json:"total_requests"`
+	TotalTokens        int64                  `json:"total_tokens"`
+	ZeroTokenUserCount int64                  `json:"zero_token_user_count"`
 }
 
 const (
@@ -211,6 +212,7 @@ type UserNonworkTokenRankingResponse struct {
 	TotalActualCost       float64                       `json:"total_actual_cost"`
 	TotalRequests         int64                         `json:"total_requests"`
 	TotalTokens           int64                         `json:"total_tokens"`
+	ZeroTokenUserCount    int64                         `json:"zero_token_user_count"`
 	TotalNonworkTokens    int64                         `json:"total_nonwork_tokens"`
 	TotalAllTokens        int64                         `json:"total_all_tokens"`
 	NonworkTokenRatio     float64                       `json:"nonwork_token_ratio"`

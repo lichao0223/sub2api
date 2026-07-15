@@ -65,7 +65,8 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 				tokens,
 				COALESCE(SUM(actual_cost) OVER (), 0) as total_actual_cost,
 				COALESCE(SUM(requests) OVER (), 0) as total_requests,
-				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
+				COALESCE(SUM(tokens) OVER (), 0) as total_tokens,
+				COUNT(*) FILTER (WHERE tokens = 0) OVER () as zero_token_user_count
 			FROM user_tokens
 			ORDER BY tokens DESC, actual_cost DESC, user_id ASC
 			LIMIT NULLIF($4, 0)
@@ -79,7 +80,8 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 			tokens,
 			total_actual_cost,
 			total_requests,
-			total_tokens
+			total_tokens,
+			zero_token_user_count
 		FROM ranked
 		ORDER BY tokens DESC, actual_cost DESC, user_id ASC
 	`
@@ -99,9 +101,10 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 	totalActualCost := 0.0
 	totalRequests := int64(0)
 	totalTokens := int64(0)
+	zeroTokenUserCount := int64(0)
 	for rows.Next() {
 		var row UserTokenRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens, &zeroTokenUserCount); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)
@@ -111,10 +114,11 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 	}
 
 	return &UserTokenRankingResponse{
-		Ranking:         ranking,
-		TotalActualCost: totalActualCost,
-		TotalRequests:   totalRequests,
-		TotalTokens:     totalTokens,
+		Ranking:            ranking,
+		TotalActualCost:    totalActualCost,
+		TotalRequests:      totalRequests,
+		TotalTokens:        totalTokens,
+		ZeroTokenUserCount: zeroTokenUserCount,
 	}, nil
 }
 
@@ -255,6 +259,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(m.actual_cost) OVER (), 0) AS total_actual_cost,
 				COALESCE(SUM(m.requests) OVER (), 0) AS total_requests,
 				COALESCE(SUM(m.tokens) OVER (), 0) AS total_tokens,
+				COUNT(*) FILTER (WHERE m.tokens = 0) OVER () AS zero_token_user_count,
 				COALESCE(SUM(m.nonwork_tokens) OVER (), 0) AS total_nonwork_tokens,
 				t.total_all_tokens + et.total_all_tokens AS total_all_tokens,
 				CASE WHEN t.total_all_tokens + et.total_all_tokens > 0
@@ -283,6 +288,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			total_actual_cost,
 			total_requests,
 			total_tokens,
+			zero_token_user_count,
 			total_nonwork_tokens,
 			total_all_tokens,
 			nonwork_token_ratio,
@@ -305,7 +311,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 
 	ranking := make([]UserNonworkTokenRankingItem, 0)
 	var totalActualCost, nonworkTokenRatio float64
-	var totalRequests, totalTokens, totalNonworkTokens, totalAllTokens, totalActiveDurationMs int64
+	var totalRequests, totalTokens, zeroTokenUserCount, totalNonworkTokens, totalAllTokens, totalActiveDurationMs int64
 	calendarConfirmed := true
 	for rows.Next() {
 		var row UserNonworkTokenRankingItem
@@ -323,6 +329,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			&totalActualCost,
 			&totalRequests,
 			&totalTokens,
+			&zeroTokenUserCount,
 			&totalNonworkTokens,
 			&totalAllTokens,
 			&nonworkTokenRatio,
@@ -342,6 +349,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		TotalActualCost:       totalActualCost,
 		TotalRequests:         totalRequests,
 		TotalTokens:           totalTokens,
+		ZeroTokenUserCount:    zeroTokenUserCount,
 		TotalNonworkTokens:    totalNonworkTokens,
 		TotalAllTokens:        totalAllTokens,
 		NonworkTokenRatio:     nonworkTokenRatio,
