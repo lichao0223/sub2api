@@ -71,7 +71,7 @@ func validateEndpoint(ep string, allowPrivate ...bool) error {
 		return ErrChannelMonitorInvalidEndpoint
 	}
 	privateAllowed := len(allowPrivate) > 0 && allowPrivate[0]
-	if u.Scheme != "https" && !(privateAllowed && u.Scheme == "http") {
+	if u.Scheme != "https" && (!privateAllowed || u.Scheme != "http") {
 		return ErrChannelMonitorEndpointScheme
 	}
 	if u.Host == "" {
