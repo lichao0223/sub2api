@@ -22,6 +22,8 @@ export default {
           enabledHint: '关闭后后台不再执行定时检测，已有数据保留。',
           defaultInterval: '默认检测间隔（秒）',
           defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
+          allowPrivateEndpoints: '允许内网 HTTP 上游地址',
+          allowPrivateEndpointsHint: '高风险：允许监控访问 HTTP、localhost 和私网 IP，并携带配置的 API Key；云元数据地址仍会被拦截。仅限可信内网环境开启。',
         },
         availableChannels: {
           title: '可用渠道',

@@ -22,6 +22,8 @@ export default {
           enabledHint: 'Disabling stops background checks; existing history is preserved.',
           defaultInterval: 'Default check interval (seconds)',
           defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
+          allowPrivateEndpoints: 'Allow private HTTP upstreams',
+          allowPrivateEndpointsHint: 'High risk: lets monitors access HTTP, localhost and private IPs with the configured API key; cloud metadata remains blocked. Enable only in a trusted network.',
         },
         availableChannels: {
           title: 'Available Channels',

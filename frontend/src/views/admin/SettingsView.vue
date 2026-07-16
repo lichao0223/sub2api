@@ -5820,6 +5820,18 @@
                 {{ t('admin.settings.features.channelMonitor.defaultIntervalHint') }}
               </p>
             </div>
+
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.channelMonitor.allowPrivateEndpoints') }}
+                </label>
+                <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
+                  {{ t('admin.settings.features.channelMonitor.allowPrivateEndpointsHint') }}
+                </p>
+              </div>
+              <Toggle v-model="form.channel_monitor_allow_private_endpoints" />
+            </div>
           </div>
         </div>
 
@@ -8286,6 +8298,7 @@ const form = reactive<SettingsForm>({
   // Channel Monitor feature switch
   channel_monitor_enabled: true,
   channel_monitor_default_interval_seconds: 60,
+  channel_monitor_allow_private_endpoints: false,
   // Available Channels feature switch
   available_channels_enabled: false,
   // Affiliate (邀请返利) feature switch
@@ -9663,6 +9676,8 @@ async function saveSettings() {
       channel_monitor_enabled: form.channel_monitor_enabled,
       channel_monitor_default_interval_seconds:
         Number(form.channel_monitor_default_interval_seconds) || 60,
+      channel_monitor_allow_private_endpoints:
+        form.channel_monitor_allow_private_endpoints,
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       // Affiliate (邀请返利) feature switch

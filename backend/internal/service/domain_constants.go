@@ -364,6 +364,9 @@ const (
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
 
+	// Opt-in: monitor internal HTTP/private-network endpoints.
+	SettingKeyChannelMonitorAllowPrivateEndpoints = "channel_monitor_allow_private_endpoints"
+
 	// SettingKeyAvailableChannelsEnabled is a DB-backed soft switch for the "Available Channels"
 	// user-facing aggregate view. When false: user endpoint returns an empty list and the
 	// sidebar entry is hidden. Defaults to false (opt-in feature).

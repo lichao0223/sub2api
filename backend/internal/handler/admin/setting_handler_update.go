@@ -296,6 +296,7 @@ type UpdateSettingsRequest struct {
 	// Channel Monitor feature switch
 	ChannelMonitorEnabled                *bool `json:"channel_monitor_enabled"`
 	ChannelMonitorDefaultIntervalSeconds *int  `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorAllowPrivateEndpoints  *bool `json:"channel_monitor_allow_private_endpoints"`
 
 	// Available Channels feature switch (user-facing)
 	AvailableChannelsEnabled *bool `json:"available_channels_enabled"`
@@ -1505,6 +1506,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorDefaultIntervalSeconds
 		}(),
+		ChannelMonitorAllowPrivateEndpoints: func() bool {
+			if req.ChannelMonitorAllowPrivateEndpoints != nil {
+				return *req.ChannelMonitorAllowPrivateEndpoints
+			}
+			return previousSettings.ChannelMonitorAllowPrivateEndpoints
+		}(),
 		AvailableChannelsEnabled: func() bool {
 			if req.AvailableChannelsEnabled != nil {
 				return *req.AvailableChannelsEnabled
@@ -1885,6 +1892,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorAllowPrivateEndpoints:  updatedSettings.ChannelMonitorAllowPrivateEndpoints,
 
 		AvailableChannelsEnabled: updatedSettings.AvailableChannelsEnabled,
 

@@ -61,14 +61,23 @@ type ChannelMonitorRepository interface {
 type ChannelMonitorService struct {
 	repo      ChannelMonitorRepository
 	encryptor SecretEncryptor
+	settings  *SettingService
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
 	scheduler MonitorScheduler
 }
 
 // NewChannelMonitorService 创建渠道监控服务实例。
-func NewChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEncryptor) *ChannelMonitorService {
-	return &ChannelMonitorService{repo: repo, encryptor: encryptor}
+func NewChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEncryptor, settings ...*SettingService) *ChannelMonitorService {
+	s := &ChannelMonitorService{repo: repo, encryptor: encryptor}
+	if len(settings) > 0 {
+		s.settings = settings[0]
+	}
+	return s
+}
+
+func (s *ChannelMonitorService) allowPrivateEndpoints(ctx context.Context) bool {
+	return s.settings != nil && s.settings.GetChannelMonitorRuntime(ctx).AllowPrivateEndpoints
 }
 
 // ---------- CRUD ----------
@@ -104,7 +113,7 @@ func (s *ChannelMonitorService) Get(ctx context.Context, id int64) (*ChannelMoni
 
 // Create 创建监控（内部加密 api_key）。
 func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCreateParams) (*ChannelMonitor, error) {
-	if err := validateCreateParams(p); err != nil {
+	if err := validateCreateParams(p, s.allowPrivateEndpoints(ctx)); err != nil {
 		return nil, err
 	}
 	if err := validateBodyModeForProtocol(p.Provider, p.APIMode, p.BodyOverrideMode, p.BodyOverride); err != nil {
@@ -148,7 +157,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 }
 
 // validateCreateParams 把 Create 入参的所有校验聚拢为一个函数，避免 Create 主体超过 30 行。
-func validateCreateParams(p ChannelMonitorCreateParams) error {
+func validateCreateParams(p ChannelMonitorCreateParams, allowPrivate ...bool) error {
 	if err := validateProvider(p.Provider); err != nil {
 		return err
 	}
@@ -161,7 +170,7 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateJitter(p.JitterSeconds, p.IntervalSeconds); err != nil {
 		return err
 	}
-	if err := validateEndpoint(p.Endpoint); err != nil {
+	if err := validateEndpoint(p.Endpoint, allowPrivate...); err != nil {
 		return err
 	}
 	if strings.TrimSpace(p.APIKey) == "" {
@@ -179,7 +188,7 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	if err != nil {
 		return nil, err
 	}
-	if err := applyMonitorUpdate(existing, p); err != nil {
+	if err := applyMonitorUpdate(existing, p, s.allowPrivateEndpoints(ctx)); err != nil {
 		return nil, err
 	}
 
@@ -258,6 +267,9 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 // RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
 // 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
 func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
+	if s.allowPrivateEndpoints(ctx) {
+		ctx = context.WithValue(ctx, channelMonitorPrivateEndpointContextKey{}, true)
+	}
 	m, err := s.Get(ctx, id) // 已解密 APIKey
 	if err != nil {
 		return nil, err
@@ -477,7 +489,7 @@ func (s *ChannelMonitorService) decryptInPlace(m *ChannelMonitor) {
 //
 // 行数稍超过 30：这是逐字段平铺的 dispatcher，每个 if 都是 1-3 行的"非 nil 则覆盖"模式，
 // 拆分反而会增加跳转噪音、影响可读性，故保留为单函数。
-func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) error {
+func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams, allowPrivate ...bool) error {
 	providerChanged := false
 	if p.Name != nil {
 		existing.Name = strings.TrimSpace(*p.Name)
@@ -490,7 +502,7 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 		existing.Provider = *p.Provider
 	}
 	if p.Endpoint != nil {
-		if err := validateEndpoint(*p.Endpoint); err != nil {
+		if err := validateEndpoint(*p.Endpoint, allowPrivate...); err != nil {
 			return err
 		}
 		existing.Endpoint = normalizeEndpoint(*p.Endpoint)

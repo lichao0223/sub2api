@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -53,14 +54,14 @@ func validateJitter(jitterSec, intervalSec int) error {
 }
 
 // validateEndpoint 校验 endpoint：
-//   - scheme 强制 https（拒绝 http，避免明文凭证 + 部分 SSRF 利用面）
+//   - 默认强制 https；系统明确开启时仅允许私网目标使用 http
 //   - 必须为 origin（无 path/query/fragment），防止用户填 https://api.openai.com/v1
 //     导致 joinURL 拼出 /v1/v1/chat/completions
 //   - hostname 不能是 localhost/metadata 等已知元数据 hostname
 //   - 解析所有 IP，任一落在 loopback/RFC1918/link-local/ULA 段即拒绝（防 SSRF）
 //
 // 错误信息不暴露具体 IP / hostname，避免泄露内网拓扑。
-func validateEndpoint(ep string) error {
+func validateEndpoint(ep string, allowPrivate ...bool) error {
 	ep = strings.TrimSpace(ep)
 	if ep == "" {
 		return ErrChannelMonitorInvalidEndpoint
@@ -69,7 +70,8 @@ func validateEndpoint(ep string) error {
 	if err != nil {
 		return ErrChannelMonitorInvalidEndpoint
 	}
-	if u.Scheme != "https" {
+	privateAllowed := len(allowPrivate) > 0 && allowPrivate[0]
+	if u.Scheme != "https" && !(privateAllowed && u.Scheme == "http") {
 		return ErrChannelMonitorEndpointScheme
 	}
 	if u.Host == "" {
@@ -83,13 +85,22 @@ func validateEndpoint(ep string) error {
 	}
 
 	hostname := u.Hostname()
+	if privateAllowed && isBlockedHostname(hostname) && !isAllowedPrivateMonitorHostname(hostname) {
+		return ErrChannelMonitorEndpointPrivate
+	}
+	if ip := net.ParseIP(hostname); privateAllowed && ip != nil && isPrivateIP(ip) && !isAllowedPrivateMonitorIP(ip) {
+		return ErrChannelMonitorEndpointPrivate
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), monitorEndpointResolveTimeout)
 	defer cancel()
 	blocked, err := isPrivateOrLoopbackHost(ctx, hostname)
 	if err != nil {
 		return ErrChannelMonitorEndpointUnreachable
 	}
-	if blocked {
+	if u.Scheme == "http" && !blocked {
+		return ErrChannelMonitorEndpointScheme
+	}
+	if blocked && !privateAllowed {
 		return ErrChannelMonitorEndpointPrivate
 	}
 	return nil

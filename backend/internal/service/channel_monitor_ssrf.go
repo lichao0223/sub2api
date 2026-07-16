@@ -6,6 +6,22 @@ import (
 	"strings"
 )
 
+type channelMonitorPrivateEndpointContextKey struct{}
+
+func allowPrivateMonitorEndpoints(ctx context.Context) bool {
+	allowed, _ := ctx.Value(channelMonitorPrivateEndpointContextKey{}).(bool)
+	return allowed
+}
+
+func isAllowedPrivateMonitorIP(ip net.IP) bool {
+	return ip != nil && (ip.IsPrivate() || ip.IsLoopback())
+}
+
+func isAllowedPrivateMonitorHostname(host string) bool {
+	host = strings.ToLower(host)
+	return host == "localhost" || host == "localhost.localdomain"
+}
+
 // SSRF 防护 helper：
 //   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
 //   - safeDialContext 在 socket 层再次校验真实 IP，防止 DNS rebinding
@@ -118,12 +134,12 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	}
 	// 字面量 IP 走快速路径。
 	if ip := net.ParseIP(host); ip != nil {
-		if isPrivateIP(ip) {
+		if isPrivateIP(ip) && !(allowPrivateMonitorEndpoints(ctx) && isAllowedPrivateMonitorIP(ip)) {
 			return nil, &net.AddrError{Err: "blocked by SSRF policy", Addr: address}
 		}
 		return monitorDialer.DialContext(ctx, network, address)
 	}
-	if isBlockedHostname(host) {
+	if isBlockedHostname(host) && !(allowPrivateMonitorEndpoints(ctx) && isAllowedPrivateMonitorHostname(host)) {
 		return nil, &net.AddrError{Err: "blocked by SSRF policy", Addr: address}
 	}
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
@@ -135,7 +151,7 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	}
 	var lastErr error
 	for _, a := range addrs {
-		if isPrivateIP(a.IP) {
+		if isPrivateIP(a.IP) && !(allowPrivateMonitorEndpoints(ctx) && isAllowedPrivateMonitorIP(a.IP)) {
 			lastErr = &net.AddrError{Err: "blocked by SSRF policy", Addr: a.IP.String()}
 			continue
 		}

@@ -377,6 +377,7 @@ func clampChannelMonitorInterval(v int) int {
 type ChannelMonitorRuntime struct {
 	Enabled                bool
 	DefaultIntervalSeconds int
+	AllowPrivateEndpoints  bool
 }
 
 // GetChannelMonitorRuntime reads the channel monitor feature flags directly from
@@ -385,6 +386,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 	vals, err := s.settingRepo.GetMultiple(ctx, []string{
 		SettingKeyChannelMonitorEnabled,
 		SettingKeyChannelMonitorDefaultIntervalSeconds,
+		SettingKeyChannelMonitorAllowPrivateEndpoints,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{Enabled: true, DefaultIntervalSeconds: channelMonitorIntervalFallback}
@@ -392,6 +394,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 	return ChannelMonitorRuntime{
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
+		AllowPrivateEndpoints:  vals[SettingKeyChannelMonitorAllowPrivateEndpoints] == "true",
 	}
 }
 
