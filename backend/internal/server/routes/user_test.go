@@ -38,6 +38,7 @@ func TestTokenRankingNonworkRouteSupportsJWTOrAdminAuth(t *testing.T) {
 			c.Set(string(servermiddleware.ContextKeyUser), servermiddleware.AuthSubject{UserID: 1})
 			c.Next()
 		}),
+		servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
 		nil,
 	)
 
