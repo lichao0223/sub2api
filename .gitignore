@@ -138,6 +138,7 @@ docs/*
 !docs/prototypes/
 !docs/prototypes/token-ranking-offhours.html
 !docs/token-ranking-nonworktime-design.md
+!docs/ASYNC_IMAGE_TASKS.md
 !docs/legal/
 !docs/legal/*.md
 .serena/
