@@ -132,14 +132,15 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	if err != nil {
 		return nil, err
 	}
+	allowPrivate := allowPrivateMonitorEndpoints(ctx)
 	// 字面量 IP 走快速路径。
 	if ip := net.ParseIP(host); ip != nil {
-		if isPrivateIP(ip) && !(allowPrivateMonitorEndpoints(ctx) && isAllowedPrivateMonitorIP(ip)) {
+		if isPrivateIP(ip) && (!allowPrivate || !isAllowedPrivateMonitorIP(ip)) {
 			return nil, &net.AddrError{Err: "blocked by SSRF policy", Addr: address}
 		}
 		return monitorDialer.DialContext(ctx, network, address)
 	}
-	if isBlockedHostname(host) && !(allowPrivateMonitorEndpoints(ctx) && isAllowedPrivateMonitorHostname(host)) {
+	if isBlockedHostname(host) && (!allowPrivate || !isAllowedPrivateMonitorHostname(host)) {
 		return nil, &net.AddrError{Err: "blocked by SSRF policy", Addr: address}
 	}
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
@@ -151,7 +152,7 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	}
 	var lastErr error
 	for _, a := range addrs {
-		if isPrivateIP(a.IP) && !(allowPrivateMonitorEndpoints(ctx) && isAllowedPrivateMonitorIP(a.IP)) {
+		if isPrivateIP(a.IP) && (!allowPrivate || !isAllowedPrivateMonitorIP(a.IP)) {
 			lastErr = &net.AddrError{Err: "blocked by SSRF policy", Addr: a.IP.String()}
 			continue
 		}
