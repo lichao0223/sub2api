@@ -72,6 +72,29 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('Kimi OAuth 显示 5 小时和周限额', async () => {
+	getUsage.mockResolvedValue({
+	  five_hour: { utilization: 40, resets_at: '2026-07-20T09:06:11Z', remaining_seconds: 100 },
+	  seven_day: { utilization: 25, resets_at: '2026-07-27T04:06:11Z', remaining_seconds: 200 }
+	})
+	const wrapper = mount(AccountUsageCell, {
+	  props: { account: makeAccount({ id: 1000, platform: 'kimi', type: 'oauth' }) },
+	  global: {
+		stubs: {
+		  UsageProgressBar: {
+			props: ['label', 'utilization', 'resetsAt'],
+			template: '<div>{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+		  },
+		  AccountQuotaInfo: true
+		}
+	  }
+	})
+	await flushPromises()
+	expect(getUsage).toHaveBeenCalledWith(1000)
+	expect(wrapper.text()).toContain('5h|40|2026-07-20T09:06:11Z')
+	expect(wrapper.text()).toContain('7d|25|2026-07-27T04:06:11Z')
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {

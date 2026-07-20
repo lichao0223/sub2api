@@ -190,6 +190,43 @@
       </div>
     </template>
 
+    <!-- Kimi Coding Plan: OAuth or API key provider -->
+    <template v-else-if="isKimiUsageAccount">
+      <div v-if="loading" class="space-y-1.5">
+        <div v-for="index in 2" :key="index" class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else-if="error" class="text-xs text-red-500">{{ error }}</div>
+      <div v-else-if="usageInfo" class="space-y-1">
+        <UsageProgressBar
+          v-if="usageInfo.five_hour"
+          label="5h"
+          :utilization="usageInfo.five_hour.utilization"
+          :resets-at="usageInfo.five_hour.resets_at"
+          color="indigo"
+        />
+        <UsageProgressBar
+          v-if="usageInfo.seven_day"
+          label="7d"
+          :utilization="usageInfo.seven_day.utilization"
+          :resets-at="usageInfo.seven_day.resets_at"
+          color="emerald"
+        />
+        <button
+          type="button"
+          class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-medium text-blue-600 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+          :disabled="activeQueryLoading"
+          @click="loadActiveUsage"
+        >
+          {{ t('admin.accounts.usageWindow.activeQuery') }}
+        </button>
+      </div>
+      <div v-else class="text-xs text-gray-400">-</div>
+    </template>
+
     <!-- GLM API Key accounts: upstream Coding Plan quota -->
     <template v-else-if="isGLMAPIKey">
       <div v-if="loading" class="space-y-1.5">
@@ -736,9 +773,17 @@ const isGLMAPIKey = computed(() => {
   )
 })
 
+const isKimiUsageAccount = computed(() => {
+  if (props.account.platform === 'kimi' && props.account.type === 'oauth') return true
+  return props.account.type === 'apikey' &&
+    (props.account.platform === 'anthropic' || props.account.platform === 'openai') &&
+    props.account.extra?.model_provider === 'kimi'
+})
+
 // Show usage windows for OAuth and Setup Token accounts
 const showUsageWindows = computed(() => {
   if (isGLMAPIKey.value) return true
+  if (isKimiUsageAccount.value) return true
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
   if (props.account.platform === 'gemini') return true
   return props.account.type === 'oauth' || props.account.type === 'setup-token'
@@ -746,6 +791,7 @@ const showUsageWindows = computed(() => {
 
 const shouldFetchUsage = computed(() => {
   if (isGLMAPIKey.value) return true
+  if (isKimiUsageAccount.value) return true
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }

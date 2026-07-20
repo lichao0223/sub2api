@@ -1153,8 +1153,11 @@
           <select v-model="modelProvider" class="input">
             <option value="none">无</option>
             <option value="glm">GLM</option>
+            <option value="kimi">Kimi</option>
           </select>
-          <p class="input-hint">选择 GLM 后，会按 GLM Coding Plan 查询 5 小时和周限额。</p>
+          <p class="input-hint">
+            选择 GLM 或 Kimi 后，会查询对应 Coding Plan 的 5 小时和周限额。
+          </p>
         </div>
 
         <div>
@@ -3755,8 +3758,18 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
-const modelProvider = ref<'none' | 'glm'>('none')
+const modelProvider = ref<'none' | 'glm' | 'kimi'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
+
+watch(modelProvider, (provider) => {
+  if (form.platform !== 'anthropic' && form.platform !== 'openai') return
+  if (provider === 'kimi') {
+    apiKeyBaseUrl.value = 'https://api.kimi.com/coding/v1'
+  } else if (apiKeyBaseUrl.value === 'https://api.kimi.com/coding/v1') {
+    apiKeyBaseUrl.value =
+      form.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+  }
+})
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined

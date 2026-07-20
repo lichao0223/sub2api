@@ -5,15 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
+	"math"
 	"math/rand/v2"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -120,6 +124,7 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	grokProbeRetryTTL       = 1 * time.Minute
+	kimiUsageTimeout        = 15 * time.Second
 	grokFreeQuotaWindow     = 24 * time.Hour
 	openAICodexProbeVersion = "0.144.1"
 	glmUsageURL             = "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
@@ -134,6 +139,7 @@ type UsageCache struct {
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
+	kimiUsageCache    sync.Map           // accountID -> *antigravityUsageCache
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -306,6 +312,8 @@ type AccountUsageService struct {
 	grokQuotaFetcher        *GrokQuotaFetcher
 	grokQuotaService        *GrokQuotaService
 	openAIQuotaService      *OpenAIQuotaService
+	kimiTokenProvider       *KimiTokenProvider
+	httpUpstream            HTTPUpstream
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -323,6 +331,8 @@ func NewAccountUsageService(
 	grokQuotaFetcher *GrokQuotaFetcher,
 	grokQuotaService *GrokQuotaService,
 	openAIQuotaService *OpenAIQuotaService,
+	kimiTokenProvider *KimiTokenProvider,
+	httpUpstream HTTPUpstream,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -336,6 +346,8 @@ func NewAccountUsageService(
 		grokQuotaFetcher:        grokQuotaFetcher,
 		grokQuotaService:        grokQuotaService,
 		openAIQuotaService:      openAIQuotaService,
+		kimiTokenProvider:       kimiTokenProvider,
+		httpUpstream:            httpUpstream,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -364,6 +376,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 
 	if isGLMAPIKeyAccount(account) {
 		usage, err := s.getGLMUsage(ctx, account, forceProbe)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if isKimiUsageAccount(account) {
+		usage, err := s.getKimiUsage(ctx, account, forceProbe)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -854,6 +874,171 @@ func isGLMAPIKeyAccount(account *Account) bool {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "glm")
+}
+
+func isKimiUsageAccount(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	if account.IsKimiOAuth() {
+		return true
+	}
+	return account.Type == AccountTypeAPIKey &&
+		(account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
+		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "kimi")
+}
+
+type kimiUsageDetail struct {
+	Limit     any    `json:"limit"`
+	Remaining any    `json:"remaining"`
+	ResetTime string `json:"resetTime"`
+}
+
+type kimiUsageLimit struct {
+	Window struct {
+		Duration int    `json:"duration"`
+		TimeUnit string `json:"timeUnit"`
+	} `json:"window"`
+	Detail kimiUsageDetail `json:"detail"`
+}
+
+type kimiUsageResponse struct {
+	Usage  kimiUsageDetail  `json:"usage"`
+	Limits []kimiUsageLimit `json:"limits"`
+}
+
+func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
+	if s.cache != nil && !force {
+		if cached, ok := s.cache.kimiUsageCache.Load(account.ID); ok {
+			if entry, ok := cached.(*antigravityUsageCache); ok && time.Since(entry.timestamp) < apiCacheTTL {
+				return entry.usageInfo, nil
+			}
+		}
+	}
+
+	fetch := func() (*UsageInfo, error) {
+		token, baseURL, err := s.kimiUsageCredentials(ctx, account)
+		if err != nil {
+			return nil, err
+		}
+		usageURL, err := kimi.BuildUsagesURL(baseURL)
+		if err != nil {
+			return nil, fmt.Errorf("invalid kimi usage base URL: %w", err)
+		}
+		if s.httpUpstream == nil {
+			return nil, fmt.Errorf("HTTP upstream is not configured")
+		}
+
+		callCtx, cancel := context.WithTimeout(ctx, kimiUsageTimeout)
+		defer cancel()
+		req, err := http.NewRequestWithContext(callCtx, http.MethodGet, usageURL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build kimi usage request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("Authorization", "Bearer "+token)
+		account.ApplyHeaderOverrides(req.Header)
+
+		proxyURL := ""
+		if account.ProxyID != nil && account.Proxy != nil {
+			proxyURL = account.Proxy.URL()
+		}
+		resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
+		if err != nil {
+			return nil, fmt.Errorf("kimi usage request failed: %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+			return nil, fmt.Errorf("kimi usage API returned %d", resp.StatusCode)
+		}
+
+		var payload kimiUsageResponse
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+			return nil, fmt.Errorf("decode kimi usage response: %w", err)
+		}
+		now := time.Now()
+		usage := &UsageInfo{
+			Source:    "active",
+			UpdatedAt: &now,
+			SevenDay:  kimiUsageProgress(payload.Usage, now),
+		}
+		for _, limit := range payload.Limits {
+			if (limit.Window.Duration == 300 && strings.Contains(strings.ToUpper(limit.Window.TimeUnit), "MINUTE")) ||
+				(limit.Window.Duration == 5 && strings.Contains(strings.ToUpper(limit.Window.TimeUnit), "HOUR")) {
+				usage.FiveHour = kimiUsageProgress(limit.Detail, now)
+				break
+			}
+		}
+		return usage, nil
+	}
+
+	if s.cache == nil {
+		return fetch()
+	}
+	result, err, _ := s.cache.apiFlight.Do("kimi-usage:"+strconv.FormatInt(account.ID, 10), func() (any, error) {
+		usage, fetchErr := fetch()
+		if fetchErr == nil {
+			s.cache.kimiUsageCache.Store(account.ID, &antigravityUsageCache{usageInfo: usage, timestamp: time.Now()})
+		}
+		return usage, fetchErr
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*UsageInfo), nil
+}
+
+func (s *AccountUsageService) kimiUsageCredentials(ctx context.Context, account *Account) (string, string, error) {
+	if account.IsKimiOAuth() {
+		if s.kimiTokenProvider == nil {
+			return "", "", fmt.Errorf("kimi token provider is not configured")
+		}
+		token, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
+		return token, account.GetKimiBaseURL(), err
+	}
+	token := strings.TrimSpace(account.GetCredential("api_key"))
+	if token == "" {
+		return "", "", fmt.Errorf("kimi API key is empty")
+	}
+	return token, account.GetBaseURL(), nil
+}
+
+func kimiUsageProgress(detail kimiUsageDetail, now time.Time) *UsageProgress {
+	limit, limitOK := kimiUsageInt(detail.Limit)
+	remaining, remainingOK := kimiUsageInt(detail.Remaining)
+	if !limitOK || !remainingOK || limit <= 0 {
+		return nil
+	}
+	used := limit - remaining
+	if used < 0 {
+		used = 0
+	}
+	progress := &UsageProgress{
+		Utilization:   math.Min(100, float64(used)/float64(limit)*100),
+		UsedRequests:  used,
+		LimitRequests: limit,
+	}
+	if resetAt, err := parseTime(strings.TrimSpace(detail.ResetTime)); err == nil {
+		progress.ResetsAt = &resetAt
+		progress.RemainingSeconds = maxInt(int(time.Until(resetAt).Seconds()), 0)
+	}
+	return progress
+}
+
+func kimiUsageInt(value any) (int64, bool) {
+	switch typed := value.(type) {
+	case string:
+		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
+		return parsed, err == nil
+	case float64:
+		return int64(typed), typed >= 0 && typed == math.Trunc(typed)
+	case json.Number:
+		parsed, err := typed.Int64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {

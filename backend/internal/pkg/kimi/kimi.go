@@ -343,6 +343,14 @@ func BuildModelsURL(baseURL string) (string, error) {
 	return validatedBaseURL + "/models", nil
 }
 
+func BuildUsagesURL(baseURL string) (string, error) {
+	validatedBaseURL, err := ValidatedBaseURL(baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base url: %w", err)
+	}
+	return validatedBaseURL + "/usages", nil
+}
+
 func AllowUnsafeURLOverrides() bool {
 	return envBool(EnvAllowUnsafeURLOverrides)
 }
