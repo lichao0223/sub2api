@@ -267,14 +267,14 @@ func adminUpdateAPIKeyServiceRequest(req AdminUpdateAPIKeyRequest, current *serv
 		ConcurrencyLimit:    req.ConcurrencyLimit,
 	}
 	if req.IPWhitelist != nil {
-		svcReq.IPWhitelist = req.IPWhitelist
+		svcReq.IPWhitelist = &req.IPWhitelist
 	} else if current != nil {
-		svcReq.IPWhitelist = current.IPWhitelist
+		svcReq.IPWhitelist = &current.IPWhitelist
 	}
 	if req.IPBlacklist != nil {
-		svcReq.IPBlacklist = req.IPBlacklist
+		svcReq.IPBlacklist = &req.IPBlacklist
 	} else if current != nil {
-		svcReq.IPBlacklist = current.IPBlacklist
+		svcReq.IPBlacklist = &current.IPBlacklist
 	}
 	if req.Name != "" {
 		svcReq.Name = &req.Name
