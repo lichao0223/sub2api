@@ -986,7 +986,11 @@ func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account
 	if err != nil {
 		return nil, err
 	}
-	return result.(*UsageInfo), nil
+	usage, ok := result.(*UsageInfo)
+	if !ok || usage == nil {
+		return nil, fmt.Errorf("invalid kimi usage result")
+	}
+	return usage, nil
 }
 
 func (s *AccountUsageService) kimiUsageCredentials(ctx context.Context, account *Account) (string, string, error) {
