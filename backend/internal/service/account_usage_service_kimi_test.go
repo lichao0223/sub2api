@@ -46,9 +46,13 @@ func TestAccountUsageServiceKimiOAuthUsesOfficialUsageEndpoint(t *testing.T) {
 func TestAccountUsageServiceKimiAPIKeyProviderUsesAccountKey(t *testing.T) {
 	for index, platform := range []string{PlatformOpenAI, PlatformAnthropic} {
 		t.Run(platform, func(t *testing.T) {
+			baseURL := kimi.DefaultBaseURL
+			if platform == PlatformAnthropic {
+				baseURL = "https://api.kimi.com/coding/"
+			}
 			account := &Account{
 				ID: int64(92 + index), Platform: platform, Type: AccountTypeAPIKey, Concurrency: 1,
-				Credentials: map[string]any{"api_key": "api-key-token", "base_url": kimi.DefaultBaseURL},
+				Credentials: map[string]any{"api_key": "api-key-token", "base_url": baseURL},
 				Extra:       map[string]any{"model_provider": "kimi"},
 			}
 			repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
@@ -60,6 +64,7 @@ func TestAccountUsageServiceKimiAPIKeyProviderUsesAccountKey(t *testing.T) {
 
 			usage, err := svc.GetUsage(t.Context(), account.ID, true)
 			require.NoError(t, err)
+			require.Equal(t, kimi.DefaultBaseURL+"/usages", upstream.lastReq.URL.String())
 			require.Equal(t, "Bearer api-key-token", upstream.lastReq.Header.Get("Authorization"))
 			require.NotNil(t, usage.FiveHour)
 			require.NotNil(t, usage.SevenDay)

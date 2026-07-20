@@ -1005,7 +1005,7 @@ func (s *AccountUsageService) kimiUsageCredentials(ctx context.Context, account 
 	if token == "" {
 		return "", "", fmt.Errorf("kimi API key is empty")
 	}
-	return token, account.GetBaseURL(), nil
+	return token, kimi.DefaultBaseURL, nil
 }
 
 func kimiUsageProgress(detail kimiUsageDetail, now time.Time) *UsageProgress {

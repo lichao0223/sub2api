@@ -160,6 +160,24 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     createOpenAICodexPATMock.mockReset().mockResolvedValue({})
   })
 
+  it.each([
+    ['openai', 'glm', 'https://open.bigmodel.cn/api/coding/paas/v4'],
+    ['anthropic', 'glm', 'https://open.bigmodel.cn/api/anthropic'],
+    ['openai', 'kimi', 'https://api.kimi.com/coding/v1'],
+    ['anthropic', 'kimi', 'https://api.kimi.com/coding/'],
+  ] as const)('sets the %s %s provider base URL', async (platform, provider, expectedBaseUrl) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
+    if (platform === 'openai') {
+      await selectButtonByText(wrapper, 'API Key')
+    }
+
+    await wrapper.get('[data-testid="model-provider-select"]').setValue(provider)
+
+    expect((wrapper.get('[data-testid="api-key-base-url"]').element as HTMLInputElement).value)
+      .toBe(expectedBaseUrl)
+  })
+
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
     await submitApiKeyAccount('openai')
 

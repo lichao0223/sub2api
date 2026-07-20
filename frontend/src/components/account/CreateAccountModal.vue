@@ -1150,7 +1150,7 @@
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
         <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
           <label class="input-label">模型提供商</label>
-          <select v-model="modelProvider" class="input">
+          <select v-model="modelProvider" class="input" data-testid="model-provider-select">
             <option value="none">无</option>
             <option value="glm">GLM</option>
             <option value="kimi">Kimi</option>
@@ -1166,6 +1166,7 @@
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
+            data-testid="api-key-base-url"
             :placeholder="
               form.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -3761,14 +3762,23 @@ const apiKeyValue = ref('')
 const modelProvider = ref<'none' | 'glm' | 'kimi'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
+function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi') {
+  if (provider === 'glm') {
+    return platform === 'openai'
+      ? 'https://open.bigmodel.cn/api/coding/paas/v4'
+      : 'https://open.bigmodel.cn/api/anthropic'
+  }
+  if (provider === 'kimi') {
+    return platform === 'openai'
+      ? 'https://api.kimi.com/coding/v1'
+      : 'https://api.kimi.com/coding/'
+  }
+  return platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+}
+
 watch(modelProvider, (provider) => {
   if (form.platform !== 'anthropic' && form.platform !== 'openai') return
-  if (provider === 'kimi') {
-    apiKeyBaseUrl.value = 'https://api.kimi.com/coding/v1'
-  } else if (apiKeyBaseUrl.value === 'https://api.kimi.com/coding/v1') {
-    apiKeyBaseUrl.value =
-      form.platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
-  }
+  apiKeyBaseUrl.value = getModelProviderBaseUrl(form.platform, provider)
 })
 
 const syncPreviewCredentials = computed(() => {
@@ -4257,8 +4267,8 @@ watch(
   (newPlatform) => {
     // Reset base URL based on platform
     apiKeyBaseUrl.value =
-      (newPlatform === 'openai')
-        ? 'https://api.openai.com'
+      (newPlatform === 'openai' || newPlatform === 'anthropic')
+        ? getModelProviderBaseUrl(newPlatform, modelProvider.value)
         : newPlatform === 'gemini'
           ? 'https://generativelanguage.googleapis.com'
           : newPlatform === 'grok'

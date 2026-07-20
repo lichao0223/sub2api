@@ -93,6 +93,36 @@ describe('AccountUsageCell', () => {
 	expect(getUsage).toHaveBeenCalledWith(1000)
 	expect(wrapper.text()).toContain('5h|40|2026-07-20T09:06:11Z')
 	expect(wrapper.text()).toContain('7d|25|2026-07-27T04:06:11Z')
+	const queryButton = wrapper.get('[data-testid="kimi-usage-query"]')
+	expect(queryButton.classes()).toContain('text-[10px]')
+	expect(queryButton.find('svg').exists()).toBe(true)
+  })
+
+  it('GLM 查询按钮与 GPT 查询按钮使用相同字号和刷新图标', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: { utilization: 10, resets_at: null, remaining_seconds: 0 },
+      seven_day: { utilization: 20, resets_at: null, remaining_seconds: 0 }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 1001,
+          platform: 'anthropic',
+          type: 'apikey',
+          extra: { model_provider: 'glm' }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+    await flushPromises()
+    const queryButton = wrapper.get('[data-testid="glm-usage-query"]')
+    expect(queryButton.classes()).toContain('text-[10px]')
+    expect(queryButton.find('svg').exists()).toBe(true)
   })
 
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {

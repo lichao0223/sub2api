@@ -343,6 +343,31 @@ describe('EditAccountModal', () => {
     authIsSimpleMode.value = true
   })
 
+  it.each([
+    ['openai', 'glm', 'https://open.bigmodel.cn/api/coding/paas/v4'],
+    ['anthropic', 'glm', 'https://open.bigmodel.cn/api/anthropic'],
+    ['openai', 'kimi', 'https://api.kimi.com/coding/v1'],
+    ['anthropic', 'kimi', 'https://api.kimi.com/coding/'],
+  ] as const)('sets and saves the %s %s provider base URL', async (platform, provider, expectedBaseUrl) => {
+    const account = buildAccount()
+    account.platform = platform
+    account.credentials.base_url =
+      platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-model-provider-select"]').setValue(provider)
+
+    expect((wrapper.get('[data-testid="edit-api-key-base-url"]').element as HTMLInputElement).value)
+      .toBe(expectedBaseUrl)
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.base_url).toBe(expectedBaseUrl)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.model_provider).toBe(provider)
+  })
+
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

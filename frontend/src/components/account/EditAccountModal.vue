@@ -30,11 +30,12 @@
       <div v-if="account.type === 'apikey'" class="space-y-4">
         <div v-if="account.platform === 'anthropic' || account.platform === 'openai'">
           <label class="input-label">模型提供商</label>
-          <select v-model="editModelProvider" class="input">
+          <select v-model="editModelProvider" class="input" data-testid="edit-model-provider-select">
             <option value="none">无</option>
             <option value="glm">GLM</option>
+            <option value="kimi">Kimi</option>
           </select>
-          <p class="input-hint">选择 GLM 后，会按 GLM Coding Plan 查询 5 小时和周限额。</p>
+          <p class="input-hint">选择 GLM 或 Kimi 后，会查询对应 Coding Plan 的 5 小时和周限额。</p>
         </div>
 
         <div>
@@ -43,6 +44,7 @@
             v-model="editBaseUrl"
             type="text"
             class="input"
+            data-testid="edit-api-key-base-url"
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -2707,7 +2709,27 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
-const editModelProvider = ref<'none' | 'glm'>('none')
+const editModelProvider = ref<'none' | 'glm' | 'kimi'>('none')
+
+function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi') {
+  if (provider === 'glm') {
+    return platform === 'openai'
+      ? 'https://open.bigmodel.cn/api/coding/paas/v4'
+      : 'https://open.bigmodel.cn/api/anthropic'
+  }
+  if (provider === 'kimi') {
+    return platform === 'openai'
+      ? 'https://api.kimi.com/coding/v1'
+      : 'https://api.kimi.com/coding/'
+  }
+  return platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
+}
+
+watch(editModelProvider, (provider) => {
+  const platform = props.account?.platform
+  if (platform !== 'anthropic' && platform !== 'openai') return
+  editBaseUrl.value = getModelProviderBaseUrl(platform, provider)
+})
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3457,7 +3479,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   if (newAccount.type === 'apikey' && newAccount.credentials) {
     const credentials = newAccount.credentials as Record<string, unknown>
     const extra = (newAccount.extra as Record<string, unknown>) || {}
-    editModelProvider.value = extra.model_provider === 'glm' ? 'glm' : 'none'
+    editModelProvider.value =
+      extra.model_provider === 'glm' || extra.model_provider === 'kimi'
+        ? extra.model_provider
+        : 'none'
     const platformDefaultUrl =
       newAccount.platform === 'openai'
         ? 'https://api.openai.com'
@@ -4665,8 +4690,8 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (editModelProvider.value === 'glm') {
-        newExtra.model_provider = 'glm'
+      if (editModelProvider.value === 'glm' || editModelProvider.value === 'kimi') {
+        newExtra.model_provider = editModelProvider.value
       } else {
         delete newExtra.model_provider
       }
