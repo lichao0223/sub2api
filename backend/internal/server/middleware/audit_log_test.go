@@ -145,3 +145,15 @@ func TestPromptAuditMutationAuditRoutesHaveStableActionsAndOmitBodies(t *testing
 		require.Truef(t, omitted, "%s must not persist its credential or confirmation-bearing body", route)
 	}
 }
+
+func TestIntegrationUserAuditActionsAreStable(t *testing.T) {
+	expected := map[string]string{
+		"POST /api/v1/integrations/users":                     "integrations.users.create",
+		"POST /api/v1/integrations/users/sync":                "integrations.users.sync",
+		"DELETE /api/v1/integrations/users":                   "integrations.users.delete_all",
+		"DELETE /api/v1/integrations/users/:external_user_id": "integrations.users.delete",
+	}
+	for route, action := range expected {
+		require.Equal(t, action, auditActionOverrides[route])
+	}
+}

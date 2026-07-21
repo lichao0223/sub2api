@@ -11,9 +11,11 @@ func RegisterIntegrationRoutes(
 	v1 *gin.RouterGroup,
 	h *handler.Handlers,
 	adminAuth middleware.AdminAuthMiddleware,
+	auditLog middleware.AuditLogMiddleware,
 ) {
 	integrations := v1.Group("/integrations")
 	integrations.Use(gin.HandlerFunc(adminAuth))
+	integrations.Use(gin.HandlerFunc(auditLog))
 	{
 		users := integrations.Group("/users")
 		{

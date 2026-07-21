@@ -31,11 +31,15 @@ func TestIntegrationRoutesUseAdminAuth(t *testing.T) {
 	}
 
 	v1 := router.Group("/api/v1")
+	audited := false
 	RegisterIntegrationRoutes(v1, h, servermiddleware.AdminAuthMiddleware(func(c *gin.Context) {
 		if c.GetHeader("x-test-admin") != "ok" {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
+		c.Next()
+	}), servermiddleware.AuditLogMiddleware(func(c *gin.Context) {
+		audited = true
 		c.Next()
 	}))
 
@@ -44,6 +48,7 @@ func TestIntegrationRoutesUseAdminAuth(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusUnauthorized, rec.Code)
+	require.False(t, audited)
 
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/integrations/users", strings.NewReader(`{"external_user_id":"u-1","external_organization_id":"org-1","username":"张三"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -51,6 +56,7 @@ func TestIntegrationRoutesUseAdminAuth(t *testing.T) {
 	rec = httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusCreated, rec.Code)
+	require.True(t, audited)
 	require.Equal(t, service.ExternalUserInput{ExternalUserID: "u-1", ExternalOrganizationID: "org-1", Username: "张三"}, svc.createInput)
 }
 
