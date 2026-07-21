@@ -19,9 +19,10 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
-const item = (id: number, tokens: number) => ({
+const item = (id: number, tokens: number, username = '') => ({
   user_id: id,
   email: `u${id}@test.com`,
+  username,
   requests: 1,
   input_tokens: tokens,
   output_tokens: 0,
@@ -44,7 +45,7 @@ const mountRanking = (props: Record<string, unknown> = {}) =>
 describe('UserTokenRanking', () => {
   beforeEach(() => {
     getUserBreakdown.mockReset()
-    getUserBreakdown.mockResolvedValue({ users: [item(1, 100), item(2, 50)] })
+    getUserBreakdown.mockResolvedValue({ users: [item(1, 100, '张三'), item(2, 50)] })
   })
 
   it('loads on mount with shared filters and emits select-user with id + email on row click', async () => {
@@ -62,6 +63,9 @@ describe('UserTokenRanking', () => {
 
     const rows = wrapper.findAll('tbody tr')
     expect(rows).toHaveLength(2)
+    expect(rows[0].findAll('td')[1].text()).toContain('张三')
+    expect(rows[0].findAll('td')[1].text()).not.toContain('u1@test.com')
+    expect(rows[1].findAll('td')[1].text()).toContain('u2@test.com')
 
     await rows[0].trigger('click')
     expect(wrapper.emitted('select-user')![0]).toEqual([1, 'u1@test.com'])

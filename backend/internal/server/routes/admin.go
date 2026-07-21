@@ -668,6 +668,7 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.DELETE("/external-imports/:id", h.Admin.Usage.VoidExternalUsageImportBatch)
 		usage.POST("/external-exports", h.Admin.Usage.ExportExternalUsageRows)
 		usage.GET("/nonwork/calendar/status", h.Admin.Usage.GetNonworkCalendarStatus)
+		usage.GET("/nonwork/calendar/days", h.Admin.Usage.GetNonworkCalendarDays)
 		usage.GET("/nonwork/stats/status", h.Admin.Usage.GetNonworkStatsStatus)
 		usage.POST("/nonwork/calendar/sync", h.Admin.Usage.SyncNonworkCalendar)
 		usage.PUT("/nonwork/calendar/day", h.Admin.Usage.OverrideNonworkCalendarDay)

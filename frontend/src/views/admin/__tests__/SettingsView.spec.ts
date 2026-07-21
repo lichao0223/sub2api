@@ -513,6 +513,7 @@ function mountView() {
         ProxySelector: true,
         ImageUpload: ImageUploadStub,
         BackupSettings: true,
+        NonworkCalendarSettings: true,
       },
     },
   });
@@ -919,6 +920,7 @@ describe("admin SettingsView payment visible method controls", () => {
           ProxySelector: true,
           ImageUpload: ImageUploadStub,
           BackupSettings: true,
+          NonworkCalendarSettings: true,
         },
       },
     });
@@ -1104,6 +1106,7 @@ describe("admin SettingsView payment visible method controls", () => {
           ProxySelector: true,
           ImageUpload: ImageUploadStub,
           BackupSettings: true,
+          NonworkCalendarSettings: true,
         },
       },
     });

@@ -108,6 +108,15 @@ export interface NonworkCalendarYearStatus {
   confirmed: boolean
 }
 
+export interface NonworkCalendarOffday {
+  date: string
+  day_type: string
+  holiday_name: string
+  source: string
+  confirmed: boolean
+  manual_override: boolean
+}
+
 export interface ExternalUsageImportRow {
   row_number?: number
   date: string
@@ -305,6 +314,13 @@ export async function getNonworkCalendarStatus(years?: number[]): Promise<{ year
   return data
 }
 
+export async function getNonworkCalendarDays(year: number): Promise<{ year: number; days: NonworkCalendarOffday[] }> {
+  const { data } = await apiClient.get<{ year: number; days: NonworkCalendarOffday[] }>('/admin/usage/nonwork/calendar/days', {
+    params: { year }
+  })
+  return data
+}
+
 export async function getNonworkStatsStatus(params: {
   start_date: string
   end_date: string
@@ -388,6 +404,7 @@ export const adminUsageAPI = {
   createCleanupTask,
   cancelCleanupTask,
   getNonworkCalendarStatus,
+  getNonworkCalendarDays,
   getNonworkStatsStatus,
   syncNonworkCalendar,
   overrideNonworkCalendarDay,

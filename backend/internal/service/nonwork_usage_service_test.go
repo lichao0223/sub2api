@@ -166,6 +166,24 @@ func TestUsageNonworkAggregationServiceSyncCalendarUsesPredictionForEmptyHoliday
 	}
 }
 
+func TestUsageNonworkAggregationServiceGetCalendarOffdays(t *testing.T) {
+	loc := mustLoadLocation(t, "Asia/Shanghai")
+	repo := &fakeNonworkUsageRepo{calendar: []nonworktime.CalendarDay{
+		{Date: time.Date(2026, 1, 1, 0, 0, 0, 0, loc), IsOffday: true, DayType: nonworktime.DayTypeHolidayOffday, HolidayName: "元旦", Source: "holiday-cn", Confirmed: true},
+		{Date: time.Date(2026, 1, 2, 0, 0, 0, 0, loc), IsWorkday: true, DayType: nonworktime.DayTypeNormalWorkday},
+		{Date: time.Date(2026, 1, 3, 0, 0, 0, 0, loc), IsOffday: true, DayType: nonworktime.DayTypeManualOffday, Source: "manual", Confirmed: true, ManualOverride: true},
+	}}
+	svc := NewUsageNonworkAggregationService(repo, nil, &config.Config{NonworkUsage: config.NonworkUsageConfig{Timezone: "Asia/Shanghai"}})
+
+	days, err := svc.GetCalendarOffdays(t.Context(), 2026)
+
+	require.NoError(t, err)
+	require.Equal(t, []CalendarOffday{
+		{Date: "2026-01-01", DayType: nonworktime.DayTypeHolidayOffday, HolidayName: "元旦", Source: "holiday-cn", Confirmed: true},
+		{Date: "2026-01-03", DayType: nonworktime.DayTypeManualOffday, Source: "manual", Confirmed: true, ManualOverride: true},
+	}, days)
+}
+
 func mustLoadLocation(t *testing.T, name string) *time.Location {
 	t.Helper()
 	loc, err := time.LoadLocation(name)

@@ -72,6 +72,15 @@ type CalendarYearStatus struct {
 	Confirmed         bool      `json:"confirmed"`
 }
 
+type CalendarOffday struct {
+	Date           string `json:"date"`
+	DayType        string `json:"day_type"`
+	HolidayName    string `json:"holiday_name"`
+	Source         string `json:"source"`
+	Confirmed      bool   `json:"confirmed"`
+	ManualOverride bool   `json:"manual_override"`
+}
+
 type NonworkUsageEvent struct {
 	UserID              int64
 	RequestID           string
@@ -380,6 +389,33 @@ func (s *UsageNonworkAggregationService) GetCalendarStatus(ctx context.Context, 
 		years = []int{now.Year() - 1, now.Year(), now.Year() + 1}
 	}
 	return s.repo.GetCalendarStatus(ctx, cfg.DefaultCountry, years)
+}
+
+func (s *UsageNonworkAggregationService) GetCalendarOffdays(ctx context.Context, year int) ([]CalendarOffday, error) {
+	if s == nil || s.repo == nil {
+		return nil, nil
+	}
+	cfg := s.workdayConfig()
+	start := time.Date(year, time.January, 1, 0, 0, 0, 0, cfg.Location)
+	days, err := s.repo.GetCalendarDays(ctx, cfg.DefaultCountry, start, start.AddDate(1, 0, -1))
+	if err != nil {
+		return nil, err
+	}
+	offdays := make([]CalendarOffday, 0)
+	for _, day := range days {
+		if !day.IsOffday {
+			continue
+		}
+		offdays = append(offdays, CalendarOffday{
+			Date:           day.Date.In(cfg.Location).Format("2006-01-02"),
+			DayType:        day.DayType,
+			HolidayName:    day.HolidayName,
+			Source:         day.Source,
+			Confirmed:      day.Confirmed,
+			ManualOverride: day.ManualOverride,
+		})
+	}
+	return offdays, nil
 }
 
 func (s *UsageNonworkAggregationService) OverrideCalendarDay(ctx context.Context, input ManualCalendarDayInput) error {

@@ -800,6 +800,26 @@ func (h *UsageHandler) GetNonworkCalendarStatus(c *gin.Context) {
 	response.Success(c, gin.H{"years": status})
 }
 
+// GetNonworkCalendarDays returns all offdays for one calendar year.
+// GET /api/v1/admin/usage/nonwork/calendar/days?year=2026
+func (h *UsageHandler) GetNonworkCalendarDays(c *gin.Context) {
+	if h.nonworkService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Non-work usage service unavailable")
+		return
+	}
+	year, err := strconv.Atoi(strings.TrimSpace(c.Query("year")))
+	if err != nil || year < 2000 || year > 2100 {
+		response.BadRequest(c, "invalid year, use a year between 2000 and 2100")
+		return
+	}
+	days, err := h.nonworkService.GetCalendarOffdays(c.Request.Context(), year)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"year": year, "days": days})
+}
+
 // GetNonworkStatsStatus returns aggregation coverage for the selected date range.
 // GET /api/v1/admin/usage/nonwork/stats/status?start_date=2026-06-01&end_date=2026-06-24
 func (h *UsageHandler) GetNonworkStatsStatus(c *gin.Context) {
