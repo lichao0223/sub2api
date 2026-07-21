@@ -97,6 +97,21 @@ func TestHandle429_FallbackDisabledSkipsLocalMark(t *testing.T) {
 	require.Zero(t, accountRepo.rateLimitCalls)
 }
 
+func TestHandleUpstreamError_KimiUsageLimit403IsRateLimited(t *testing.T) {
+	accountRepo := &rateLimit429AccountRepoStub{}
+	svc := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID: 47, Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Extra: map[string]any{"model_provider": "kimi"},
+	}
+	body := []byte(`{"error":{"message":"You've reached your usage limit for this billing cycle.","type":"access_terminated_error"}}`)
+
+	shouldFailover := svc.HandleUpstreamError(t.Context(), account, http.StatusForbidden, http.Header{}, body)
+
+	require.True(t, shouldFailover)
+	require.Equal(t, 1, accountRepo.rateLimitCalls)
+}
+
 // Anthropic 无 reset 头的 429（如 Extra usage required）也应走兜底冷却，
 // 否则账号永不冷却，调度器会让每个请求反复撞同一批 429 账号（旋转木马）。
 func TestHandle429_AnthropicNoResetTimeUsesFallbackCooldown(t *testing.T) {

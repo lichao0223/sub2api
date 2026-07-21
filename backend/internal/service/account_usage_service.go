@@ -964,11 +964,14 @@ func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account
 			SevenDay:  kimiUsageProgress(payload.Usage, now),
 		}
 		for _, limit := range payload.Limits {
-			if (limit.Window.Duration == 300 && strings.Contains(strings.ToUpper(limit.Window.TimeUnit), "MINUTE")) ||
-				(limit.Window.Duration == 5 && strings.Contains(strings.ToUpper(limit.Window.TimeUnit), "HOUR")) {
+			if kimiUsageWindowDuration(limit) == 5*time.Hour {
 				usage.FiveHour = kimiUsageProgress(limit.Detail, now)
 				break
 			}
+		}
+		if usage.FiveHour == nil && account.IsRateLimited() {
+			usage.FiveHour = &UsageProgress{Utilization: 100, ResetsAt: account.RateLimitResetAt}
+			usage.FiveHour.RemainingSeconds = maxInt(int(time.Until(*account.RateLimitResetAt).Seconds()), 0)
 		}
 		return usage, nil
 	}
@@ -991,6 +994,19 @@ func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account
 		return nil, fmt.Errorf("invalid kimi usage result")
 	}
 	return usage, nil
+}
+
+func kimiUsageWindowDuration(limit kimiUsageLimit) time.Duration {
+	switch unit := strings.ToUpper(limit.Window.TimeUnit); {
+	case strings.Contains(unit, "HOUR"):
+		return time.Duration(limit.Window.Duration) * time.Hour
+	case strings.Contains(unit, "MINUTE"):
+		return time.Duration(limit.Window.Duration) * time.Minute
+	case strings.Contains(unit, "SECOND"):
+		return time.Duration(limit.Window.Duration) * time.Second
+	default:
+		return 0
+	}
 }
 
 func (s *AccountUsageService) kimiUsageCredentials(ctx context.Context, account *Account) (string, string, error) {

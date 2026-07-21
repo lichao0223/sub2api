@@ -71,3 +71,31 @@ func TestAccountUsageServiceKimiAPIKeyProviderUsesAccountKey(t *testing.T) {
 		})
 	}
 }
+
+func TestAccountUsageServiceKimiShowsExhaustedFiveHourWindowWhenUpstreamOmitsIt(t *testing.T) {
+	resetAt := time.Now().Add(time.Hour)
+	account := &Account{
+		ID: 94, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials:      map[string]any{"api_key": "api-key-token"},
+		Extra:            map[string]any{"model_provider": "kimi"},
+		RateLimitResetAt: &resetAt,
+	}
+	repo := &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"usage":{"limit":"100","remaining":"76","resetTime":"2026-07-27T04:06:11Z"},"limits":[]}`)),
+	}}
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, nil, upstream, NewUsageCache(), nil, nil)
+
+	usage, err := svc.GetUsage(t.Context(), account.ID, true)
+	require.NoError(t, err)
+	require.Equal(t, float64(100), usage.FiveHour.Utilization)
+	require.Equal(t, resetAt, *usage.FiveHour.ResetsAt)
+}
+
+func TestKimiUsageWindowDurationSupportsSeconds(t *testing.T) {
+	var limit kimiUsageLimit
+	limit.Window.Duration = 18000
+	limit.Window.TimeUnit = "TIME_UNIT_SECOND"
+	require.Equal(t, 5*time.Hour, kimiUsageWindowDuration(limit))
+}

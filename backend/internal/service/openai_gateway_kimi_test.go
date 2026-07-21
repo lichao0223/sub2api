@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -21,9 +22,15 @@ import (
 type kimiGatewayAccountRepo struct {
 	*mockAccountRepoForPlatform
 	tempUnschedCalls      int
+	rateLimitCalls        int
 	lastTempUnschedID     int64
 	lastTempUnschedUntil  time.Time
 	lastTempUnschedReason string
+}
+
+func (r *kimiGatewayAccountRepo) SetRateLimited(_ context.Context, _ int64, _ time.Time) error {
+	r.rateLimitCalls++
+	return nil
 }
 
 func (r *kimiGatewayAccountRepo) SetTempUnschedulable(_ context.Context, id int64, until time.Time, reason string) error {
@@ -271,4 +278,17 @@ func TestHandleKimiAccountUpstreamErrorDoesNotShortenExistingPause(t *testing.T)
 	runtimeUntil, ok := value.(time.Time)
 	require.True(t, ok)
 	require.WithinDuration(t, existingUntil, runtimeUntil, time.Second)
+}
+
+func TestHandleKimiAccountUpstreamErrorTreatsUsageLimit403AsRateLimit(t *testing.T) {
+	account := kimiOAuthTestAccount(83)
+	repo := &kimiGatewayAccountRepo{}
+	rateLimitService := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	svc := &OpenAIGatewayService{accountRepo: repo, rateLimitService: rateLimitService}
+	body := []byte(`{"error":{"message":"You've reached your usage limit for this billing cycle.","type":"access_terminated_error"}}`)
+
+	svc.handleKimiAccountUpstreamError(t.Context(), account, http.StatusForbidden, http.Header{}, body)
+
+	require.Equal(t, 1, repo.rateLimitCalls)
+	require.Zero(t, repo.tempUnschedCalls)
 }

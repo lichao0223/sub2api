@@ -160,6 +160,10 @@ func (s *OpenAIGatewayService) handleKimiAccountUpstreamError(ctx context.Contex
 	if s == nil || account == nil {
 		return
 	}
+	if isKimiUsageLimitError(account, statusCode, responseBody) && s.rateLimitService != nil {
+		s.rateLimitService.HandleUpstreamError(ctx, account, statusCode, headers, responseBody)
+		return
+	}
 	switch statusCode {
 	case http.StatusUnauthorized:
 		s.tempUnscheduleKimi(ctx, account, 10*time.Minute, "kimi oauth token unauthorized")

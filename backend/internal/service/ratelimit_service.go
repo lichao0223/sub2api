@@ -178,10 +178,11 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
+	kimiUsageLimit := isKimiUsageLimitError(account, statusCode, responseBody)
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
-	if account.IsPoolMode() && !customErrorCodesEnabled {
+	if account.IsPoolMode() && !customErrorCodesEnabled && !kimiUsageLimit {
 		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
 		}
@@ -197,6 +198,12 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
+		return true
+	}
+
+	// Kimi 用 403 access_terminated_error 表示套餐窗口已用尽，语义是限流而非鉴权失败。
+	if kimiUsageLimit {
+		s.handle429(ctx, account, headers, responseBody)
 		return true
 	}
 
@@ -395,6 +402,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	return shouldDisable
+}
+
+func isKimiUsageLimitError(account *Account, statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden || !isKimiUsageAccount(account) {
+		return false
+	}
+	return gjson.GetBytes(body, "error.type").String() == "access_terminated_error" &&
+		strings.Contains(strings.ToLower(gjson.GetBytes(body, "error.message").String()), "usage limit")
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.
