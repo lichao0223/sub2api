@@ -9,10 +9,13 @@ set -euo pipefail
 FORK_IMAGE="ghcr.io/lichao0223/sub2api:latest"
 OFFICIAL_IMAGE="weishaw/sub2api:latest"
 MAX_BACKUPS=20
+AUTO_UPDATE_MARKER="# sub2api-auto-update"
 
 DEPLOY_DIR="$(pwd)"
 COMPOSE_FILE="docker-compose.yml"
+SCRIPT_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 YES=0
+UPDATE_BACKUP="ask"
 
 usage() {
   cat <<'EOF'
@@ -20,6 +23,7 @@ Usage:
   ./switch-sub2api-source.sh
   ./switch-sub2api-source.sh --dir DEPLOY_DIR
   ./switch-sub2api-source.sh fork|official|update|backup|restore|reset-admin|status|logs --dir DEPLOY_DIR [-y]
+  ./switch-sub2api-source.sh auto-update-on|auto-update-off|auto-update-status --dir DEPLOY_DIR
 
 Interactive menu:
   Run without a command to show a menu.
@@ -28,6 +32,9 @@ Commands:
   fork      Backup data, switch sub2api image to ghcr.io/lichao0223/sub2api:latest, pull, start.
   official  Backup data, switch sub2api image back to weishaw/sub2api:latest, pull, start.
   update    Detect current image source, optionally backup data, pull latest configured image, restart.
+  auto-update-on     Enable daily update at 02:00 with backup.
+  auto-update-off    Disable daily automatic update.
+  auto-update-status Show automatic update status.
   backup    Backup compose/env/local data dirs and named volumes if detected.
   restore   Restore data from a backup under DEPLOY_DIR/backups.
   reset-admin Reset an admin account password in PostgreSQL.
@@ -38,6 +45,8 @@ Options:
   --dir DIR       Deployment directory containing docker-compose.yml and .env.
   --compose FILE  Compose file name/path relative to deployment dir. Default: docker-compose.yml.
   --max-backups N Keep at most N backups. Default: 20.
+  --backup        Create a backup before update.
+  --no-backup     Skip backup before update.
   -y, --yes       Do not ask for confirmation in command mode.
 
 Important:
@@ -1025,6 +1034,9 @@ update_current_image() {
   local source
   local latest_image
   local detect_status
+  local container_id
+  local running_image_id
+  local latest_image_id
 
   set +e
   source="$(detect_current_source)"
@@ -1070,21 +1082,114 @@ update_current_image() {
     return
   fi
 
-  if confirm_default_yes "Create a backup before update?"; then
-    backup_data 0
-  else
-    warn "Skipping backup before update by user choice."
-    stop_services
+  container_id="$(run_compose ps -q sub2api 2>/dev/null || true)"
+  running_image_id=""
+  if [ -n "$container_id" ]; then
+    running_image_id="$(docker inspect --format '{{.Image}}' "$container_id" 2>/dev/null || true)"
   fi
+
+  info "Checking for a newer sub2api image: $latest_image"
+  docker pull "$latest_image"
+  latest_image_id="$(docker image inspect --format '{{.Id}}' "$latest_image" 2>/dev/null || true)"
+  [ -n "$latest_image_id" ] || die "Cannot inspect pulled image: $latest_image"
+
+  if [ -n "$running_image_id" ] && [ "$running_image_id" = "$latest_image_id" ]; then
+    info "Already using the latest image; no backup or restart is needed."
+    return
+  fi
+
+  case "$UPDATE_BACKUP" in
+    yes) backup_data 0 ;;
+    no)
+      warn "Skipping backup before update by user choice."
+      stop_services
+      ;;
+    *)
+      if confirm_default_yes "Create a backup before update?"; then
+        backup_data 0
+      else
+        warn "Skipping backup before update by user choice."
+        stop_services
+      fi
+      ;;
+  esac
 
   info "Updating sub2api image in $COMPOSE_FILE"
   set_sub2api_image "$latest_image"
 
-  info "Pulling latest sub2api image: $latest_image"
-  run_compose pull sub2api
-
   start_services
   info "Update completed."
+}
+
+current_crontab() {
+  crontab -l 2>/dev/null || true
+}
+
+auto_update_enabled() {
+  current_crontab | grep -Fq "$AUTO_UPDATE_MARKER"
+}
+
+auto_update_cron_line() {
+  local script_path deploy_dir compose_file log_file
+  printf -v script_path '%q' "$SCRIPT_PATH"
+  printf -v deploy_dir '%q' "$DEPLOY_DIR"
+  printf -v compose_file '%q' "$COMPOSE_FILE"
+  printf -v log_file '%q' "$DEPLOY_DIR/auto-update.log"
+  printf '0 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin %s update --dir %s --compose %s --backup -y >> %s 2>&1 %s\n' \
+    "$script_path" "$deploy_dir" "$compose_file" "$log_file" "$AUTO_UPDATE_MARKER"
+}
+
+write_auto_update_crontab() {
+  local enabled="$1"
+  local temp_file
+  command -v crontab >/dev/null 2>&1 || die "crontab is not installed"
+  temp_file="$(mktemp)"
+
+  # ponytail: one auto-update job per user; use per-deployment markers if multi-instance scheduling is needed.
+  current_crontab | grep -Fv "$AUTO_UPDATE_MARKER" > "$temp_file" || true
+  if [ "$enabled" = "1" ]; then
+    auto_update_cron_line >> "$temp_file"
+  fi
+
+  if ! crontab "$temp_file"; then
+    rm -f "$temp_file"
+    die "Failed to update crontab"
+  fi
+  rm -f "$temp_file"
+}
+
+enable_auto_update() {
+  write_auto_update_crontab 1
+  info "Daily automatic update enabled at 02:00 (backup enabled)."
+  info "Log file: $DEPLOY_DIR/auto-update.log"
+}
+
+disable_auto_update() {
+  write_auto_update_crontab 0
+  info "Daily automatic update disabled."
+}
+
+show_auto_update_status() {
+  if auto_update_enabled; then
+    echo "Automatic update: enabled (daily at 02:00, backup enabled)"
+    auto_update_cron_line
+  else
+    echo "Automatic update: disabled"
+  fi
+}
+
+toggle_auto_update() {
+  if auto_update_enabled; then
+    if confirm "Daily automatic update is enabled. Disable it?"; then
+      disable_auto_update
+    else
+      info "Cancelled"
+    fi
+  elif confirm "Enable daily automatic update at 02:00 with backup?"; then
+    enable_auto_update
+  else
+    info "Cancelled"
+  fi
 }
 
 ensure_ready() {
@@ -1121,10 +1226,15 @@ ask_deploy_dir() {
 }
 
 menu() {
+  local auto_update_state
   ask_deploy_dir
   ensure_ready
 
   while true; do
+    auto_update_state="disabled"
+    if auto_update_enabled; then
+      auto_update_state="enabled"
+    fi
     echo ""
     echo "=============================================="
     echo " Sub2API deployment source switcher"
@@ -1132,6 +1242,7 @@ menu() {
     echo "Deploy dir:   $DEPLOY_DIR"
     echo "Compose file: $COMPOSE_FILE"
     echo "Current image: $(current_image || true)"
+    echo "Auto update:  $auto_update_state (daily at 02:00)"
     echo ""
     echo "1) View status"
     echo "2) Backup data only"
@@ -1139,9 +1250,10 @@ menu() {
     echo "4) Switch to my fork image    ($FORK_IMAGE)"
     echo "5) Switch back to official    ($OFFICIAL_IMAGE)"
     echo "6) Update current image to latest"
-    echo "7) Reset admin password"
-    echo "8) Follow sub2api logs"
-    echo "9) Change deployment directory"
+    echo "7) Toggle daily auto update at 02:00 [$auto_update_state]"
+    echo "8) Reset admin password"
+    echo "9) Follow sub2api logs"
+    echo "10) Change deployment directory"
     echo "0) Exit"
     echo ""
     printf "Choose: "
@@ -1161,9 +1273,10 @@ menu() {
       4) switch_image "fork" "$FORK_IMAGE"; pause ;;
       5) switch_image "official" "$OFFICIAL_IMAGE"; pause ;;
       6) update_current_image; pause ;;
-      7) reset_admin_password; pause ;;
-      8) follow_logs ;;
-      9) ask_deploy_dir; ensure_ready ;;
+      7) toggle_auto_update; pause ;;
+      8) reset_admin_password; pause ;;
+      9) follow_logs ;;
+      10) ask_deploy_dir; ensure_ready ;;
       0) exit 0 ;;
       *) echo "Invalid choice"; pause ;;
     esac
@@ -1190,6 +1303,16 @@ while [ "$#" -gt 0 ]; do
       MAX_BACKUPS="${2:-}"
       shift 2
       ;;
+    --backup)
+      [ "$UPDATE_BACKUP" != "no" ] || die "--backup and --no-backup cannot be used together"
+      UPDATE_BACKUP="yes"
+      shift
+      ;;
+    --no-backup)
+      [ "$UPDATE_BACKUP" != "yes" ] || die "--backup and --no-backup cannot be used together"
+      UPDATE_BACKUP="no"
+      shift
+      ;;
     -y|--yes)
       YES=1
       shift
@@ -1203,6 +1326,10 @@ while [ "$#" -gt 0 ]; do
       ;;
   esac
 done
+
+if [ "$UPDATE_BACKUP" != "ask" ] && [ "$COMMAND" != "update" ]; then
+  die "--backup and --no-backup are only valid with the update command"
+fi
 
 if [ -z "$COMMAND" ]; then
   menu
@@ -1219,6 +1346,15 @@ case "$COMMAND" in
     ;;
   update)
     update_current_image
+    ;;
+  auto-update-on)
+    enable_auto_update
+    ;;
+  auto-update-off)
+    disable_auto_update
+    ;;
+  auto-update-status)
+    show_auto_update_status
     ;;
   backup)
     if confirm "Backup will stop services temporarily. Continue?"; then
