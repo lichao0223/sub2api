@@ -690,6 +690,9 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
+						"login_ip_block_enabled": false,
+						"login_ip_block_threshold": 5,
+						"login_ip_block_duration_seconds": 1800,
 						"login_agreement_documents": [
 							{"id": "terms", "title": "服务条款", "content_md": ""},
 							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
@@ -1007,6 +1010,9 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
+						"login_ip_block_enabled": false,
+						"login_ip_block_threshold": 5,
+						"login_ip_block_duration_seconds": 1800,
 						"login_agreement_documents": [
 							{"id": "terms", "title": "服务条款", "content_md": ""},
 							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
