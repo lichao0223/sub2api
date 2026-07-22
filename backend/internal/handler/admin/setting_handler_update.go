@@ -31,6 +31,9 @@ type UpdateSettingsRequest struct {
 	SessionBindingEnabled            *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
 	StepUpEnabled                    *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
 	AuditLogRetentionDays            int                          `json:"audit_log_retention_days"` // 审计日志保留天数
+	LoginIPBlockEnabled              *bool                        `json:"login_ip_block_enabled"`
+	LoginIPBlockThreshold            *int                         `json:"login_ip_block_threshold"`
+	LoginIPBlockDurationSeconds      *int                         `json:"login_ip_block_duration_seconds"`
 	LoginAgreementEnabled            bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                       `json:"login_agreement_updated_at"`
@@ -401,6 +404,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	stepUpEnabled := previousSettings.StepUpEnabled
 	if req.StepUpEnabled != nil {
 		stepUpEnabled = *req.StepUpEnabled
+	}
+	loginIPBlockEnabled := previousSettings.LoginIPBlockEnabled
+	if req.LoginIPBlockEnabled != nil {
+		loginIPBlockEnabled = *req.LoginIPBlockEnabled
+	}
+	loginIPBlockThreshold := previousSettings.LoginIPBlockThreshold
+	if req.LoginIPBlockThreshold != nil {
+		loginIPBlockThreshold = *req.LoginIPBlockThreshold
+	}
+	loginIPBlockDurationSeconds := previousSettings.LoginIPBlockDurationSeconds
+	if req.LoginIPBlockDurationSeconds != nil {
+		loginIPBlockDurationSeconds = *req.LoginIPBlockDurationSeconds
 	}
 	forwardedClientIPHeaders := append([]string(nil), previousSettings.ForwardedClientIPHeaders...)
 	if req.ForwardedClientIPHeaders != nil {
@@ -1255,6 +1270,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SessionBindingEnabled:            sessionBindingEnabled,
 		StepUpEnabled:                    stepUpEnabled,
 		AuditLogRetentionDays:            req.AuditLogRetentionDays,
+		LoginIPBlockEnabled:              loginIPBlockEnabled,
+		LoginIPBlockThreshold:            loginIPBlockThreshold,
+		LoginIPBlockDurationSeconds:      loginIPBlockDurationSeconds,
 		LoginAgreementEnabled:            req.LoginAgreementEnabled,
 		LoginAgreementMode:               loginAgreementMode,
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,
@@ -1794,6 +1812,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
+		LoginIPBlockEnabled:                                    updatedSettings.LoginIPBlockEnabled,
+		LoginIPBlockThreshold:                                  updatedSettings.LoginIPBlockThreshold,
+		LoginIPBlockDurationSeconds:                            updatedSettings.LoginIPBlockDurationSeconds,
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                updatedSettings.LoginAgreementUpdatedAt,

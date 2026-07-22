@@ -369,6 +369,9 @@ export interface SystemSettings {
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
+  login_ip_block_enabled: boolean;
+  login_ip_block_threshold: number;
+  login_ip_block_duration_seconds: number;
   login_agreement_enabled: boolean;
   login_agreement_mode: "modal" | "checkbox" | string;
   login_agreement_updated_at: string;
@@ -677,6 +680,9 @@ export interface UpdateSettingsRequest {
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days?: number; // 审计日志保留天数
+  login_ip_block_enabled?: boolean;
+  login_ip_block_threshold?: number;
+  login_ip_block_duration_seconds?: number;
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;
@@ -1155,6 +1161,34 @@ export async function deleteAdminApiKey(): Promise<{ message: string }> {
   return data;
 }
 
+export interface LoginIPBlockRecord {
+  ip: string;
+  blocked_at?: string;
+  duration_seconds?: number;
+  permanent?: boolean;
+  remaining_seconds?: number;
+  event?: "blocked" | "unblocked";
+  unblocked_at?: string;
+}
+
+export interface LoginIPBlockList {
+  current: LoginIPBlockRecord[];
+  history: LoginIPBlockRecord[];
+}
+
+export async function getLoginIPBlocks(): Promise<LoginIPBlockList> {
+  const { data } = await apiClient.get<LoginIPBlockList>(
+    "/admin/settings/login-ip-blocks",
+  );
+  return data;
+}
+
+export async function unblockLoginIP(ip: string): Promise<void> {
+  await apiClient.delete(
+    `/admin/settings/login-ip-blocks/${encodeURIComponent(ip)}`,
+  );
+}
+
 // ==================== Overload Cooldown Settings ====================
 
 /**
@@ -1429,6 +1463,8 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
+  getLoginIPBlocks,
+  unblockLoginIP,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,

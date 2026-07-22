@@ -62,6 +62,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyLoginAgreementMode:                        defaultLoginAgreementMode,
 		SettingKeyLoginAgreementUpdatedAt:                   defaultLoginAgreementDate,
 		SettingKeyLoginAgreementDocuments:                   loginAgreementDocumentsJSON,
+		SettingKeyLoginIPBlockEnabled:                       "false",
+		SettingKeyLoginIPBlockThreshold:                     "5",
+		SettingKeyLoginIPBlockDurationSeconds:               "1800",
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "true",
 		SettingKeyForwardedClientIPHeaders:                  string(forwardedClientIPHeadersJSON),
 		settingKeyForwardedClientIPModeV2:                   "true",
@@ -303,6 +306,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SessionBindingEnabled:            settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
 		StepUpEnabled:                    settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
 		AuditLogRetentionDays:            parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
+		LoginIPBlockEnabled:              settings[SettingKeyLoginIPBlockEnabled] == "true",
+		LoginIPBlockThreshold:            parseLoginIPBlockThreshold(settings[SettingKeyLoginIPBlockThreshold]),
+		LoginIPBlockDurationSeconds:      parseLoginIPBlockDuration(settings[SettingKeyLoginIPBlockDurationSeconds]),
 		LoginAgreementEnabled:            settings[SettingKeyLoginAgreementEnabled] == "true",
 		LoginAgreementMode:               normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),
 		LoginAgreementUpdatedAt:          loginAgreementUpdatedAt,

@@ -1630,6 +1630,127 @@
             </div>
           </div>
 
+          <!-- Login failure IP blocking -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.loginIPBlock.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.loginIPBlock.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.loginIPBlock.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.loginIPBlock.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.login_ip_block_enabled" />
+              </div>
+
+              <div
+                v-if="form.login_ip_block_enabled"
+                class="grid gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 sm:grid-cols-2"
+              >
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.loginIPBlock.threshold") }}
+                  </label>
+                  <input
+                    v-model.number="form.login_ip_block_threshold"
+                    type="number"
+                    min="1"
+                    max="100"
+                    class="input w-full"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.loginIPBlock.thresholdHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.loginIPBlock.duration") }}
+                  </label>
+                  <select v-model.number="form.login_ip_block_duration_seconds" class="input w-full">
+                    <option :value="1800">{{ t("admin.settings.loginIPBlock.duration30m") }}</option>
+                    <option :value="3600">{{ t("admin.settings.loginIPBlock.duration1h") }}</option>
+                    <option :value="21600">{{ t("admin.settings.loginIPBlock.duration6h") }}</option>
+                    <option :value="86400">{{ t("admin.settings.loginIPBlock.duration1d") }}</option>
+                    <option :value="604800">{{ t("admin.settings.loginIPBlock.duration7d") }}</option>
+                    <option :value="0">{{ t("admin.settings.loginIPBlock.durationPermanent") }}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.loginIPBlock.current") }}
+                  </h3>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="loadLoginIPBlocks">
+                    {{ t("common.refresh") }}
+                  </button>
+                </div>
+                <div v-if="loginIPBlocksLoading" class="py-4 text-sm text-gray-500">
+                  {{ t("common.loading") }}
+                </div>
+                <div v-else-if="loginIPBlocksCurrent.length === 0" class="py-4 text-sm text-gray-500">
+                  {{ t("admin.settings.loginIPBlock.emptyCurrent") }}
+                </div>
+                <div v-else class="overflow-x-auto">
+                  <table class="min-w-full text-sm">
+                    <thead class="text-left text-xs text-gray-500">
+                      <tr>
+                        <th class="px-3 py-2">IP</th>
+                        <th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.blockedAt") }}</th>
+                        <th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.remaining") }}</th>
+                        <th class="px-3 py-2 text-right">{{ t("common.actions") }}</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                      <tr v-for="item in loginIPBlocksCurrent" :key="item.ip">
+                        <td class="whitespace-nowrap px-3 py-2 font-mono">{{ item.ip }}</td>
+                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockTime(item.blocked_at) }}</td>
+                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockRemaining(item) }}</td>
+                        <td class="px-3 py-2 text-right">
+                          <button type="button" class="btn btn-secondary btn-sm text-red-600" @click="unblockLoginIP(item.ip)">
+                            {{ t("admin.settings.loginIPBlock.unblock") }}
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
+                  {{ t("admin.settings.loginIPBlock.history") }}
+                </h3>
+                <div v-if="loginIPBlocksHistory.length === 0" class="py-4 text-sm text-gray-500">
+                  {{ t("admin.settings.loginIPBlock.emptyHistory") }}
+                </div>
+                <div v-else class="max-h-72 overflow-auto">
+                  <table class="min-w-full text-sm">
+                    <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                      <tr v-for="(item, index) in loginIPBlocksHistory" :key="`${item.event}-${item.ip}-${item.blocked_at || item.unblocked_at}-${index}`">
+                        <td class="whitespace-nowrap px-3 py-2 font-mono">{{ item.ip }}</td>
+                        <td class="whitespace-nowrap px-3 py-2">{{ t(`admin.settings.loginIPBlock.event.${item.event || 'blocked'}`) }}</td>
+                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockTime(item.event === 'unblocked' ? item.unblocked_at : item.blocked_at) }}</td>
+                        <td class="whitespace-nowrap px-3 py-2 text-gray-500">{{ formatLoginIPBlockDuration(item) }}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- API Key IP ACL Settings -->
           <div class="card">
             <div
@@ -7673,6 +7794,7 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
+  LoginIPBlockRecord,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -7838,6 +7960,9 @@ const adminApiKeyExists = ref(false);
 const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
+const loginIPBlocksLoading = ref(false);
+const loginIPBlocksCurrent = ref<LoginIPBlockRecord[]>([]);
+const loginIPBlocksHistory = ref<LoginIPBlockRecord[]>([]);
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
@@ -8391,6 +8516,9 @@ const form = reactive<SettingsForm>({
   session_binding_enabled: false,
   step_up_enabled: false,
   audit_log_retention_days: 180,
+  login_ip_block_enabled: false,
+  login_ip_block_threshold: 5,
+  login_ip_block_duration_seconds: 1800,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
   login_agreement_updated_at: "2026-03-31",
@@ -9908,6 +10036,12 @@ async function saveSettings() {
       audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)
         ? form.audit_log_retention_days
         : 180,
+      login_ip_block_enabled: form.login_ip_block_enabled,
+      login_ip_block_threshold: Math.min(
+        100,
+        Math.max(1, Math.floor(Number(form.login_ip_block_threshold) || 5)),
+      ),
+      login_ip_block_duration_seconds: form.login_ip_block_duration_seconds,
       login_agreement_enabled: form.login_agreement_enabled,
       login_agreement_mode: form.login_agreement_mode,
       login_agreement_updated_at: form.login_agreement_updated_at,
@@ -10380,6 +10514,52 @@ async function loadAdminApiKey() {
   } finally {
     adminApiKeyLoading.value = false;
   }
+}
+
+async function loadLoginIPBlocks() {
+  loginIPBlocksLoading.value = true;
+  try {
+    const result = await adminAPI.settings.getLoginIPBlocks();
+    loginIPBlocksCurrent.value = result.current || [];
+    loginIPBlocksHistory.value = result.history || [];
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    loginIPBlocksLoading.value = false;
+  }
+}
+
+async function unblockLoginIP(clientIP: string) {
+  if (!confirm(t("admin.settings.loginIPBlock.unblockConfirm", { ip: clientIP }))) return;
+  try {
+    await adminAPI.settings.unblockLoginIP(clientIP);
+    appStore.showSuccess(t("admin.settings.loginIPBlock.unblocked"));
+    await loadLoginIPBlocks();
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  }
+}
+
+function formatLoginIPBlockTime(value?: string): string {
+  if (!value) return "-";
+  return new Date(value).toLocaleString();
+}
+
+function formatLoginIPBlockRemaining(item: LoginIPBlockRecord): string {
+  if (item.permanent) return t("admin.settings.loginIPBlock.durationPermanent");
+  const seconds = Math.max(0, item.remaining_seconds || 0);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.ceil((seconds % 3600) / 60);
+  return hours > 0
+    ? t("admin.settings.loginIPBlock.remainingHours", { hours, minutes })
+    : t("admin.settings.loginIPBlock.remainingMinutes", { minutes });
+}
+
+function formatLoginIPBlockDuration(item: LoginIPBlockRecord): string {
+  if (item.event === "unblocked") return "-";
+  if (item.permanent) return t("admin.settings.loginIPBlock.durationPermanent");
+  const minutes = Math.floor((item.duration_seconds || 0) / 60);
+  return t("admin.settings.loginIPBlock.durationMinutes", { minutes });
 }
 
 async function createAdminApiKey() {
@@ -11160,6 +11340,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+  loadLoginIPBlocks();
   loadUpstreamBillingProbeSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();

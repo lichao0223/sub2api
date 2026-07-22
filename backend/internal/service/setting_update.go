@@ -52,6 +52,16 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 }
 
 func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+	if !settings.LoginIPBlockEnabled && settings.LoginIPBlockThreshold == 0 && settings.LoginIPBlockDurationSeconds == 0 {
+		settings.LoginIPBlockThreshold = DefaultLoginIPBlockThreshold
+		settings.LoginIPBlockDurationSeconds = DefaultLoginIPBlockDurationSeconds
+	}
+	if settings.LoginIPBlockThreshold < 1 || settings.LoginIPBlockThreshold > 100 {
+		return nil, infraerrors.BadRequest("INVALID_LOGIN_IP_BLOCK_THRESHOLD", "login IP block threshold must be between 1 and 100")
+	}
+	if !validLoginIPBlockDuration(settings.LoginIPBlockDurationSeconds) {
+		return nil, infraerrors.BadRequest("INVALID_LOGIN_IP_BLOCK_DURATION", "invalid login IP block duration")
+	}
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -130,6 +140,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySessionBindingEnabled] = strconv.FormatBool(settings.SessionBindingEnabled)
 	updates[SettingKeyStepUpEnabled] = strconv.FormatBool(settings.StepUpEnabled)
 	updates[SettingKeyAuditLogRetentionDays] = strconv.Itoa(settings.AuditLogRetentionDays)
+	updates[SettingKeyLoginIPBlockEnabled] = strconv.FormatBool(settings.LoginIPBlockEnabled)
+	updates[SettingKeyLoginIPBlockThreshold] = strconv.Itoa(settings.LoginIPBlockThreshold)
+	updates[SettingKeyLoginIPBlockDurationSeconds] = strconv.Itoa(settings.LoginIPBlockDurationSeconds)
 	settings.LoginAgreementMode = normalizeLoginAgreementMode(settings.LoginAgreementMode)
 	settings.LoginAgreementUpdatedAt = strings.TrimSpace(settings.LoginAgreementUpdatedAt)
 	if settings.LoginAgreementUpdatedAt == "" {

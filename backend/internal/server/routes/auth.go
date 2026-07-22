@@ -23,6 +23,7 @@ func RegisterAuthRoutes(
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
+	loginIPBlocker := middleware.NewLoginIPBlocker(redisClient, settingService)
 
 	// 公开接口
 	auth := v1.Group("/auth")
@@ -36,7 +37,7 @@ func RegisterAuthRoutes(
 		}), h.Auth.Register)
 		auth.POST("/login", rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
-		}), h.Auth.Login)
+		}), loginIPBlocker.Middleware(), h.Auth.Login)
 		auth.POST("/login/2fa", rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login2FA)

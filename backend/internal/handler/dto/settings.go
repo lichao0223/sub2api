@@ -39,6 +39,9 @@ type SystemSettings struct {
 	SessionBindingEnabled            bool                     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
 	StepUpEnabled                    bool                     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA
 	AuditLogRetentionDays            int                      `json:"audit_log_retention_days"`       // 审计日志保留天数
+	LoginIPBlockEnabled              bool                     `json:"login_ip_block_enabled"`
+	LoginIPBlockThreshold            int                      `json:"login_ip_block_threshold"`
+	LoginIPBlockDurationSeconds      int                      `json:"login_ip_block_duration_seconds"`
 	LoginAgreementEnabled            bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode               string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt          string                   `json:"login_agreement_updated_at"`

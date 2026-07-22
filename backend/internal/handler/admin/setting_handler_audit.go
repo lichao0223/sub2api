@@ -62,6 +62,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.StepUpEnabled != after.StepUpEnabled {
 		changed = append(changed, "step_up_enabled")
 	}
+	if before.LoginIPBlockEnabled != after.LoginIPBlockEnabled {
+		changed = append(changed, "login_ip_block_enabled")
+	}
+	if before.LoginIPBlockThreshold != after.LoginIPBlockThreshold {
+		changed = append(changed, "login_ip_block_threshold")
+	}
+	if before.LoginIPBlockDurationSeconds != after.LoginIPBlockDurationSeconds {
+		changed = append(changed, "login_ip_block_duration_seconds")
+	}
 	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
 		changed = append(changed, "login_agreement_enabled")
 	}

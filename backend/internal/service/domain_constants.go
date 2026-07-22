@@ -150,6 +150,9 @@ const (
 	SettingKeyLoginAgreementMode               = "login_agreement_mode"                // 条款确认展示模式：modal / checkbox
 	SettingKeyLoginAgreementUpdatedAt          = "login_agreement_updated_at"          // 条款更新日期（展示用）
 	SettingKeyLoginAgreementDocuments          = "login_agreement_documents"           // 条款文档列表（JSON，Markdown 内容）
+	SettingKeyLoginIPBlockEnabled              = "login_ip_block_enabled"              // 连续登录失败 IP 封禁开关
+	SettingKeyLoginIPBlockThreshold            = "login_ip_block_threshold"            // 连续失败次数阈值
+	SettingKeyLoginIPBlockDurationSeconds      = "login_ip_block_duration_seconds"     // 封禁秒数（0=永久）
 
 	// 邮件服务设置
 	SettingKeySMTPHost     = "smtp_host"      // SMTP服务器地址
