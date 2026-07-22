@@ -101,6 +101,51 @@ func (r *openAIAccountTestRepo) SetError(_ context.Context, id int64, errorMsg s
 	return nil
 }
 
+func TestAccountTestService_KimiUsageLimit403MarksRateLimited(t *testing.T) {
+	body := `{"error":{"type":"permission_error","message":"You've reached your usage limit for this billing cycle. Your quota will be refreshed in the next cycle."},"type":"error"}`
+
+	for _, tt := range []struct {
+		name string
+		run  func(*AccountTestService, *gin.Context, *Account) error
+	}{
+		{
+			name: "anthropic compatible",
+			run: func(svc *AccountTestService, c *gin.Context, account *Account) error {
+				return svc.testClaudeAccountConnection(c, account, "kimi-k2")
+			},
+		},
+		{
+			name: "openai compatible",
+			run: func(svc *AccountTestService, c *gin.Context, account *Account) error {
+				return svc.testOpenAIChatCompletionsConnection(c, account, "kimi-k2", "", "https://api.kimi.com/coding", "test-key")
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c, _ := newTestContext()
+			repo := &openAIAccountTestRepo{}
+			upstream := &queuedHTTPUpstream{responses: []*http.Response{newJSONResponse(http.StatusForbidden, body)}}
+			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream, cfg: &config.Config{}}
+			account := &Account{
+				ID: 95, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Status: StatusError, Concurrency: 1,
+				Credentials:  map[string]any{"api_key": "test-key", "base_url": "https://api.kimi.com/coding"},
+				Extra:        map[string]any{"model_provider": "kimi"},
+				ErrorMessage: "old error",
+			}
+			if tt.name == "openai compatible" {
+				account.Platform = PlatformOpenAI
+			}
+			before := time.Now()
+
+			require.Error(t, tt.run(svc, c, account))
+			require.Equal(t, account.ID, repo.rateLimitedID)
+			require.WithinDuration(t, before.Add(5*time.Hour), *repo.rateLimitedAt, time.Second)
+			require.Equal(t, account.ID, repo.clearedErrorID)
+			require.Zero(t, repo.setErrorID)
+		})
+	}
+}
+
 func TestAccountTestService_OpenAISuccessPersistsSnapshotFromHeaders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()

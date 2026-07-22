@@ -104,12 +104,14 @@ func TestHandleUpstreamError_KimiUsageLimit403IsRateLimited(t *testing.T) {
 		ID: 47, Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
 		Extra: map[string]any{"model_provider": "kimi"},
 	}
-	body := []byte(`{"error":{"message":"You've reached your usage limit for this billing cycle.","type":"access_terminated_error"}}`)
+	body := []byte(`{"error":{"type":"permission_error","message":"You've reached your usage limit for this billing cycle. Your quota will be refreshed in the next cycle."},"type":"error"}`)
+	before := time.Now()
 
 	shouldFailover := svc.HandleUpstreamError(t.Context(), account, http.StatusForbidden, http.Header{}, body)
 
 	require.True(t, shouldFailover)
 	require.Equal(t, 1, accountRepo.rateLimitCalls)
+	require.WithinDuration(t, before.Add(5*time.Hour), accountRepo.lastRateLimitReset, time.Second)
 }
 
 // Anthropic 无 reset 头的 429（如 Extra usage required）也应走兜底冷却，

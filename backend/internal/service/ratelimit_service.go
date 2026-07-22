@@ -201,9 +201,14 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		return true
 	}
 
-	// Kimi 用 403 access_terminated_error 表示套餐窗口已用尽，语义是限流而非鉴权失败。
+	// Kimi 用 403 permission/access_terminated error 表示套餐窗口已用尽，语义是限流而非鉴权失败。
 	if kimiUsageLimit {
-		s.handle429(ctx, account, headers, responseBody)
+		resetAt, err := persistKimiUsageLimit(ctx, s.accountRepo, account, headers)
+		if err != nil {
+			slog.Warn("kimi_usage_limit_persist_failed", "account_id", account.ID, "error", err)
+		} else {
+			s.notifyAccountSchedulingBlocked(account, resetAt, "kimi_usage_limit")
+		}
 		return true
 	}
 
@@ -408,8 +413,29 @@ func isKimiUsageLimitError(account *Account, statusCode int, body []byte) bool {
 	if statusCode != http.StatusForbidden || !isKimiUsageAccount(account) {
 		return false
 	}
-	return gjson.GetBytes(body, "error.type").String() == "access_terminated_error" &&
-		strings.Contains(strings.ToLower(gjson.GetBytes(body, "error.message").String()), "usage limit")
+	message := strings.ToLower(gjson.GetBytes(body, "error.message").String())
+	return strings.Contains(message, "usage limit") && strings.Contains(message, "billing cycle")
+}
+
+func persistKimiUsageLimit(ctx context.Context, repo AccountRepository, account *Account, headers http.Header) (time.Time, error) {
+	now := time.Now()
+	resetAt := now.Add(5 * time.Hour)
+	if retryAt := parseRetryAfterResetTime(headers, now); retryAt != nil && retryAt.After(now) {
+		resetAt = *retryAt
+	}
+	if err := repo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+		return time.Time{}, err
+	}
+	if account.Status == StatusError {
+		if err := repo.ClearError(ctx, account.ID); err != nil {
+			return time.Time{}, err
+		}
+		account.Status = StatusActive
+		account.ErrorMessage = ""
+	}
+	account.RateLimitedAt = &now
+	account.RateLimitResetAt = &resetAt
+	return resetAt, nil
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.

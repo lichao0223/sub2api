@@ -273,6 +273,9 @@ func (s *AccountTestService) testKimiAccountConnection(c *gin.Context, account *
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		if isKimiUsageLimitError(account, resp.StatusCode, body) {
+			_, _ = persistKimiUsageLimit(ctx, s.accountRepo, account, resp.Header)
+		}
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Kimi API returned %d: %s", resp.StatusCode, string(body)))
 	}
 	return s.processOpenAIChatCompletionsStream(c, resp.Body)
@@ -389,8 +392,10 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 
-		// 403 表示账号被上游封禁，标记为 error 状态
-		if resp.StatusCode == http.StatusForbidden {
+		if isKimiUsageLimitError(account, resp.StatusCode, body) {
+			_, _ = persistKimiUsageLimit(ctx, s.accountRepo, account, resp.Header)
+		} else if resp.StatusCode == http.StatusForbidden {
+			// 其他 403 表示账号被上游封禁，标记为 error 状态
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 
@@ -922,7 +927,9 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if isKimiUsageLimitError(account, resp.StatusCode, body) {
+			_, _ = persistKimiUsageLimit(ctx, s.accountRepo, account, resp.Header)
+		} else if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
