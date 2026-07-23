@@ -109,12 +109,13 @@ func TestNonworkRankingMigratesDeletedUserWithoutChangingTotals(t *testing.T) {
 
 func createUsageLogForMigrationTest(t *testing.T, repo *usageLogRepository, user *service.User, key *service.APIKey, account *service.Account, input, output int, cost float64, createdAt time.Time) {
 	t.Helper()
-	_, err := repo.Create(context.Background(), &service.UsageLog{
+	created, err := repo.Create(context.Background(), &service.UsageLog{
 		UserID: user.ID, APIKeyID: key.ID, AccountID: account.ID,
-		RequestID: key.Key, Model: "migration-test", InputTokens: input, OutputTokens: output,
+		RequestID: key.Key + "-" + createdAt.Format(time.RFC3339Nano), Model: "migration-test", InputTokens: input, OutputTokens: output,
 		TotalCost: cost, ActualCost: cost, CreatedAt: createdAt,
 	})
 	require.NoError(t, err)
+	require.True(t, created)
 }
 
 func insertExternalUsageForMigrationTest(t *testing.T, ctx context.Context, tx interface {
