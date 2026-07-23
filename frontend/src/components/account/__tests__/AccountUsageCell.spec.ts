@@ -136,7 +136,13 @@ describe('AccountUsageCell', () => {
           platform: 'anthropic',
           type: 'apikey',
           extra: { model_provider: 'deepseek' }
-        })
+        }),
+        todayStats: {
+          requests: 6,
+          tokens: 243400,
+          cost: 0.19,
+          user_cost: 0.19
+        }
       },
       global: {
         stubs: {
@@ -150,6 +156,10 @@ describe('AccountUsageCell', () => {
 
     expect(getUsage).toHaveBeenCalledWith(1002)
     expect(wrapper.text()).toContain('3,346.66')
+    expect(wrapper.text()).toContain('6 req')
+    expect(wrapper.text()).toContain('243.4K')
+    expect(wrapper.text()).toContain('A $0.19')
+    expect(wrapper.text()).toContain('U $0.19')
     expect(wrapper.get('[data-testid="deepseek-balance-query"]').find('svg').exists()).toBe(true)
   })
 

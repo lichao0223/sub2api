@@ -1042,6 +1042,7 @@ func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account
 			usage.FiveHour = &UsageProgress{Utilization: 100, ResetsAt: account.RateLimitResetAt}
 			usage.FiveHour.RemainingSeconds = maxInt(int(time.Until(*account.RateLimitResetAt).Seconds()), 0)
 		}
+		s.persistKimiUsageLimitReset(ctx, account, usage, now)
 		return usage, nil
 	}
 
@@ -1063,6 +1064,27 @@ func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account
 		return nil, fmt.Errorf("invalid kimi usage result")
 	}
 	return usage, nil
+}
+
+func (s *AccountUsageService) persistKimiUsageLimitReset(ctx context.Context, account *Account, usage *UsageInfo, now time.Time) {
+	if s == nil || s.accountRepo == nil || account == nil || usage == nil ||
+		account.RateLimitResetAt == nil || !account.RateLimitResetAt.After(now) {
+		return
+	}
+	var resetAt *time.Time
+	for _, window := range []*UsageProgress{usage.FiveHour, usage.SevenDay} {
+		if window != nil && reachedCodexQuota(window.Utilization) && window.ResetsAt != nil && window.ResetsAt.After(now) {
+			resetAt = laterReset(resetAt, window.ResetsAt)
+		}
+	}
+	if resetAt == nil || !resetAt.After(*account.RateLimitResetAt) {
+		return
+	}
+	if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+		slog.Warn("kimi_usage_limit_reset_persist_failed", "account_id", account.ID, "reset_at", resetAt, "error", err)
+		return
+	}
+	account.RateLimitResetAt = resetAt
 }
 
 func kimiUsageWindowDuration(limit kimiUsageLimit) time.Duration {

@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -17,6 +18,16 @@ const kimiUsageTestPayload = `{
   "usage":{"limit":"100","used":"25","resetTime":"2026-07-27T04:06:11Z"},
   "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"60","resetTime":"2026-07-20T09:06:11Z"}}]
 }`
+
+type kimiUsageAccountRepoStub struct {
+	*mockAccountRepoForGemini
+	rateLimitResetAt time.Time
+}
+
+func (r *kimiUsageAccountRepoStub) SetRateLimited(_ context.Context, _ int64, resetAt time.Time) error {
+	r.rateLimitResetAt = resetAt
+	return nil
+}
 
 func TestAccountUsageServiceKimiOAuthUsesOfficialUsageEndpoint(t *testing.T) {
 	account := &Account{
@@ -91,6 +102,38 @@ func TestAccountUsageServiceKimiShowsExhaustedFiveHourWindowWhenUpstreamOmitsIt(
 	require.NoError(t, err)
 	require.Equal(t, float64(100), usage.FiveHour.Utilization)
 	require.Equal(t, resetAt, *usage.FiveHour.ResetsAt)
+}
+
+func TestAccountUsageServiceKimiExtendsRateLimitToExhaustedWeeklyReset(t *testing.T) {
+	now := time.Now()
+	currentReset := now.Add(5 * time.Hour)
+	weeklyReset := now.Add(4 * 24 * time.Hour)
+	account := &Account{
+		ID: 95, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Concurrency: 1,
+		Credentials:      map[string]any{"api_key": "api-key-token"},
+		Extra:            map[string]any{"model_provider": "kimi"},
+		RateLimitResetAt: &currentReset,
+	}
+	repo := &kimiUsageAccountRepoStub{
+		mockAccountRepoForGemini: &mockAccountRepoForGemini{accountsByID: map[int64]*Account{account.ID: account}},
+	}
+	payload := `{
+		"usage":{"limit":"100","used":"100","resetTime":"` + weeklyReset.UTC().Format(time.RFC3339) + `"},
+		"limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","used":"0","resetTime":"` + now.Add(2*time.Hour).UTC().Format(time.RFC3339) + `"}}]
+	}`
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(payload)),
+	}}
+	svc := NewAccountUsageService(repo, nil, nil, nil, nil, nil, nil, nil, nil, upstream, NewUsageCache(), nil, nil)
+
+	usage, err := svc.GetUsage(t.Context(), account.ID, true)
+
+	require.NoError(t, err)
+	require.Equal(t, float64(0), usage.FiveHour.Utilization)
+	require.Equal(t, float64(100), usage.SevenDay.Utilization)
+	require.WithinDuration(t, weeklyReset, repo.rateLimitResetAt, time.Second)
+	require.WithinDuration(t, weeklyReset, *account.RateLimitResetAt, time.Second)
 }
 
 func TestKimiUsageWindowDurationSupportsSeconds(t *testing.T) {
