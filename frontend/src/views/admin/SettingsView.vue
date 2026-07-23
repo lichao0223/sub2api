@@ -1676,14 +1676,11 @@
                   <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
                     {{ t("admin.settings.loginIPBlock.duration") }}
                   </label>
-                  <select v-model.number="form.login_ip_block_duration_seconds" class="input w-full">
-                    <option :value="1800">{{ t("admin.settings.loginIPBlock.duration30m") }}</option>
-                    <option :value="3600">{{ t("admin.settings.loginIPBlock.duration1h") }}</option>
-                    <option :value="21600">{{ t("admin.settings.loginIPBlock.duration6h") }}</option>
-                    <option :value="86400">{{ t("admin.settings.loginIPBlock.duration1d") }}</option>
-                    <option :value="604800">{{ t("admin.settings.loginIPBlock.duration7d") }}</option>
-                    <option :value="0">{{ t("admin.settings.loginIPBlock.durationPermanent") }}</option>
-                  </select>
+                  <Select
+                    v-model="form.login_ip_block_duration_seconds"
+                    :options="loginIPBlockDurationOptions"
+                    :searchable="false"
+                  />
                 </div>
               </div>
 
@@ -7963,6 +7960,14 @@ const newAdminApiKey = ref("");
 const loginIPBlocksLoading = ref(false);
 const loginIPBlocksCurrent = ref<LoginIPBlockRecord[]>([]);
 const loginIPBlocksHistory = ref<LoginIPBlockRecord[]>([]);
+const loginIPBlockDurationOptions = computed(() => [
+  { value: 1800, label: t("admin.settings.loginIPBlock.duration30m") },
+  { value: 3600, label: t("admin.settings.loginIPBlock.duration1h") },
+  { value: 21600, label: t("admin.settings.loginIPBlock.duration6h") },
+  { value: 86400, label: t("admin.settings.loginIPBlock.duration1d") },
+  { value: 604800, label: t("admin.settings.loginIPBlock.duration7d") },
+  { value: 0, label: t("admin.settings.loginIPBlock.durationPermanent") },
+]);
 const subscriptionGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
