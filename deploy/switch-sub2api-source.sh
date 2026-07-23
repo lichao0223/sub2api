@@ -31,7 +31,7 @@ Interactive menu:
 Commands:
   fork      Backup data, switch sub2api image to ghcr.io/lichao0223/sub2api:latest, pull, start.
   official  Backup data, switch sub2api image back to weishaw/sub2api:latest, pull, start.
-  update    Detect current image source, optionally backup data, pull latest configured image, restart.
+  update    Detect current image source, optionally backup data, pull latest configured image once, restart.
   auto-update-on     Enable daily update at 02:00 with backup.
   auto-update-off    Disable daily automatic update.
   auto-update-status Show automatic update status.
@@ -1034,9 +1034,6 @@ update_current_image() {
   local source
   local latest_image
   local detect_status
-  local container_id
-  local running_image_id
-  local latest_image_id
 
   set +e
   source="$(detect_current_source)"
@@ -1082,22 +1079,6 @@ update_current_image() {
     return
   fi
 
-  container_id="$(run_compose ps -q sub2api 2>/dev/null || true)"
-  running_image_id=""
-  if [ -n "$container_id" ]; then
-    running_image_id="$(docker inspect --format '{{.Image}}' "$container_id" 2>/dev/null || true)"
-  fi
-
-  info "Checking for a newer sub2api image: $latest_image"
-  docker pull "$latest_image"
-  latest_image_id="$(docker image inspect --format '{{.Id}}' "$latest_image" 2>/dev/null || true)"
-  [ -n "$latest_image_id" ] || die "Cannot inspect pulled image: $latest_image"
-
-  if [ -n "$running_image_id" ] && [ "$running_image_id" = "$latest_image_id" ]; then
-    info "Already using the latest image; no backup or restart is needed."
-    return
-  fi
-
   case "$UPDATE_BACKUP" in
     yes) backup_data 0 ;;
     no)
@@ -1117,6 +1098,9 @@ update_current_image() {
   info "Updating sub2api image in $COMPOSE_FILE"
   set_sub2api_image "$latest_image"
 
+  info "Pulling sub2api image..."
+  run_compose pull sub2api
+
   start_services
   info "Update completed."
 }
@@ -1135,8 +1119,23 @@ auto_update_cron_line() {
   printf -v deploy_dir '%q' "$DEPLOY_DIR"
   printf -v compose_file '%q' "$COMPOSE_FILE"
   printf -v log_file '%q' "$DEPLOY_DIR/auto-update.log"
-  printf '0 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin %s update --dir %s --compose %s --backup -y >> %s 2>&1 %s\n' \
+  printf '0 2 * * * PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin /bin/bash %s update --dir %s --compose %s --backup -y >> %s 2>&1 %s\n' \
     "$script_path" "$deploy_dir" "$compose_file" "$log_file" "$AUTO_UPDATE_MARKER"
+}
+
+ensure_cron_daemon_running() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    return
+  fi
+  if systemctl is-active --quiet cron || systemctl is-active --quiet crond; then
+    return
+  fi
+  if [ "$(id -u)" = "0" ]; then
+    systemctl enable --now cron 2>/dev/null || systemctl enable --now crond 2>/dev/null || true
+  fi
+  if ! systemctl is-active --quiet cron && ! systemctl is-active --quiet crond; then
+    warn "Automatic update is installed, but cron is not running. Start it with: sudo systemctl enable --now cron (or crond)."
+  fi
 }
 
 write_auto_update_crontab() {
@@ -1159,9 +1158,13 @@ write_auto_update_crontab() {
 }
 
 enable_auto_update() {
+  local log_file="$DEPLOY_DIR/auto-update.log"
   write_auto_update_crontab 1
+  touch "$log_file" || die "Cannot create auto-update log: $log_file"
+  printf '[INFO] %s Daily automatic update enabled for 02:00.\n' "$(date -Iseconds 2>/dev/null || date)" >> "$log_file"
+  ensure_cron_daemon_running
   info "Daily automatic update enabled at 02:00 (backup enabled)."
-  info "Log file: $DEPLOY_DIR/auto-update.log"
+  info "Log file: $log_file"
 }
 
 disable_auto_update() {
