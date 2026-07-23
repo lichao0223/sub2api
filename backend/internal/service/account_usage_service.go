@@ -890,6 +890,7 @@ func isKimiUsageAccount(account *Account) bool {
 
 type kimiUsageDetail struct {
 	Limit     any    `json:"limit"`
+	Used      any    `json:"used"`
 	Remaining any    `json:"remaining"`
 	ResetTime string `json:"resetTime"`
 }
@@ -1026,11 +1027,17 @@ func (s *AccountUsageService) kimiUsageCredentials(ctx context.Context, account 
 
 func kimiUsageProgress(detail kimiUsageDetail, now time.Time) *UsageProgress {
 	limit, limitOK := kimiUsageInt(detail.Limit)
-	remaining, remainingOK := kimiUsageInt(detail.Remaining)
-	if !limitOK || !remainingOK || limit <= 0 {
+	if !limitOK || limit <= 0 {
 		return nil
 	}
-	used := limit - remaining
+	used, usedOK := kimiUsageInt(detail.Used)
+	if remaining, remainingOK := kimiUsageInt(detail.Remaining); remainingOK {
+		used = limit - remaining
+		usedOK = true
+	}
+	if !usedOK {
+		return nil
+	}
 	if used < 0 {
 		used = 0
 	}

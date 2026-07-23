@@ -14,7 +14,7 @@ import (
 )
 
 const kimiUsageTestPayload = `{
-  "usage":{"limit":"100","remaining":"75","resetTime":"2026-07-27T04:06:11Z"},
+  "usage":{"limit":"100","used":"25","resetTime":"2026-07-27T04:06:11Z"},
   "limits":[{"window":{"duration":300,"timeUnit":"TIME_UNIT_MINUTE"},"detail":{"limit":"100","remaining":"60","resetTime":"2026-07-20T09:06:11Z"}}]
 }`
 
