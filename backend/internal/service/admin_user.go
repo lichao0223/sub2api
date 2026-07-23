@@ -437,7 +437,11 @@ func (s *adminServiceImpl) listUserAPIKeysForDeletion(ctx context.Context, userI
 
 func (s *adminServiceImpl) deleteUserWithAPIKeys(ctx context.Context, userID int64, apiKeys []APIKey, targetUserID int64) error {
 	if targetUserID != 0 {
-		if err := s.userRepo.(userUsageHistoryMigrator).MigrateUsageHistory(ctx, userID, targetUserID); err != nil {
+		migrator, ok := s.userRepo.(userUsageHistoryMigrator)
+		if !ok {
+			return errors.New("usage history migration is not supported")
+		}
+		if err := migrator.MigrateUsageHistory(ctx, userID, targetUserID); err != nil {
 			return fmt.Errorf("migrate user usage history: %w", err)
 		}
 	}
