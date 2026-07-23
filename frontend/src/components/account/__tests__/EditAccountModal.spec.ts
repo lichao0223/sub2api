@@ -348,6 +348,8 @@ describe('EditAccountModal', () => {
     ['anthropic', 'glm', 'https://open.bigmodel.cn/api/anthropic'],
     ['openai', 'kimi', 'https://api.kimi.com/coding/v1'],
     ['anthropic', 'kimi', 'https://api.kimi.com/coding/'],
+    ['openai', 'deepseek', 'https://api.deepseek.com'],
+    ['anthropic', 'deepseek', 'https://api.deepseek.com/anthropic'],
   ] as const)('sets and saves the %s %s provider base URL', async (platform, provider, expectedBaseUrl) => {
     const account = buildAccount()
     account.platform = platform

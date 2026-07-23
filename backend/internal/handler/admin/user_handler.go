@@ -372,7 +372,20 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.adminService.DeleteUser(c.Request.Context(), userID)
+	migrateToUserID := int64(0)
+	if rawTarget := strings.TrimSpace(c.Query("migrate_usage_to_user_id")); rawTarget != "" {
+		migrateToUserID, err = strconv.ParseInt(rawTarget, 10, 64)
+		if err != nil || migrateToUserID <= 0 {
+			response.BadRequest(c, "Invalid usage migration target user ID")
+			return
+		}
+	}
+
+	if migrateToUserID > 0 {
+		err = h.adminService.DeleteUser(c.Request.Context(), userID, migrateToUserID)
+	} else {
+		err = h.adminService.DeleteUser(c.Request.Context(), userID)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -125,6 +125,7 @@ const (
 	openAIProbeCacheTTL     = 10 * time.Minute
 	grokProbeRetryTTL       = 1 * time.Minute
 	kimiUsageTimeout        = 15 * time.Second
+	deepSeekBalanceURL      = "https://api.deepseek.com/user/balance"
 	grokFreeQuotaWindow     = 24 * time.Hour
 	openAICodexProbeVersion = "0.144.1"
 	glmUsageURL             = "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
@@ -195,6 +196,11 @@ type AICredit struct {
 	MinimumBalance float64 `json:"minimum_balance,omitempty"`
 }
 
+type AccountBalance struct {
+	Currency     string `json:"currency"`
+	TotalBalance string `json:"total_balance"`
+}
+
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
@@ -237,7 +243,8 @@ type UsageInfo struct {
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
 
 	// Antigravity AI Credits 余额
-	AICredits []AICredit `json:"ai_credits,omitempty"`
+	AICredits []AICredit       `json:"ai_credits,omitempty"`
+	Balances  []AccountBalance `json:"balances,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
@@ -384,6 +391,14 @@ func (s *AccountUsageService) GetUsage(ctx context.Context, accountID int64, for
 
 	if isKimiUsageAccount(account) {
 		usage, err := s.getKimiUsage(ctx, account, forceProbe)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
+	if isDeepSeekAPIKeyAccount(account) {
+		usage, err := s.getDeepSeekUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -886,6 +901,59 @@ func isKimiUsageAccount(account *Account) bool {
 	return account.Type == AccountTypeAPIKey &&
 		(account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
 		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "kimi")
+}
+
+func isDeepSeekAPIKeyAccount(account *Account) bool {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	return (account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
+		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "deepseek")
+}
+
+type deepSeekBalanceResponse struct {
+	BalanceInfos []AccountBalance `json:"balance_infos"`
+}
+
+func (s *AccountUsageService) getDeepSeekUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
+	if apiKey == "" {
+		return nil, fmt.Errorf("deepseek API key is empty")
+	}
+	if s.httpUpstream == nil {
+		return nil, fmt.Errorf("HTTP upstream is not configured")
+	}
+
+	callCtx, cancel := context.WithTimeout(ctx, kimiUsageTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, deepSeekBalanceURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build deepseek balance request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	account.ApplyHeaderOverrides(req.Header)
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
+	if err != nil {
+		return nil, fmt.Errorf("deepseek balance request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
+		return nil, fmt.Errorf("deepseek balance API returned %d", resp.StatusCode)
+	}
+
+	var payload deepSeekBalanceResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode deepseek balance response: %w", err)
+	}
+	now := time.Now()
+	return &UsageInfo{Source: "active", UpdatedAt: &now, Balances: payload.BalanceInfos}, nil
 }
 
 type kimiUsageDetail struct {

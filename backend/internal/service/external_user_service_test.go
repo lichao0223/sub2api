@@ -385,7 +385,7 @@ func (s *externalUserAdminStub) CreateUser(_ context.Context, input *CreateUserI
 	return &user, nil
 }
 
-func (s *externalUserAdminStub) DeleteUser(_ context.Context, id int64) error {
+func (s *externalUserAdminStub) DeleteUser(_ context.Context, id int64, migrateUsageToUserID ...int64) error {
 	if s.deleteErr != nil {
 		return s.deleteErr
 	}

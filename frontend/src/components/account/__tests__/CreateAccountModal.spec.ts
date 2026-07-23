@@ -165,6 +165,8 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     ['anthropic', 'glm', 'https://open.bigmodel.cn/api/anthropic'],
     ['openai', 'kimi', 'https://api.kimi.com/coding/v1'],
     ['anthropic', 'kimi', 'https://api.kimi.com/coding/'],
+    ['openai', 'deepseek', 'https://api.deepseek.com'],
+    ['anthropic', 'deepseek', 'https://api.deepseek.com/anthropic'],
   ] as const)('sets the %s %s provider base URL', async (platform, provider, expectedBaseUrl) => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')

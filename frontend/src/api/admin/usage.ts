@@ -31,6 +31,8 @@ export interface SimpleUser {
   email: string
   username?: string
   deleted: boolean
+  role?: string
+  status?: string
 }
 
 export interface SimpleApiKey {

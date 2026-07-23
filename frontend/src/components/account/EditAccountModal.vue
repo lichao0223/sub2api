@@ -34,8 +34,9 @@
             <option value="none">无</option>
             <option value="glm">GLM</option>
             <option value="kimi">Kimi</option>
+            <option value="deepseek">DeepSeek</option>
           </select>
-          <p class="input-hint">选择 GLM 或 Kimi 后，会查询对应 Coding Plan 的 5 小时和周限额。</p>
+          <p class="input-hint">GLM、Kimi 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。</p>
         </div>
 
         <div>
@@ -2709,9 +2710,9 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
-const editModelProvider = ref<'none' | 'glm' | 'kimi'>('none')
+const editModelProvider = ref<'none' | 'glm' | 'kimi' | 'deepseek'>('none')
 
-function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi') {
+function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi' | 'deepseek') {
   if (provider === 'glm') {
     return platform === 'openai'
       ? 'https://open.bigmodel.cn/api/coding/paas/v4'
@@ -2721,6 +2722,9 @@ function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'k
     return platform === 'openai'
       ? 'https://api.kimi.com/coding/v1'
       : 'https://api.kimi.com/coding/'
+  }
+  if (provider === 'deepseek') {
+    return platform === 'openai' ? 'https://api.deepseek.com' : 'https://api.deepseek.com/anthropic'
   }
   return platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
 }
@@ -3480,7 +3484,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown>
     const extra = (newAccount.extra as Record<string, unknown>) || {}
     editModelProvider.value =
-      extra.model_provider === 'glm' || extra.model_provider === 'kimi'
+      extra.model_provider === 'glm' || extra.model_provider === 'kimi' || extra.model_provider === 'deepseek'
         ? extra.model_provider
         : 'none'
     const platformDefaultUrl =
@@ -4690,7 +4694,7 @@ const handleSubmit = async () => {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (editModelProvider.value === 'glm' || editModelProvider.value === 'kimi') {
+      if (editModelProvider.value !== 'none') {
         newExtra.model_provider = editModelProvider.value
       } else {
         delete newExtra.model_provider

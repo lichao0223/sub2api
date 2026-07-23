@@ -1,18 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { post } = vi.hoisted(() => ({
+const { post, del } = vi.hoisted(() => ({
   post: vi.fn(),
+  del: vi.fn(),
 }))
 
 vi.mock('@/api/client', () => ({
   apiClient: {
     post,
+    delete: del,
   },
 }))
 
 import {
   batchUpdateLimits,
   bindUserAuthIdentity,
+  deleteUser,
   type AdminBindAuthIdentityRequest,
   type AdminBoundAuthIdentity,
   type BatchUpdateUserLimitsRequest,
@@ -84,6 +87,7 @@ const batchResponseContractExact: Assert<
 describe('admin users api auth identity binding', () => {
   beforeEach(() => {
     post.mockReset()
+    del.mockReset()
   })
 
   it('posts the backend-compatible auth identity bind payload and returns the backend response shape', async () => {
@@ -146,5 +150,23 @@ describe('admin users api auth identity binding', () => {
     expect(result).toEqual({ affected: 2 })
     expect(batchRequestContractExact).toBe(true)
     expect(batchResponseContractExact).toBe(true)
+  })
+
+  it('deletes without a migration target by default', async () => {
+    del.mockResolvedValue({ data: { message: 'ok' } })
+
+    await deleteUser(7)
+
+    expect(del).toHaveBeenCalledWith('/admin/users/7', { params: undefined })
+  })
+
+  it('passes the selected usage migration target when deleting', async () => {
+    del.mockResolvedValue({ data: { message: 'ok' } })
+
+    await deleteUser(7, 8)
+
+    expect(del).toHaveBeenCalledWith('/admin/users/7', {
+      params: { migrate_usage_to_user_id: 8 }
+    })
   })
 })

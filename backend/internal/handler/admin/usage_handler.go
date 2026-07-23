@@ -407,6 +407,8 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 		Email    string `json:"email"`
 		Username string `json:"username"`
 		Deleted  bool   `json:"deleted"`
+		Role     string `json:"role"`
+		Status   string `json:"status"`
 	}
 
 	result := make([]SimpleUser, len(users))
@@ -416,6 +418,8 @@ func (h *UsageHandler) SearchUsers(c *gin.Context) {
 			Email:    u.Email,
 			Username: u.Username,
 			Deleted:  u.DeletedAt != nil,
+			Role:     u.Role,
+			Status:   u.Status,
 		}
 	}
 

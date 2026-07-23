@@ -699,7 +699,7 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 		AddRow(int64(1), "alpha@example.com", "", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
 		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
 
-	mock.ExpectQuery("WITH user_spend AS \\(").
+	mock.ExpectQuery("WITH usage_owner AS \\(").
 		WithArgs(start, end, 12).
 		WillReturnRows(rows)
 
@@ -731,7 +731,7 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600), int64(1)).
 		AddRow(int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600), int64(1))
 
-	mock.ExpectQuery("WITH internal_stats AS \\(").
+	mock.ExpectQuery("WITH usage_owner AS \\(").
 		WithArgs(start, end, service.RoleAdmin, 12).
 		WillReturnRows(rows)
 
@@ -801,7 +801,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		40.0, int64(30), int64(2600), int64(1), int64(2600), int64(4000), 0.65, int64(900000), true,
 	)
 
-	mock.ExpectQuery("WITH filtered_users AS \\(").
+	mock.ExpectQuery("WITH usage_owner AS \\(").
 		WithArgs("2026-06-18", "2026-06-24", "Asia/Shanghai", sqlmock.AnyArg(), service.RoleAdmin, sqlmock.AnyArg(), "", 12, usagestats.NonworkRankingScopeNonwork).
 		WillReturnRows(rows)
 

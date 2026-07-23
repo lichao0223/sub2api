@@ -755,7 +755,13 @@
       </div>
     </Teleport>
 
-    <ConfirmDialog :show="showDeleteDialog" :title="t('admin.users.deleteUser')" :message="t('admin.users.deleteConfirm', { email: deletingUser?.email })" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <DeleteUserDialog
+      :show="showDeleteDialog"
+      :user="deletingUser"
+      :loading="deletingUserLoading"
+      @confirm="confirmDelete"
+      @cancel="closeDeleteDialog"
+    />
     <ConfirmDialog
       :show="showDeleteExternalUsersDialog"
       :title="t('admin.users.deleteExternalUsers')"
@@ -828,6 +834,7 @@ import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsMod
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import GroupReplaceModal from '@/components/admin/user/GroupReplaceModal.vue'
+import DeleteUserDialog from '@/components/admin/user/DeleteUserDialog.vue'
 
 const appStore = useAppStore()
 
@@ -1340,6 +1347,7 @@ const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
 const showDeleteDialog = ref(false)
+const deletingUserLoading = ref(false)
 const showDeleteExternalUsersDialog = ref(false)
 const deletingExternalUsers = ref(false)
 const showApiKeysModal = ref(false)
@@ -1791,17 +1799,26 @@ const handleDelete = (user: AdminUser) => {
   showDeleteDialog.value = true
 }
 
-const confirmDelete = async () => {
+const closeDeleteDialog = () => {
+  if (deletingUserLoading.value) return
+  showDeleteDialog.value = false
+  deletingUser.value = null
+}
+
+const confirmDelete = async (migrateUsageToUserID?: number) => {
   if (!deletingUser.value) return
+  deletingUserLoading.value = true
   try {
-    await adminAPI.users.delete(deletingUser.value.id)
+    await adminAPI.users.delete(deletingUser.value.id, migrateUsageToUserID)
     appStore.showSuccess(t('common.success'))
-    showDeleteDialog.value = false
-    deletingUser.value = null
+    deletingUserLoading.value = false
+    closeDeleteDialog()
     loadUsers()
   } catch (error: any) {
     appStore.showError(error.response?.data?.detail || t('admin.users.failedToDelete'))
     console.error('Error deleting user:', error)
+  } finally {
+    deletingUserLoading.value = false
   }
 }
 

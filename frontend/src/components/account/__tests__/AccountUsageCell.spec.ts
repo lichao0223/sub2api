@@ -125,6 +125,34 @@ describe('AccountUsageCell', () => {
     expect(queryButton.find('svg').exists()).toBe(true)
   })
 
+  it('DeepSeek API Key 显示官方账户总余额', async () => {
+    getUsage.mockResolvedValue({
+      balances: [{ currency: 'CNY', total_balance: '3346.66' }]
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 1002,
+          platform: 'anthropic',
+          type: 'apikey',
+          extra: { model_provider: 'deepseek' }
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(1002)
+    expect(wrapper.text()).toContain('3,346.66')
+    expect(wrapper.get('[data-testid="deepseek-balance-query"]').find('svg').exists()).toBe(true)
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {

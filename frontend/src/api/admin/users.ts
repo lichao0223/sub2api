@@ -158,8 +158,10 @@ export async function update(id: number, updates: UpdateUserRequest): Promise<Ad
  * @param id - User ID
  * @returns Success confirmation
  */
-export async function deleteUser(id: number): Promise<{ message: string }> {
-  const { data } = await apiClient.delete<{ message: string }>(`/admin/users/${id}`)
+export async function deleteUser(id: number, migrateUsageToUserId?: number): Promise<{ message: string }> {
+  const { data } = await apiClient.delete<{ message: string }>(`/admin/users/${id}`, {
+    params: migrateUsageToUserId ? { migrate_usage_to_user_id: migrateUsageToUserId } : undefined
+  })
   return data
 }
 

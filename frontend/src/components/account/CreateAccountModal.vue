@@ -1154,9 +1154,10 @@
             <option value="none">无</option>
             <option value="glm">GLM</option>
             <option value="kimi">Kimi</option>
+            <option value="deepseek">DeepSeek</option>
           </select>
           <p class="input-hint">
-            选择 GLM 或 Kimi 后，会查询对应 Coding Plan 的 5 小时和周限额。
+            GLM、Kimi 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。
           </p>
         </div>
 
@@ -3759,10 +3760,10 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
-const modelProvider = ref<'none' | 'glm' | 'kimi'>('none')
+const modelProvider = ref<'none' | 'glm' | 'kimi' | 'deepseek'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
-function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi') {
+function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi' | 'deepseek') {
   if (provider === 'glm') {
     return platform === 'openai'
       ? 'https://open.bigmodel.cn/api/coding/paas/v4'
@@ -3772,6 +3773,9 @@ function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'k
     return platform === 'openai'
       ? 'https://api.kimi.com/coding/v1'
       : 'https://api.kimi.com/coding/'
+  }
+  if (provider === 'deepseek') {
+    return platform === 'openai' ? 'https://api.deepseek.com' : 'https://api.deepseek.com/anthropic'
   }
   return platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
 }

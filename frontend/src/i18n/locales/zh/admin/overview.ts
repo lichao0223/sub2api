@@ -558,6 +558,10 @@ export default {
       failedToToggle: '更新用户状态失败',
       failedToLoadApiKeys: '加载用户 API 密钥失败',
       deleteConfirm: "确定要删除用户 '{email}' 吗？此操作无法撤销。",
+      migrateUsageHistory: '将历史 Token 排名数据归入新账号',
+      migrateUsageTarget: '新账号',
+      searchMigrationTarget: '搜索邮箱、用户名或工号',
+      migrateUsageHint: '迁移后历史用量只计入新账号，旧账号不再出现在 Token 排名中。',
       roles: {
         admin: '管理员',
         user: '用户'

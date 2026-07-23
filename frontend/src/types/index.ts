@@ -1204,6 +1204,10 @@ export interface AccountUsageInfo {
     amount?: number
     minimum_balance?: number
   }> | null
+  balances?: Array<{
+    currency: string
+    total_balance: string
+  }> | null
   // Antigravity 403 forbidden 状态
   is_forbidden?: boolean
   forbidden_reason?: string

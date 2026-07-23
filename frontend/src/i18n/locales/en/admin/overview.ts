@@ -599,6 +599,10 @@ export default {
       failedToSave: 'Failed to save user',
       failedToAdjust: 'Adjustment failed',
       deleteConfirm: "Are you sure you want to delete '{email}'? This action cannot be undone.",
+      migrateUsageHistory: 'Attribute historical Token Ranking usage to another account',
+      migrateUsageTarget: 'Target account',
+      searchMigrationTarget: 'Search by email, username, or employee ID',
+      migrateUsageHint: 'Historical usage will only count toward the target account; the old account will no longer appear in Token Ranking.',
       setAllowedGroups: 'Set Allowed Groups',
       allowedGroupsHint:
         'Select which standard groups this user can use. Subscription groups are managed separately.',

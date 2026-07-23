@@ -335,7 +335,18 @@ func sameInt64Set(a, b []int64) bool {
 	return true
 }
 
-func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
+type userUsageHistoryMigrator interface {
+	MigrateUsageHistory(ctx context.Context, sourceUserID, targetUserID int64) error
+}
+
+func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64, migrateUsageToUserID ...int64) error {
+	if len(migrateUsageToUserID) > 1 {
+		return errors.New("only one usage migration target is allowed")
+	}
+	targetUserID := int64(0)
+	if len(migrateUsageToUserID) == 1 {
+		targetUserID = migrateUsageToUserID[0]
+	}
 	// Protect admin users: cannot delete admin accounts
 	user, err := s.userRepo.GetByID(ctx, id)
 	if err != nil {
@@ -343,6 +354,24 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 	}
 	if user.Role == "admin" {
 		return errors.New("cannot delete admin user")
+	}
+	if targetUserID != 0 {
+		if targetUserID == id {
+			return errors.New("usage migration target must be a different user")
+		}
+		target, targetErr := s.userRepo.GetByID(ctx, targetUserID)
+		if targetErr != nil {
+			return fmt.Errorf("get usage migration target: %w", targetErr)
+		}
+		if target.Role == RoleAdmin {
+			return errors.New("cannot migrate usage history to an admin user")
+		}
+		if !target.IsActive() {
+			return errors.New("usage migration target must be active")
+		}
+		if _, ok := s.userRepo.(userUsageHistoryMigrator); !ok {
+			return errors.New("usage history migration is not supported")
+		}
 	}
 
 	apiKeys, err := s.listUserAPIKeysForDeletion(ctx, id)
@@ -358,14 +387,14 @@ func (s *adminServiceImpl) DeleteUser(ctx context.Context, id int64) error {
 		defer func() { _ = tx.Rollback() }()
 
 		opCtx := dbent.NewTxContext(ctx, tx)
-		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys); err != nil {
+		if err := s.deleteUserWithAPIKeys(opCtx, id, apiKeys, targetUserID); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
 			return err
 		}
 	} else {
-		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys); err != nil {
+		if err := s.deleteUserWithAPIKeys(ctx, id, apiKeys, targetUserID); err != nil {
 			return err
 		}
 	}
@@ -406,7 +435,12 @@ func (s *adminServiceImpl) listUserAPIKeysForDeletion(ctx context.Context, userI
 	return keys, nil
 }
 
-func (s *adminServiceImpl) deleteUserWithAPIKeys(ctx context.Context, userID int64, apiKeys []APIKey) error {
+func (s *adminServiceImpl) deleteUserWithAPIKeys(ctx context.Context, userID int64, apiKeys []APIKey, targetUserID int64) error {
+	if targetUserID != 0 {
+		if err := s.userRepo.(userUsageHistoryMigrator).MigrateUsageHistory(ctx, userID, targetUserID); err != nil {
+			return fmt.Errorf("migrate user usage history: %w", err)
+		}
+	}
 	if s.apiKeyRepo != nil {
 		for _, key := range apiKeys {
 			if key.ID <= 0 {

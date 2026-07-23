@@ -391,6 +391,31 @@ func (r *userRepository) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *userRepository) MigrateUsageHistory(ctx context.Context, sourceUserID, targetUserID int64) error {
+	client := r.client
+	if tx := dbent.TxFromContext(ctx); tx != nil {
+		client = tx.Client()
+	}
+
+	var result entsql.Result
+	if err := client.Driver().Exec(ctx, `
+		UPDATE user_usage_migrations
+		SET target_user_id = $2
+		WHERE target_user_id = $1
+	`, []any{sourceUserID, targetUserID}, &result); err != nil {
+		return fmt.Errorf("redirect existing usage migrations: %w", err)
+	}
+	if err := client.Driver().Exec(ctx, `
+		INSERT INTO user_usage_migrations (source_user_id, target_user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (source_user_id) DO UPDATE
+		SET target_user_id = EXCLUDED.target_user_id, created_at = NOW()
+	`, []any{sourceUserID, targetUserID}, &result); err != nil {
+		return fmt.Errorf("record usage migration: %w", err)
+	}
+	return nil
+}
+
 // deleteUser 在给定 client（可能是外部事务 client）上删除用户及其身份关联记录，自身不开启/提交事务。
 func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id int64) error {
 	identityIDs, err := exec.AuthIdentity.Query().

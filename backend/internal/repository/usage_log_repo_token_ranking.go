@@ -20,27 +20,32 @@ type UserNonworkTokenRankingResponse = usagestats.UserNonworkTokenRankingRespons
 // GetUserTokenRanking returns user ranking aggregated by token usage within the time range.
 func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserTokenRankingResponse, err error) {
 	query := `
-		WITH internal_stats AS (
+		WITH usage_owner AS (
+			SELECT source_user_id, target_user_id FROM user_usage_migrations
+		),
+		internal_stats AS (
 			SELECT
-				u.user_id,
+				COALESCE(m.target_user_id, u.user_id) AS user_id,
 				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
 				COALESCE(COUNT(u.id), 0) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
 			FROM usage_logs u
+			LEFT JOIN usage_owner m ON m.source_user_id = u.user_id
 			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id
+			GROUP BY COALESCE(m.target_user_id, u.user_id)
 		),
 		external_stats AS (
 			SELECT
-				s.user_id,
+				COALESCE(m.target_user_id, s.user_id) AS user_id,
 				COALESCE(SUM(s.actual_cost), 0) as actual_cost,
 				COALESCE(SUM(s.requests), 0) as requests,
 				COALESCE(SUM(s.total_tokens), 0) as tokens
 			FROM external_usage_daily_user_stats s
 			JOIN external_usage_import_batches b ON b.id = s.batch_id AND b.status = 'imported'
+			LEFT JOIN usage_owner m ON m.source_user_id = s.user_id
 			WHERE s.bucket_date >= ($1 AT TIME ZONE 'Asia/Shanghai')::date
 			  AND s.bucket_date < ($2 AT TIME ZONE 'Asia/Shanghai')::date
-			GROUP BY s.user_id
+			GROUP BY COALESCE(m.target_user_id, s.user_id)
 		),
 		user_tokens AS (
 			SELECT
@@ -53,7 +58,8 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 			FROM users us
 			LEFT JOIN internal_stats i ON i.user_id = us.id
 			LEFT JOIN external_stats e ON e.user_id = us.id
-			WHERE us.deleted_at IS NULL AND us.role <> $3
+			WHERE us.role <> $3
+			  AND (us.deleted_at IS NULL OR i.user_id IS NOT NULL OR e.user_id IS NOT NULL)
 		),
 		ranked AS (
 			SELECT
@@ -147,11 +153,13 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 	endDateArg := endDate.Format("2006-01-02")
 
 	query := fmt.Sprintf(`
-		WITH filtered_users AS (
-			SELECT u.id, u.email, u.username
+		WITH usage_owner AS (
+			SELECT source_user_id, target_user_id FROM user_usage_migrations
+		),
+		filtered_users AS (
+			SELECT u.id, u.email, u.username, u.deleted_at
 			FROM users u
-			WHERE u.deleted_at IS NULL
-			  AND u.role <> $5
+			WHERE u.role <> $5
 			  AND (
 				  cardinality($6::text[]) = 0
 				  OR EXISTS (
@@ -176,7 +184,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		),
 		stats AS (
 			SELECT
-				user_id,
+				COALESCE(m.target_user_id, st.user_id) AS user_id,
 				COALESCE(SUM(requests), 0) AS requests,
 				COALESCE(SUM(total_tokens), 0) AS tokens,
 				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS nonwork_tokens,
@@ -185,26 +193,28 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(actual_cost), 0) AS actual_cost,
 				COALESCE(BOOL_AND(calendar_confirmed), TRUE) AS calendar_confirmed
 			FROM usage_nonwork_daily_user_stats st
+			LEFT JOIN usage_owner m ON m.source_user_id = st.user_id
 			WHERE bucket_date >= $1::date
 			  AND bucket_date <= $2::date
 			  AND timezone = $3
 			  AND segment = ANY($4)
-			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = st.user_id)
-			GROUP BY user_id
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = COALESCE(m.target_user_id, st.user_id))
+			GROUP BY COALESCE(m.target_user_id, st.user_id)
 		),
 		totals AS (
 			SELECT
 				COALESCE(SUM(total_tokens), 0) AS total_all_tokens,
 				COALESCE(SUM(total_tokens) FILTER (WHERE segment IN ('offday', 'after_hours')), 0) AS total_nonwork_tokens
 			FROM usage_nonwork_daily_user_stats st
+			LEFT JOIN usage_owner m ON m.source_user_id = st.user_id
 			WHERE bucket_date >= $1::date
 			  AND bucket_date <= $2::date
 			  AND timezone = $3
-			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = st.user_id)
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = COALESCE(m.target_user_id, st.user_id))
 		),
 		external_stats AS (
 			SELECT
-				s.user_id,
+				COALESCE(m.target_user_id, s.user_id) AS user_id,
 				COALESCE(SUM(s.requests), 0) AS requests,
 				COALESCE(SUM(s.total_tokens), 0) AS tokens,
 				COALESCE(SUM(s.nonwork_tokens), 0) AS nonwork_tokens,
@@ -213,10 +223,11 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(s.actual_cost), 0) AS actual_cost
 			FROM external_usage_daily_user_stats s
 			JOIN external_usage_import_batches b ON b.id = s.batch_id AND b.status = 'imported'
+			LEFT JOIN usage_owner m ON m.source_user_id = s.user_id
 			WHERE s.bucket_date >= $1::date
 			  AND s.bucket_date <= $2::date
-			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = s.user_id)
-			GROUP BY s.user_id
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = COALESCE(m.target_user_id, s.user_id))
+			GROUP BY COALESCE(m.target_user_id, s.user_id)
 		),
 		external_totals AS (
 			SELECT
@@ -224,9 +235,10 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				COALESCE(SUM(s.nonwork_tokens), 0) AS total_nonwork_tokens
 			FROM external_usage_daily_user_stats s
 			JOIN external_usage_import_batches b ON b.id = s.batch_id AND b.status = 'imported'
+			LEFT JOIN usage_owner m ON m.source_user_id = s.user_id
 			WHERE s.bucket_date >= $1::date
 			  AND s.bucket_date <= $2::date
-			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = s.user_id)
+			  AND EXISTS (SELECT 1 FROM filtered_users fu WHERE fu.id = COALESCE(m.target_user_id, s.user_id))
 		),
 		metric AS (
 			SELECT
@@ -243,6 +255,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			FROM filtered_users u
 			LEFT JOIN stats s ON s.user_id = u.id
 			LEFT JOIN external_stats e ON e.user_id = u.id
+			WHERE u.deleted_at IS NULL OR s.user_id IS NOT NULL OR e.user_id IS NOT NULL
 		),
 		ranked AS (
 			SELECT

@@ -138,6 +138,29 @@ func TestUserHandlerEndpoints(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 }
 
+func TestUserHandlerDeletePassesUsageMigrationTarget(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/7?migrate_usage_to_user_id=8", nil)
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, int64(7), adminSvc.deletedUserID)
+	require.Equal(t, []int64{8}, adminSvc.migrateUsageTarget)
+}
+
+func TestUserHandlerDeleteRejectsInvalidUsageMigrationTarget(t *testing.T) {
+	router, adminSvc := setupAdminRouter()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/7?migrate_usage_to_user_id=invalid", nil)
+
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Zero(t, adminSvc.deletedUserID)
+}
+
 func TestUserHandlerBindAuthIdentityMapsRequest(t *testing.T) {
 	router, adminSvc := setupAdminRouter()
 

@@ -23,6 +23,8 @@ type stubAdminService struct {
 	redeems                             []service.RedeemCode
 	boundAuthIdentity                   *service.AdminBindAuthIdentityInput
 	boundAuthIdentityFor                int64
+	deletedUserID                       int64
+	migrateUsageTarget                  []int64
 	createdAccounts                     []*service.CreateAccountInput
 	createdProxies                      []*service.CreateProxyInput
 	updatedProxyIDs                     []int64
@@ -183,7 +185,9 @@ func (s *stubAdminService) UpdateUser(ctx context.Context, id int64, input *serv
 	return &user, nil
 }
 
-func (s *stubAdminService) DeleteUser(ctx context.Context, id int64) error {
+func (s *stubAdminService) DeleteUser(ctx context.Context, id int64, migrateUsageToUserID ...int64) error {
+	s.deletedUserID = id
+	s.migrateUsageTarget = append([]int64(nil), migrateUsageToUserID...)
 	return nil
 }
 

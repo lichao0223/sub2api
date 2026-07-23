@@ -25,6 +25,9 @@ type userRepoStub struct {
 	deletedIDs    []int64
 	usersByEmail  map[string]*User
 	getByEmailErr error
+	usersByID     map[int64]*User
+	migrations    [][2]int64
+	migrateErr    error
 }
 
 func (s *userRepoStub) Create(ctx context.Context, user *User) error {
@@ -48,9 +51,20 @@ func (s *userRepoStub) GetByID(ctx context.Context, id int64) (*User, error) {
 		return nil, s.getErr
 	}
 	if s.user == nil {
+		if user := s.usersByID[id]; user != nil {
+			return user, nil
+		}
 		return nil, ErrUserNotFound
 	}
+	if user := s.usersByID[id]; user != nil {
+		return user, nil
+	}
 	return s.user, nil
+}
+
+func (s *userRepoStub) MigrateUsageHistory(_ context.Context, sourceUserID, targetUserID int64) error {
+	s.migrations = append(s.migrations, [2]int64{sourceUserID, targetUserID})
+	return s.migrateErr
 }
 
 func (s *userRepoStub) GetByEmail(ctx context.Context, email string) (*User, error) {
@@ -553,6 +567,58 @@ func TestAdminService_DeleteUser_DeletesOwnedAPIKeys(t *testing.T) {
 	require.Equal(t, []int64{11, 12}, apiKeyRepo.deletedIDs)
 	require.ElementsMatch(t, []string{"sk-user-1", "sk-user-2"}, invalidator.keys)
 	require.Equal(t, []int64{7}, invalidator.userIDs)
+}
+
+func TestAdminService_DeleteUser_MigratesUsageBeforeDeletingSource(t *testing.T) {
+	repo := &userRepoStub{usersByID: map[int64]*User{
+		7: {ID: 7, Role: RoleUser, Status: StatusActive},
+		8: {ID: 8, Role: RoleUser, Status: StatusActive},
+	}}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	err := svc.DeleteUser(context.Background(), 7, 8)
+
+	require.NoError(t, err)
+	require.Equal(t, [][2]int64{{7, 8}}, repo.migrations)
+	require.Equal(t, []int64{7}, repo.deletedIDs)
+}
+
+func TestAdminService_DeleteUser_RejectsInvalidUsageMigrationTarget(t *testing.T) {
+	tests := []struct {
+		name     string
+		targetID int64
+		users    map[int64]*User
+	}{
+		{name: "same user", targetID: 7, users: map[int64]*User{7: {ID: 7, Role: RoleUser, Status: StatusActive}}},
+		{name: "missing user", targetID: 8, users: map[int64]*User{7: {ID: 7, Role: RoleUser, Status: StatusActive}}},
+		{name: "admin", targetID: 8, users: map[int64]*User{7: {ID: 7, Role: RoleUser, Status: StatusActive}, 8: {ID: 8, Role: RoleAdmin, Status: StatusActive}}},
+		{name: "disabled", targetID: 8, users: map[int64]*User{7: {ID: 7, Role: RoleUser, Status: StatusActive}, 8: {ID: 8, Role: RoleUser, Status: StatusDisabled}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &userRepoStub{usersByID: tt.users}
+			svc := &adminServiceImpl{userRepo: repo}
+
+			err := svc.DeleteUser(context.Background(), 7, tt.targetID)
+
+			require.Error(t, err)
+			require.Empty(t, repo.migrations)
+			require.Empty(t, repo.deletedIDs)
+		})
+	}
+}
+
+func TestAdminService_DeleteUser_DoesNotDeleteWhenUsageMigrationFails(t *testing.T) {
+	repo := &userRepoStub{
+		usersByID:  map[int64]*User{7: {ID: 7, Role: RoleUser, Status: StatusActive}, 8: {ID: 8, Role: RoleUser, Status: StatusActive}},
+		migrateErr: errors.New("migration failed"),
+	}
+	svc := &adminServiceImpl{userRepo: repo}
+
+	err := svc.DeleteUser(context.Background(), 7, 8)
+
+	require.ErrorContains(t, err, "migration failed")
+	require.Empty(t, repo.deletedIDs)
 }
 
 func TestAdminService_DeleteUser_NotFound(t *testing.T) {

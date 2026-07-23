@@ -60,7 +60,7 @@ type ExternalUserMappingRepository interface {
 
 type externalUserAdminPort interface {
 	CreateUser(ctx context.Context, input *CreateUserInput) (*User, error)
-	DeleteUser(ctx context.Context, id int64) error
+	DeleteUser(ctx context.Context, id int64, migrateUsageToUserID ...int64) error
 	GetAllGroups(ctx context.Context) ([]Group, error)
 	GetUser(ctx context.Context, id int64) (*User, error)
 }

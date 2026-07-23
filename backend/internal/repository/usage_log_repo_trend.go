@@ -146,18 +146,22 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	}
 
 	query := `
-		WITH user_spend AS (
+		WITH usage_owner AS (
+			SELECT source_user_id, target_user_id FROM user_usage_migrations
+		),
+		user_spend AS (
 			SELECT
-				u.user_id,
+				COALESCE(m.target_user_id, u.user_id) AS user_id,
 				COALESCE(us.email, '') as email,
 				COALESCE(us.username, '') as username,
 				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
 				COUNT(*) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
 			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
+			LEFT JOIN usage_owner m ON m.source_user_id = u.user_id
+			LEFT JOIN users us ON COALESCE(m.target_user_id, u.user_id) = us.id
 			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email, us.username
+			GROUP BY COALESCE(m.target_user_id, u.user_id), us.email, us.username
 		),
 		ranked AS (
 			SELECT
