@@ -124,10 +124,10 @@ func insertExternalUsageForMigrationTest(t *testing.T, ctx context.Context, tx i
 	t.Helper()
 	rows, err := tx.QueryContext(ctx, `INSERT INTO external_usage_import_batches (status) VALUES ('imported') RETURNING id`)
 	require.NoError(t, err)
-	defer rows.Close()
 	require.True(t, rows.Next())
 	var batchID int64
 	require.NoError(t, rows.Scan(&batchID))
+	require.NoError(t, rows.Close())
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO external_usage_daily_user_stats
 			(batch_id, bucket_date, user_id, total_tokens, requests)
