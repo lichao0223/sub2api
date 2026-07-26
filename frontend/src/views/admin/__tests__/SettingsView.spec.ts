@@ -700,6 +700,8 @@ describe("admin SettingsView payment visible method controls", () => {
     await wrapper.get('button[aria-label="pagination.next"]').trigger("click");
     expect(wrapper.findAll('[data-testid="login-ip-block-row"]')).toHaveLength(2);
     expect(wrapper.text()).toContain("192.0.2.12");
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showSuccess).not.toHaveBeenCalled();
   });
 
   it("loads, edits, validates, and saves forwarded client-IP headers", async () => {
