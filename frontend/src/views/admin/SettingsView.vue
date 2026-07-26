@@ -1699,9 +1699,9 @@
                 <div v-else-if="loginIPBlocksCurrent.length === 0" class="py-4 text-sm text-gray-500">
                   {{ t("admin.settings.loginIPBlock.emptyCurrent") }}
                 </div>
-                <div v-else class="overflow-x-auto">
+                <div v-else data-testid="login-ip-blocks-scroll" class="max-h-96 overflow-auto">
                   <table class="min-w-full text-sm">
-                    <thead class="text-left text-xs text-gray-500">
+                    <thead data-testid="login-ip-blocks-header" class="sticky top-0 z-10 bg-white text-left text-xs text-gray-500 dark:bg-dark-800">
                       <tr>
                         <th class="px-3 py-2">IP</th>
                         <th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.blockedAt") }}</th>
@@ -1710,7 +1710,7 @@
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                      <tr v-for="item in loginIPBlocksCurrent" :key="item.ip">
+                      <tr v-for="item in pagedLoginIPBlocks" :key="item.ip" data-testid="login-ip-block-row">
                         <td class="whitespace-nowrap px-3 py-2 font-mono">{{ item.ip }}</td>
                         <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockTime(item.blocked_at) }}</td>
                         <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockRemaining(item) }}</td>
@@ -1723,27 +1723,14 @@
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">
-                  {{ t("admin.settings.loginIPBlock.history") }}
-                </h3>
-                <div v-if="loginIPBlocksHistory.length === 0" class="py-4 text-sm text-gray-500">
-                  {{ t("admin.settings.loginIPBlock.emptyHistory") }}
-                </div>
-                <div v-else class="max-h-72 overflow-auto">
-                  <table class="min-w-full text-sm">
-                    <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                      <tr v-for="(item, index) in loginIPBlocksHistory" :key="`${item.event}-${item.ip}-${item.blocked_at || item.unblocked_at}-${index}`">
-                        <td class="whitespace-nowrap px-3 py-2 font-mono">{{ item.ip }}</td>
-                        <td class="whitespace-nowrap px-3 py-2">{{ t(`admin.settings.loginIPBlock.event.${item.event || 'blocked'}`) }}</td>
-                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockTime(item.event === 'unblocked' ? item.unblocked_at : item.blocked_at) }}</td>
-                        <td class="whitespace-nowrap px-3 py-2 text-gray-500">{{ formatLoginIPBlockDuration(item) }}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                <Pagination
+                  v-if="loginIPBlocksCurrent.length > loginIPBlocksPageSize"
+                  :total="loginIPBlocksCurrent.length"
+                  :page="loginIPBlocksPage"
+                  :page-size="loginIPBlocksPageSize"
+                  @update:page="loginIPBlocksPage = $event"
+                  @update:pageSize="handleLoginIPBlocksPageSizeChange"
+                />
               </div>
             </div>
           </div>
@@ -7919,6 +7906,7 @@ import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
+import Pagination from "@/components/common/Pagination.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
@@ -8075,7 +8063,12 @@ const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const loginIPBlocksLoading = ref(false);
 const loginIPBlocksCurrent = ref<LoginIPBlockRecord[]>([]);
-const loginIPBlocksHistory = ref<LoginIPBlockRecord[]>([]);
+const loginIPBlocksPage = ref(1);
+const loginIPBlocksPageSize = ref(10);
+const pagedLoginIPBlocks = computed(() => {
+  const start = (loginIPBlocksPage.value - 1) * loginIPBlocksPageSize.value;
+  return loginIPBlocksCurrent.value.slice(start, start + loginIPBlocksPageSize.value);
+});
 const loginIPBlockDurationOptions = computed(() => [
   { value: 1800, label: t("admin.settings.loginIPBlock.duration30m") },
   { value: 3600, label: t("admin.settings.loginIPBlock.duration1h") },
@@ -10653,12 +10646,18 @@ async function loadLoginIPBlocks() {
   try {
     const result = await adminAPI.settings.getLoginIPBlocks();
     loginIPBlocksCurrent.value = result.current || [];
-    loginIPBlocksHistory.value = result.history || [];
+    const totalPages = Math.max(1, Math.ceil(loginIPBlocksCurrent.value.length / loginIPBlocksPageSize.value));
+    loginIPBlocksPage.value = Math.min(loginIPBlocksPage.value, totalPages);
   } catch (error: unknown) {
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
   } finally {
     loginIPBlocksLoading.value = false;
   }
+}
+
+function handleLoginIPBlocksPageSizeChange(pageSize: number) {
+  loginIPBlocksPageSize.value = pageSize;
+  loginIPBlocksPage.value = 1;
 }
 
 async function unblockLoginIP(clientIP: string) {
@@ -10685,13 +10684,6 @@ function formatLoginIPBlockRemaining(item: LoginIPBlockRecord): string {
   return hours > 0
     ? t("admin.settings.loginIPBlock.remainingHours", { hours, minutes })
     : t("admin.settings.loginIPBlock.remainingMinutes", { minutes });
-}
-
-function formatLoginIPBlockDuration(item: LoginIPBlockRecord): string {
-  if (item.event === "unblocked") return "-";
-  if (item.permanent) return t("admin.settings.loginIPBlock.durationPermanent");
-  const minutes = Math.floor((item.duration_seconds || 0) / 60);
-  return t("admin.settings.loginIPBlock.durationMinutes", { minutes });
 }
 
 async function createAdminApiKey() {

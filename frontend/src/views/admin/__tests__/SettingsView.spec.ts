@@ -10,6 +10,7 @@ const {
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   getAdminApiKey,
+  getLoginIPBlocks,
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
@@ -36,6 +37,7 @@ const {
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
+  getLoginIPBlocks: vi.fn(),
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
@@ -75,6 +77,7 @@ vi.mock("@/api", () => ({
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,
       getAdminApiKey,
+      getLoginIPBlocks,
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
@@ -576,6 +579,7 @@ describe("admin SettingsView payment visible method controls", () => {
     getWebSearchEmulationConfig.mockReset();
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
+    getLoginIPBlocks.mockReset();
     getOverloadCooldownSettings.mockReset();
     getRateLimit429CooldownSettings.mockReset();
     updateRateLimit429CooldownSettings.mockReset();
@@ -641,6 +645,7 @@ describe("admin SettingsView payment visible method controls", () => {
     getBetaPolicySettings.mockResolvedValue({
       rules: [],
     });
+    getLoginIPBlocks.mockResolvedValue({ current: [], history: [] });
     getUpstreamBillingProbeSettings.mockResolvedValue({
       enabled: true,
       interval_minutes: 30,
@@ -671,6 +676,30 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(wrapper.text()).not.toContain("可见方式");
     expect(wrapper.text()).not.toContain("支付来源");
+  });
+
+  it("paginates current login IP blocks and omits block history", async () => {
+    getLoginIPBlocks.mockResolvedValue({
+      current: Array.from({ length: 12 }, (_, index) => ({
+        ip: `192.0.2.${index + 1}`,
+        blocked_at: "2026-07-26T00:00:00Z",
+        permanent: true,
+      })),
+      history: [{ ip: "198.51.100.1", event: "unblocked" }],
+    });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openSecurityTab(wrapper);
+
+    expect(wrapper.get('[data-testid="login-ip-blocks-scroll"]').classes()).toContain("max-h-96");
+    expect(wrapper.get('[data-testid="login-ip-blocks-header"]').classes()).toContain("sticky");
+    expect(wrapper.findAll('[data-testid="login-ip-block-row"]')).toHaveLength(10);
+    expect(wrapper.text()).not.toContain("198.51.100.1");
+
+    await wrapper.get('button[aria-label="pagination.next"]').trigger("click");
+    expect(wrapper.findAll('[data-testid="login-ip-block-row"]')).toHaveLength(2);
+    expect(wrapper.text()).toContain("192.0.2.12");
   });
 
   it("loads, edits, validates, and saves forwarded client-IP headers", async () => {
