@@ -40,6 +40,7 @@ func TestTokenRankingNonworkRouteSupportsJWTOrAdminAuth(t *testing.T) {
 		}),
 		servermiddleware.AuditLogMiddleware(func(c *gin.Context) { c.Next() }),
 		nil,
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/usage/dashboard/token-ranking/nonwork", nil)
