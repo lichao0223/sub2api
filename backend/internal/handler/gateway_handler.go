@@ -168,6 +168,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 	body = parsedReq.Body.Bytes()
+	c.Request = c.Request.WithContext(service.WithMultimodalRequest(c.Request.Context(), body))
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
@@ -815,7 +816,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
-				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
+				result, err = h.forwardWithMultimodal(
+					requestCtx, c, account, currentAPIKey, currentSubscription, attemptBody,
+					func(preparedBody []byte) (*service.ForwardResult, error) {
+						if replaceErr := attemptParsedReq.ReplaceBody(preparedBody); replaceErr != nil {
+							return nil, replaceErr
+						}
+						return h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
+					},
+				)
 			}
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
