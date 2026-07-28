@@ -24,7 +24,8 @@ func TestOpenAIPrepareMultimodal(t *testing.T) {
 				`"usage":{"prompt_tokens":10,"completion_tokens":3}}`,
 		)),
 	}}}
-	svc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+	openAISvc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+	svc := &GatewayService{cfg: &config.Config{}}
 	account := multimodalBridgeAccount(PlatformOpenAI)
 	body := []byte(`{"model":"text-only","messages":[{"role":"user","content":[` +
 		`{"type":"text","text":"What is this?"},` +
@@ -32,7 +33,7 @@ func TestOpenAIPrepareMultimodal(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
 
-	prepared, usage, err := svc.PrepareMultimodal(context.Background(), c, account, body)
+	prepared, usage, err := svc.PrepareMultimodal(context.Background(), c, openAISvc, account, body)
 	require.NoError(t, err)
 	require.Equal(t, "vision-model", gjson.GetBytes(upstream.requestBodies[0], "model").String())
 	require.Contains(t, string(prepared), "Image 1 description: A settings page.")
@@ -62,7 +63,7 @@ func TestAnthropicPrepareMultimodal(t *testing.T) {
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
 
-	prepared, usage, err := svc.PrepareMultimodal(context.Background(), c, account, body)
+	prepared, usage, err := svc.PrepareMultimodal(context.Background(), c, nil, account, body)
 	require.NoError(t, err)
 	require.Equal(t, "vision-model", gjson.GetBytes(upstream.requestBodies[0], "model").String())
 	require.Contains(t, string(prepared), "Image 1 description: A diagram.")

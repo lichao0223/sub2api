@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ const (
 	multimodalModelModesKey         = "multimodal_model_modes"
 	multimodalDefaultVisionModelKey = "multimodal_default_vision_model"
 	multimodalVisionModelsKey       = "multimodal_vision_models"
+	multimodalDefaultVisionGroupKey = "multimodal_default_vision_group_id"
+	multimodalVisionGroupsKey       = "multimodal_vision_group_ids"
 	multimodalModeReject            = "reject"
 	multimodalModeVisionToText      = "vision_to_text"
 	// ponytail: fixed cap prevents unbounded secondary calls; make configurable only if real workloads need more.
@@ -25,13 +28,15 @@ const (
 type multimodalRequestContextKey struct{}
 
 type multimodalPolicy struct {
-	Mode        string
-	VisionModel string
+	Mode          string
+	VisionModel   string
+	VisionGroupID int64
 }
 
 // MultimodalBridgeUsage is billed as a separate request because its model may
 // have different pricing from the downstream text model.
 type MultimodalBridgeUsage struct {
+	Account                  *Account
 	RequestID                string
 	Model                    string
 	InputTokens              int
@@ -62,7 +67,7 @@ func (a *Account) acceptsMultimodalRequest(requestedModel string) bool {
 
 	policy := a.multimodalPolicy(requestedModel)
 	if policy.Mode == multimodalModeVisionToText {
-		return a.Type == AccountTypeAPIKey && policy.VisionModel != ""
+		return policy.VisionModel != "" && (policy.VisionGroupID > 0 || a.Type == AccountTypeAPIKey)
 	}
 	return policy.Mode != multimodalModeReject
 }
@@ -70,6 +75,7 @@ func (a *Account) acceptsMultimodalRequest(requestedModel string) bool {
 func (a *Account) multimodalPolicy(requestedModel string) multimodalPolicy {
 	mode, _ := a.Credentials[multimodalDefaultModeKey].(string)
 	visionModel, _ := a.Credentials[multimodalDefaultVisionModelKey].(string)
+	visionGroupID := credentialInt64Value(a.Credentials[multimodalDefaultVisionGroupKey])
 	mappedModel := a.GetMappedModel(requestedModel)
 	if value := credentialStringMapValue(a.Credentials[multimodalModelModesKey], mappedModel); value != "" {
 		mode = value
@@ -77,9 +83,13 @@ func (a *Account) multimodalPolicy(requestedModel string) multimodalPolicy {
 	if value := credentialStringMapValue(a.Credentials[multimodalVisionModelsKey], mappedModel); value != "" {
 		visionModel = value
 	}
+	if value := credentialInt64MapValue(a.Credentials[multimodalVisionGroupsKey], mappedModel); value > 0 {
+		visionGroupID = value
+	}
 	return multimodalPolicy{
-		Mode:        strings.TrimSpace(strings.ToLower(mode)),
-		VisionModel: strings.TrimSpace(visionModel),
+		Mode:          strings.TrimSpace(strings.ToLower(mode)),
+		VisionModel:   strings.TrimSpace(visionModel),
+		VisionGroupID: visionGroupID,
 	}
 }
 
@@ -92,6 +102,36 @@ func credentialStringMapValue(raw any, key string) string {
 		return values[key]
 	default:
 		return ""
+	}
+}
+
+func credentialInt64MapValue(raw any, key string) int64 {
+	switch values := raw.(type) {
+	case map[string]any:
+		return credentialInt64Value(values[key])
+	case map[string]int64:
+		return values[key]
+	default:
+		return 0
+	}
+}
+
+func credentialInt64Value(raw any) int64 {
+	switch value := raw.(type) {
+	case int:
+		return int64(value)
+	case int64:
+		return value
+	case float64:
+		return int64(value)
+	case json.Number:
+		parsed, _ := value.Int64()
+		return parsed
+	case string:
+		parsed, _ := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+		return parsed
+	default:
+		return 0
 	}
 }
 

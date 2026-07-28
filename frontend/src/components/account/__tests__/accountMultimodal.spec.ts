@@ -9,16 +9,28 @@ describe('account multimodal credentials', () => {
     const credentials: Record<string, unknown> = {}
     applyMultimodalConfig(credentials, {
       defaultMode: 'passthrough',
+      defaultVisionGroupId: 0,
       defaultVisionModel: '',
-      rules: [{ model: 'qwen3.6-35b', mode: 'vision_to_text', visionModel: 'gpt-4.1-mini' }]
+      rules: [{
+        model: 'qwen3.6-35b',
+        mode: 'vision_to_text',
+        visionGroupId: 7,
+        visionModel: 'gpt-4.1-mini'
+      }]
     })
 
     expect(credentials).toEqual({
       multimodal_model_modes: { 'qwen3.6-35b': 'vision_to_text' },
-      multimodal_vision_models: { 'qwen3.6-35b': 'gpt-4.1-mini' }
+      multimodal_vision_models: { 'qwen3.6-35b': 'gpt-4.1-mini' },
+      multimodal_vision_group_ids: { 'qwen3.6-35b': 7 }
     })
     expect(readMultimodalConfig(credentials).rules).toEqual([
-      { model: 'qwen3.6-35b', mode: 'vision_to_text', visionModel: 'gpt-4.1-mini' }
+      {
+        model: 'qwen3.6-35b',
+        mode: 'vision_to_text',
+        visionGroupId: 7,
+        visionModel: 'gpt-4.1-mini'
+      }
     ])
   })
 })

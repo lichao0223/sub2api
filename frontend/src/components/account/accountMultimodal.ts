@@ -3,17 +3,20 @@ export type MultimodalMode = 'passthrough' | 'vision_to_text' | 'reject'
 export interface MultimodalRule {
   model: string
   mode: MultimodalMode
+  visionGroupId: number
   visionModel: string
 }
 
 export interface MultimodalConfig {
   defaultMode: MultimodalMode
+  defaultVisionGroupId: number
   defaultVisionModel: string
   rules: MultimodalRule[]
 }
 
 export const defaultMultimodalConfig = (): MultimodalConfig => ({
   defaultMode: 'passthrough',
+  defaultVisionGroupId: 0,
   defaultVisionModel: '',
   rules: []
 })
@@ -30,12 +33,22 @@ export const readMultimodalConfig = (
     typeof credentials?.multimodal_default_vision_model === 'string'
       ? credentials.multimodal_default_vision_model
       : ''
+  const defaultVisionGroupId =
+    typeof credentials?.multimodal_default_vision_group_id === 'number'
+      ? credentials.multimodal_default_vision_group_id
+      : 0
   const rawModes = credentials?.multimodal_model_modes
   const rawVisionModels =
     credentials?.multimodal_vision_models &&
     typeof credentials.multimodal_vision_models === 'object' &&
     !Array.isArray(credentials.multimodal_vision_models)
       ? credentials.multimodal_vision_models as Record<string, unknown>
+      : {}
+  const rawVisionGroups =
+    credentials?.multimodal_vision_group_ids &&
+    typeof credentials.multimodal_vision_group_ids === 'object' &&
+    !Array.isArray(credentials.multimodal_vision_group_ids)
+      ? credentials.multimodal_vision_group_ids as Record<string, unknown>
       : {}
   const rules =
     rawModes && typeof rawModes === 'object' && !Array.isArray(rawModes)
@@ -48,11 +61,13 @@ export const readMultimodalConfig = (
           .map(([model, mode]) => ({
             model,
             mode,
+            visionGroupId:
+              typeof rawVisionGroups[model] === 'number' ? rawVisionGroups[model] : 0,
             visionModel:
               typeof rawVisionModels[model] === 'string' ? rawVisionModels[model] : ''
           }))
       : []
-  return { defaultMode, defaultVisionModel, rules }
+  return { defaultMode, defaultVisionGroupId, defaultVisionModel, rules }
 }
 
 export const applyMultimodalConfig = (
@@ -68,6 +83,11 @@ export const applyMultimodalConfig = (
     credentials.multimodal_default_vision_model = config.defaultVisionModel.trim()
   } else {
     delete credentials.multimodal_default_vision_model
+  }
+  if (config.defaultMode === 'vision_to_text' && config.defaultVisionGroupId > 0) {
+    credentials.multimodal_default_vision_group_id = config.defaultVisionGroupId
+  } else {
+    delete credentials.multimodal_default_vision_group_id
   }
 
   const modes = Object.fromEntries(
@@ -91,5 +111,17 @@ export const applyMultimodalConfig = (
     credentials.multimodal_vision_models = visionModels
   } else {
     delete credentials.multimodal_vision_models
+  }
+
+  const visionGroups = Object.fromEntries(
+    config.rules
+      .filter(({ mode, visionGroupId }) => mode === 'vision_to_text' && visionGroupId > 0)
+      .map(({ model, visionGroupId }) => [model.trim(), visionGroupId])
+      .filter(([model]) => model)
+  )
+  if (Object.keys(visionGroups).length) {
+    credentials.multimodal_vision_group_ids = visionGroups
+  } else {
+    delete credentials.multimodal_vision_group_ids
   }
 }

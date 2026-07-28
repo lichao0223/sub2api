@@ -6,61 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
-
-// PrepareMultimodal converts image blocks to descriptions with a vision model
-// on the same OpenAI API-key account.
-func (s *OpenAIGatewayService) PrepareMultimodal(
-	ctx context.Context,
-	c *gin.Context,
-	account *Account,
-	body []byte,
-) ([]byte, *MultimodalBridgeUsage, error) {
-	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
-	policy := account.multimodalPolicy(model)
-	if policy.Mode != multimodalModeVisionToText || !requestBodyHasImageInput(body) {
-		return body, nil, nil
-	}
-	if account.Type != AccountTypeAPIKey || policy.VisionModel == "" {
-		return body, nil, fmt.Errorf("vision-to-text requires an API-key account and vision model")
-	}
-
-	root, images, err := imageBridgeInput(body)
-	if err != nil || len(images) == 0 {
-		return body, nil, err
-	}
-
-	startedAt := time.Now()
-	usage := &MultimodalBridgeUsage{Model: policy.VisionModel}
-	descriptions := make([]string, 0, len(images))
-	for index, imageURL := range images {
-		description, requestID, tokens, describeErr := s.describeOpenAIImage(
-			ctx, c, account, policy.VisionModel, imageURL, index+1,
-		)
-		if describeErr != nil {
-			return body, nil, describeErr
-		}
-		if usage.RequestID == "" {
-			usage.RequestID = requestID
-		}
-		usage.InputTokens += tokens.InputTokens
-		usage.OutputTokens += tokens.OutputTokens
-		usage.CacheCreationInputTokens += tokens.CacheCreationInputTokens
-		usage.CacheReadInputTokens += tokens.CacheReadInputTokens
-		descriptions = append(descriptions, description)
-	}
-	usage.Duration = time.Since(startedAt)
-
-	rewritten, err := rewriteImagesAsText(root, descriptions)
-	if err != nil {
-		return body, nil, err
-	}
-	return rewritten, usage, nil
-}
 
 func (s *OpenAIGatewayService) describeOpenAIImage(
 	ctx context.Context,

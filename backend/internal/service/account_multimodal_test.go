@@ -15,12 +15,14 @@ func TestAccountMultimodalScheduling(t *testing.T) {
 			multimodalDefaultModeKey:  "passthrough",
 			multimodalModelModesKey:   map[string]any{"text-only": "vision_to_text"},
 			multimodalVisionModelsKey: map[string]any{"text-only": "gpt-4.1-mini"},
+			multimodalVisionGroupsKey: map[string]any{"text-only": float64(7)},
 		},
-		Type: AccountTypeAPIKey,
+		Type: AccountTypeOAuth,
 	}
 
 	require.True(t, account.acceptsMultimodalRequest("gpt-alias"))
 	require.Equal(t, "gpt-4.1-mini", account.multimodalPolicy("gpt-alias").VisionModel)
+	require.Equal(t, int64(7), account.multimodalPolicy("gpt-alias").VisionGroupID)
 	require.True(t, account.acceptsMultimodalRequest("vision-model"))
 	require.True(t, isMultimodalRequest(WithMultimodalRequest(context.Background(),
 		[]byte(`{"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.com/a.png"}}]}]}`))))

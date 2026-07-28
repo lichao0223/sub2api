@@ -23,12 +23,17 @@ func (h *OpenAIGatewayHandler) forwardWithMultimodal(
 	body []byte,
 	forward openAIMultimodalForward,
 ) (*service.OpenAIForwardResult, error) {
-	preparedBody, usage, err := h.gatewayService.PrepareMultimodal(ctx, c, account, body)
+	if h.multimodalGatewayService == nil {
+		return forward(body)
+	}
+	preparedBody, usage, err := h.multimodalGatewayService.PrepareMultimodal(
+		ctx, c, h.gatewayService, account, body,
+	)
 	if err != nil {
 		return nil, err
 	}
 	if usage != nil {
-		h.recordOpenAIMultimodalUsage(ctx, c, account, apiKey, subscription, body, usage)
+		h.recordOpenAIMultimodalUsage(ctx, c, usage.Account, apiKey, subscription, body, usage)
 	}
 	return forward(preparedBody)
 }
@@ -42,12 +47,14 @@ func (h *GatewayHandler) forwardWithMultimodal(
 	body []byte,
 	forward anthropicMultimodalForward,
 ) (*service.ForwardResult, error) {
-	preparedBody, usage, err := h.gatewayService.PrepareMultimodal(ctx, c, account, body)
+	preparedBody, usage, err := h.gatewayService.PrepareMultimodal(
+		ctx, c, h.openAIGatewayService, account, body,
+	)
 	if err != nil {
 		return nil, err
 	}
 	if usage != nil {
-		h.recordAnthropicMultimodalUsage(ctx, c, account, apiKey, subscription, body, usage)
+		h.recordAnthropicMultimodalUsage(ctx, c, usage.Account, apiKey, subscription, body, usage)
 	}
 	return forward(preparedBody)
 }
