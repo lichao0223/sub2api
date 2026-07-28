@@ -258,7 +258,7 @@
                   :auth-mode="getOpenAIAuthMode(row)"
                   :plan-type="getAccountPlanType(row)"
                   :privacy-mode="row.extra?.privacy_mode || row.parent_privacy_mode"
-                  :subscription-expires-at="row.credentials?.subscription_expires_at || row.parent_subscription_expires_at" />
+                  :subscription-expires-at="getAccountSubscriptionExpiresAt(row)" />
                 <span
                   v-if="getAntigravityTierLabel(row)"
                   :class="['inline-block rounded px-1.5 py-0.5 text-[10px] font-medium', getAntigravityTierClass(row)]"
@@ -314,6 +314,7 @@
               :today-stats="todayStatsByAccountId[String(row.id)] ?? null"
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
+              @subscription-updated="applyGLMSubscription(row, $event)"
             />
           </template>
           <template #cell-proxy="{ row }">
@@ -1276,8 +1277,11 @@ const { pause: pauseAutoRefresh, resume: resumeAutoRefresh } = useIntervalFn(
 // can be stale, so they remain fallbacks together with legacy plan_type fields.
 function getAccountPlanType(row: any): string | undefined {
   if (!row) return undefined
+  const extra = (row.extra || {}) as Record<string, any>
+  if (String(extra.model_provider || '').trim().toLowerCase() === 'glm') {
+    return extra.glm_subscription_plan || undefined
+  }
   if (row.platform === 'grok') {
-    const extra = (row.extra || {}) as Record<string, any>
     const billing = extra.grok_billing_snapshot as Record<string, any> | undefined
     const quota = extra.grok_quota_snapshot as Record<string, any> | undefined
     return (
@@ -1291,6 +1295,21 @@ function getAccountPlanType(row: any): string | undefined {
     )
   }
   return row.credentials?.plan_type || row.parent_plan_type || undefined
+}
+
+function getAccountSubscriptionExpiresAt(row: any): string | undefined {
+  const extra = (row?.extra || {}) as Record<string, any>
+  if (String(extra.model_provider || '').trim().toLowerCase() === 'glm') {
+    return extra.glm_subscription_expires_at || undefined
+  }
+  return row?.credentials?.subscription_expires_at || row?.parent_subscription_expires_at || undefined
+}
+
+function applyGLMSubscription(row: any, value: { plan?: string; expiresAt?: string }) {
+  if (!row || (!value.plan && !value.expiresAt)) return
+  row.extra ||= {}
+  if (value.plan) row.extra.glm_subscription_plan = value.plan
+  if (value.expiresAt) row.extra.glm_subscription_expires_at = value.expiresAt
 }
 
 function getOpenAIAuthMode(row: any): string | undefined {

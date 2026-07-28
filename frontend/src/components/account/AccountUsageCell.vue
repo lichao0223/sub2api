@@ -827,6 +827,10 @@ const props = withDefaults(
   }
 )
 
+const emit = defineEmits<{
+  subscriptionUpdated: [value: { plan?: string; expiresAt?: string }]
+}>()
+
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
 
@@ -848,6 +852,14 @@ const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
 let desktopViewportMediaQuery: MediaQueryList | null = null
 let desktopViewportListener: ((event: MediaQueryListEvent) => void) | null = null
 let visibilityObserver: IntersectionObserver | null = null
+
+watch(usageInfo, (usage) => {
+  if (!usage?.subscription_plan && !usage?.subscription_expires_at) return
+  emit('subscriptionUpdated', {
+    plan: usage.subscription_plan,
+    expiresAt: usage.subscription_expires_at
+  })
+})
 
 const isGLMAPIKey = computed(() => {
   return (

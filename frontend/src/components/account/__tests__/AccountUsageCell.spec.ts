@@ -142,7 +142,9 @@ describe('AccountUsageCell', () => {
   it('GLM 查询按钮与 GPT 查询按钮使用相同字号和刷新图标', async () => {
     getUsage.mockResolvedValue({
       five_hour: { utilization: 10, resets_at: null, remaining_seconds: 0 },
-      seven_day: { utilization: 20, resets_at: null, remaining_seconds: 0 }
+      seven_day: { utilization: 20, resets_at: null, remaining_seconds: 0 },
+      subscription_plan: 'GLM Coding Max',
+      subscription_expires_at: '2027-04-02'
     })
     const wrapper = mount(AccountUsageCell, {
       props: {
@@ -164,6 +166,9 @@ describe('AccountUsageCell', () => {
     const queryButton = wrapper.get('[data-testid="glm-usage-query"]')
     expect(queryButton.classes()).toContain('text-[10px]')
     expect(queryButton.find('svg').exists()).toBe(true)
+    expect(wrapper.emitted('subscriptionUpdated')).toEqual([[
+      { plan: 'GLM Coding Max', expiresAt: '2027-04-02' }
+    ]])
   })
 
   it('DeepSeek API Key 显示官方账户总余额', async () => {

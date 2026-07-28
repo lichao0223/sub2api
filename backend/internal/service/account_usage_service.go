@@ -129,6 +129,7 @@ const (
 	grokFreeQuotaWindow     = 24 * time.Hour
 	openAICodexProbeVersion = "0.144.1"
 	glmUsageURL             = "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
+	glmSubscriptionURL      = "https://open.bigmodel.cn/api/biz/subscription/list"
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -239,6 +240,10 @@ type UsageInfo struct {
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
 	SubscriptionTierRaw string `json:"subscription_tier_raw,omitempty"` // 上游原始订阅等级名称
 
+	// GLM Coding Plan 订阅信息
+	SubscriptionPlan      string `json:"subscription_plan,omitempty"`
+	SubscriptionExpiresAt string `json:"subscription_expires_at,omitempty"`
+
 	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
 
@@ -291,6 +296,8 @@ type ClaudeUsageResponse struct {
 	// 见 anthropic-ratelimit-unified-representative-claim 头）。上游 usage API
 	// 若不下发该字段，GetUsage 会用被动采样数据回填。
 	SevenDayOverageIncluded ClaudeUsageWindow `json:"seven_day_overage_included"`
+	SubscriptionPlan        string
+	SubscriptionExpiresAt   string
 }
 
 // ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
@@ -908,6 +915,20 @@ type glmUsageResponse struct {
 	Success bool `json:"success"`
 }
 
+type glmSubscriptionResponse struct {
+	Code    int               `json:"code"`
+	Msg     string            `json:"msg"`
+	Data    []glmSubscription `json:"data"`
+	Success bool              `json:"success"`
+}
+
+type glmSubscription struct {
+	ProductName   string `json:"productName"`
+	Status        string `json:"status"`
+	NextRenewTime string `json:"nextRenewTime"`
+	Current       bool   `json:"inCurrentPeriod"`
+}
+
 func isGLMAPIKeyAccount(account *Account) bool {
 	if account == nil || account.Type != AccountTypeAPIKey {
 		return false
@@ -1192,7 +1213,7 @@ func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account,
 	}
 
 	if s.cache == nil {
-		resp, err := s.fetchGLMUsageRaw(ctx, account, apiKey)
+		resp, err := s.fetchGLMUsageWithSubscription(ctx, account, apiKey)
 		if err != nil {
 			return nil, err
 		}
@@ -1234,7 +1255,7 @@ func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account,
 				}
 			}
 		}
-		resp, fetchErr := s.fetchGLMUsageRaw(ctx, account, apiKey)
+		resp, fetchErr := s.fetchGLMUsageWithSubscription(ctx, account, apiKey)
 		if fetchErr != nil {
 			s.cache.apiCache.Store(account.ID, &apiUsageCache{err: fetchErr, timestamp: time.Now()})
 			return nil, fetchErr
@@ -1368,6 +1389,74 @@ func (s *AccountUsageService) fetchGLMUsageRaw(ctx context.Context, account *Acc
 	return buildGLMClaudeUsageResponse(&payload), nil
 }
 
+func (s *AccountUsageService) fetchGLMUsageWithSubscription(ctx context.Context, account *Account, apiKey string) (*ClaudeUsageResponse, error) {
+	usage, err := s.fetchGLMUsageRaw(ctx, account, apiKey)
+	if err != nil {
+		return nil, err
+	}
+	subscription, err := s.fetchGLMSubscriptionRaw(ctx, account, apiKey)
+	if err != nil {
+		slog.Debug("glm_subscription_fetch_failed", "account_id", account.ID, "error", err)
+		return usage, nil
+	}
+	usage.SubscriptionPlan, usage.SubscriptionExpiresAt = activeGLMSubscription(subscription)
+	return usage, nil
+}
+
+func (s *AccountUsageService) fetchGLMSubscriptionRaw(ctx context.Context, account *Account, apiKey string) (*glmSubscriptionResponse, error) {
+	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, glmSubscriptionURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create glm subscription request: %w", err)
+	}
+	req.Header.Set("Authorization", apiKey)
+	req.Header.Set("Accept", "application/json")
+
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil {
+		proxyURL = account.Proxy.URL()
+	}
+	client, err := httppool.GetClient(httppool.Options{
+		ProxyURL:              proxyURL,
+		Timeout:               15 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("build glm subscription client: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("glm subscription request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("glm subscription returned status %d", resp.StatusCode)
+	}
+
+	var payload glmSubscriptionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, fmt.Errorf("decode glm subscription response: %w", err)
+	}
+	if payload.Code != 0 && payload.Code != http.StatusOK {
+		return nil, fmt.Errorf("glm subscription returned code %d: %s", payload.Code, payload.Msg)
+	}
+	return &payload, nil
+}
+
+func activeGLMSubscription(payload *glmSubscriptionResponse) (string, string) {
+	if payload == nil {
+		return "", ""
+	}
+	for _, subscription := range payload.Data {
+		if subscription.Current && strings.EqualFold(subscription.Status, "VALID") {
+			return strings.TrimSpace(subscription.ProductName), strings.TrimSpace(subscription.NextRenewTime)
+		}
+	}
+	return "", ""
+}
+
 func buildGLMClaudeUsageResponse(payload *glmUsageResponse) *ClaudeUsageResponse {
 	resp := &ClaudeUsageResponse{}
 	if payload == nil {
@@ -1397,7 +1486,7 @@ func buildGLMCodexExtraUpdates(resp *ClaudeUsageResponse, now time.Time) map[str
 	if resp == nil {
 		return nil
 	}
-	updates := make(map[string]any, 7)
+	updates := make(map[string]any, 9)
 	if resp.FiveHour.ResetsAt != "" || resp.FiveHour.Utilization > 0 {
 		updates["codex_5h_used_percent"] = resp.FiveHour.Utilization
 		updates["codex_5h_window_minutes"] = 5 * 60
@@ -1414,6 +1503,12 @@ func buildGLMCodexExtraUpdates(resp *ClaudeUsageResponse, now time.Time) map[str
 	}
 	if len(updates) > 0 {
 		updates["codex_usage_updated_at"] = now.UTC().Format(time.RFC3339)
+	}
+	if resp.SubscriptionPlan != "" {
+		updates["glm_subscription_plan"] = resp.SubscriptionPlan
+	}
+	if resp.SubscriptionExpiresAt != "" {
+		updates["glm_subscription_expires_at"] = resp.SubscriptionExpiresAt
 	}
 	return updates
 }
@@ -2092,7 +2187,9 @@ func (s *AccountUsageService) tryClearRecoverableAccountError(ctx context.Contex
 // buildUsageInfo 构建UsageInfo
 func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedAt *time.Time) *UsageInfo {
 	info := &UsageInfo{
-		UpdatedAt: updatedAt,
+		UpdatedAt:             updatedAt,
+		SubscriptionPlan:      resp.SubscriptionPlan,
+		SubscriptionExpiresAt: resp.SubscriptionExpiresAt,
 	}
 
 	// 5小时窗口 - 始终创建对象（即使 ResetsAt 为空）

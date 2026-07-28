@@ -62,6 +62,20 @@ func TestBuildGLMClaudeUsageResponse(t *testing.T) {
 	}
 }
 
+func TestActiveGLMSubscription(t *testing.T) {
+	t.Parallel()
+
+	payload := &glmSubscriptionResponse{Data: []glmSubscription{
+		{ProductName: "Expired", Status: "EXPIRED", NextRenewTime: "2026-01-01"},
+		{ProductName: "GLM Coding Max", Status: "VALID", NextRenewTime: "2027-04-02", Current: true},
+	}}
+
+	plan, expiresAt := activeGLMSubscription(payload)
+	if plan != "GLM Coding Max" || expiresAt != "2027-04-02" {
+		t.Fatalf("activeGLMSubscription() = %q, %q", plan, expiresAt)
+	}
+}
+
 func TestBuildGLMCodexExtraUpdates(t *testing.T) {
 	t.Parallel()
 
@@ -71,6 +85,8 @@ func TestBuildGLMCodexExtraUpdates(t *testing.T) {
 	resp.FiveHour.ResetsAt = "2026-07-06T15:00:00Z"
 	resp.SevenDay.Utilization = 46
 	resp.SevenDay.ResetsAt = "2026-07-13T10:00:00Z"
+	resp.SubscriptionPlan = "GLM Coding Max"
+	resp.SubscriptionExpiresAt = "2027-04-02"
 
 	updates := buildGLMCodexExtraUpdates(resp, now)
 	if got := updates["codex_5h_used_percent"]; got != 100.0 {
@@ -87,6 +103,12 @@ func TestBuildGLMCodexExtraUpdates(t *testing.T) {
 	}
 	if got := updates["codex_usage_updated_at"]; got != "2026-07-06T10:00:00Z" {
 		t.Fatalf("codex_usage_updated_at = %v, want 2026-07-06T10:00:00Z", got)
+	}
+	if got := updates["glm_subscription_plan"]; got != "GLM Coding Max" {
+		t.Fatalf("glm_subscription_plan = %v, want GLM Coding Max", got)
+	}
+	if got := updates["glm_subscription_expires_at"]; got != "2027-04-02" {
+		t.Fatalf("glm_subscription_expires_at = %v, want 2027-04-02", got)
 	}
 }
 

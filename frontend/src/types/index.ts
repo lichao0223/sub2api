@@ -1254,6 +1254,8 @@ export interface AccountUsageInfo {
   grok_billing?: GrokBillingSummary | null
   subscription_tier?: string
   subscription_tier_raw?: string
+  subscription_plan?: string
+  subscription_expires_at?: string
   ai_credits?: Array<{
     credit_type?: string
     amount?: number
