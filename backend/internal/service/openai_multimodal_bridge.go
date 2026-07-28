@@ -29,9 +29,10 @@ func (s *OpenAIGatewayService) describeOpenAIImage(
 		return "", "", OpenAIUsage{}, err
 	}
 	requestBody, err := json.Marshal(map[string]any{
-		"model":      visionModel,
-		"stream":     false,
-		"max_tokens": multimodalBridgeMaxTokens,
+		"model":          visionModel,
+		"stream":         true,
+		"stream_options": map[string]any{"include_usage": true},
+		"max_tokens":     multimodalBridgeMaxTokens,
 		"messages": []any{map[string]any{
 			"role": "user",
 			"content": []any{
@@ -62,13 +63,26 @@ func (s *OpenAIGatewayService) describeOpenAIImage(
 		return "", "", OpenAIUsage{}, fmt.Errorf("%s", message)
 	}
 
-	description := strings.TrimSpace(gjson.GetBytes(respBody, "choices.0.message.content").String())
-	if description == "" {
+	var description strings.Builder
+	var usage OpenAIUsage
+	requestID := resp.Header.Get("x-request-id")
+	var streamErr string
+	forEachOpenAISSEDataPayload(string(respBody), func(data []byte) {
+		description.WriteString(gjson.GetBytes(data, "choices.0.delta.content").String())
+		if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data); ok {
+			usage = parsedUsage
+		}
+		requestID = firstNonEmpty(gjson.GetBytes(data, "id").String(), requestID)
+		streamErr = firstNonEmpty(streamErr, gjson.GetBytes(data, "error.message").String())
+	})
+	if streamErr != "" {
+		return "", "", OpenAIUsage{}, fmt.Errorf("%s", sanitizeUpstreamErrorMessage(streamErr))
+	}
+	result := strings.TrimSpace(description.String())
+	if result == "" {
 		return "", "", OpenAIUsage{}, fmt.Errorf("vision model returned an empty description")
 	}
-	usage, _ := extractOpenAIUsageFromJSONBytes(respBody)
-	requestID := firstNonEmpty(gjson.GetBytes(respBody, "id").String(), resp.Header.Get("x-request-id"))
-	return description, requestID, usage, nil
+	return result, requestID, usage, nil
 }
 
 func (s *OpenAIGatewayService) describeOpenAIOAuthImage(
@@ -81,7 +95,7 @@ func (s *OpenAIGatewayService) describeOpenAIOAuthImage(
 ) (string, string, OpenAIUsage, error) {
 	requestBody, err := json.Marshal(map[string]any{
 		"model":             visionModel,
-		"stream":            false,
+		"stream":            true,
 		"max_output_tokens": multimodalBridgeMaxTokens,
 		"input": []any{map[string]any{
 			"role": "user",
@@ -116,16 +130,23 @@ func (s *OpenAIGatewayService) describeOpenAIOAuthImage(
 	if err != nil {
 		return "", "", OpenAIUsage{}, fmt.Errorf("vision model request failed: %w", err)
 	}
-	var response any
-	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
-		return "", "", OpenAIUsage{}, fmt.Errorf("parse vision response: %w", err)
+	var description strings.Builder
+	var streamErr string
+	forEachOpenAISSEDataPayload(recorder.Body.String(), func(data []byte) {
+		if gjson.GetBytes(data, "type").String() == "response.output_text.delta" {
+			description.WriteString(gjson.GetBytes(data, "delta").String())
+		}
+		streamErr = firstNonEmpty(streamErr, gjson.GetBytes(data, "error.message").String())
+	})
+	if streamErr != "" {
+		return "", "", OpenAIUsage{}, fmt.Errorf("%s", sanitizeUpstreamErrorMessage(streamErr))
 	}
-	description := strings.TrimSpace(extractOpenAIResponsesCompletedText(response))
-	if description == "" {
+	output := strings.TrimSpace(description.String())
+	if output == "" {
 		return "", "", OpenAIUsage{}, fmt.Errorf("vision model returned an empty description")
 	}
 	requestID := firstNonEmpty(result.ResponseID, result.RequestID)
-	return description, requestID, result.Usage, nil
+	return output, requestID, result.Usage, nil
 }
 
 func multimodalBridgePrompt(index int) string {

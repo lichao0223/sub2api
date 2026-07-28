@@ -156,7 +156,7 @@ func (s *GatewayService) describeAnthropicImage(
 	}
 	requestBody, err := json.Marshal(map[string]any{
 		"model":      visionModel,
-		"stream":     false,
+		"stream":     true,
 		"max_tokens": multimodalBridgeMaxTokens,
 		"messages": []any{map[string]any{
 			"role": "user",
@@ -174,7 +174,7 @@ func (s *GatewayService) describeAnthropicImage(
 	if err != nil {
 		return "", "", ClaudeUsage{}, err
 	}
-	upstreamReq, _, err := s.buildUpstreamRequest(ctx, c, account, requestBody, token, tokenType, visionModel, false, false)
+	upstreamReq, _, err := s.buildUpstreamRequest(ctx, c, account, requestBody, token, tokenType, visionModel, true, false)
 	if err != nil {
 		return "", "", ClaudeUsage{}, fmt.Errorf("build vision upstream request: %w", err)
 	}
@@ -200,13 +200,27 @@ func (s *GatewayService) describeAnthropicImage(
 		return "", "", ClaudeUsage{}, fmt.Errorf("%s", message)
 	}
 
-	description := firstAnthropicText(respBody)
-	if description == "" {
+	var description strings.Builder
+	var usage ClaudeUsage
+	requestID := resp.Header.Get("request-id")
+	var streamErr string
+	forEachOpenAISSEDataPayload(string(respBody), func(data []byte) {
+		s.parseSSEUsage(string(data), &usage)
+		if gjson.GetBytes(data, "type").String() == "content_block_delta" &&
+			gjson.GetBytes(data, "delta.type").String() == "text_delta" {
+			description.WriteString(gjson.GetBytes(data, "delta.text").String())
+		}
+		requestID = firstNonEmpty(gjson.GetBytes(data, "message.id").String(), requestID)
+		streamErr = firstNonEmpty(streamErr, gjson.GetBytes(data, "error.message").String())
+	})
+	if streamErr != "" {
+		return "", "", ClaudeUsage{}, fmt.Errorf("%s", sanitizeUpstreamErrorMessage(streamErr))
+	}
+	result := strings.TrimSpace(description.String())
+	if result == "" {
 		return "", "", ClaudeUsage{}, fmt.Errorf("vision model returned an empty description")
 	}
-	usage := parseClaudeUsageFromResponseBody(respBody)
-	requestID := firstNonEmpty(gjson.GetBytes(respBody, "id").String(), resp.Header.Get("request-id"))
-	return description, requestID, *usage, nil
+	return result, requestID, usage, nil
 }
 
 func anthropicImageBlock(imageURL string) (map[string]any, error) {

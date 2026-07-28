@@ -19,10 +19,12 @@ func TestOpenAIPrepareMultimodal(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"X-Request-Id": []string{"vision-request"}},
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "X-Request-Id": []string{"vision-request"}},
 		Body: io.NopCloser(bytes.NewBufferString(
-			`{"id":"vision-response","choices":[{"message":{"content":"A settings page."}}],` +
-				`"usage":{"prompt_tokens":10,"completion_tokens":3}}`,
+			"data: {\"id\":\"vision-response\",\"choices\":[{\"delta\":{\"content\":\"A settings \"}}]}\n\n" +
+				"data: {\"id\":\"vision-response\",\"choices\":[{\"delta\":{\"content\":\"page.\"}}]}\n\n" +
+				"data: {\"id\":\"vision-response\",\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":3}}\n\n" +
+				"data: [DONE]\n\n",
 		)),
 	}}}
 	openAISvc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
@@ -37,6 +39,8 @@ func TestOpenAIPrepareMultimodal(t *testing.T) {
 	prepared, usage, err := svc.PrepareMultimodal(context.Background(), c, openAISvc, account, body)
 	require.NoError(t, err)
 	require.Equal(t, "vision-model", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+	require.True(t, gjson.GetBytes(upstream.requestBodies[0], "stream").Bool())
+	require.True(t, gjson.GetBytes(upstream.requestBodies[0], "stream_options.include_usage").Bool())
 	require.Contains(t, string(prepared), "Image 1 description: A settings page.")
 	require.NotNil(t, usage)
 	require.Equal(t, 10, usage.InputTokens)
@@ -47,10 +51,16 @@ func TestAnthropicPrepareMultimodal(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{},
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body: io.NopCloser(bytes.NewBufferString(
-			`{"id":"vision-response","content":[{"type":"text","text":"A diagram."}],` +
-				`"usage":{"input_tokens":8,"output_tokens":2}}`,
+			"event: message_start\n" +
+				"data: {\"type\":\"message_start\",\"message\":{\"id\":\"vision-response\",\"usage\":{\"input_tokens\":8}}}\n\n" +
+				"event: content_block_delta\n" +
+				"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"ignore\"}}\n\n" +
+				"event: content_block_delta\n" +
+				"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"A diagram.\"}}\n\n" +
+				"event: message_delta\n" +
+				"data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\n",
 		)),
 	}}}
 	svc := &GatewayService{
@@ -67,6 +77,7 @@ func TestAnthropicPrepareMultimodal(t *testing.T) {
 	prepared, usage, err := svc.PrepareMultimodal(context.Background(), c, nil, account, body)
 	require.NoError(t, err)
 	require.Equal(t, "vision-model", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+	require.True(t, gjson.GetBytes(upstream.requestBodies[0], "stream").Bool())
 	require.Contains(t, string(prepared), "Image 1 description: A diagram.")
 	require.NotNil(t, usage)
 	require.Equal(t, 8, usage.InputTokens)
@@ -77,11 +88,16 @@ func TestOpenAIOAuthDescribeImage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
 		StatusCode: http.StatusOK,
-		Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"vision-request"}},
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "X-Request-Id": []string{"vision-request"}},
 		Body: io.NopCloser(bytes.NewBufferString(
-			`{"id":"vision-response","object":"response","model":"gpt-5.5","status":"completed",` +
-				`"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A settings page."}]}],` +
-				`"usage":{"input_tokens":10,"output_tokens":3,"total_tokens":13}}`,
+			"event: response.created\n" +
+				"data: {\"type\":\"response.created\",\"response\":{\"id\":\"vision-response\",\"status\":\"in_progress\"}}\n\n" +
+				"event: response.output_text.delta\n" +
+				"data: {\"type\":\"response.output_text.delta\",\"delta\":\"A settings \"}\n\n" +
+				"event: response.output_text.delta\n" +
+				"data: {\"type\":\"response.output_text.delta\",\"delta\":\"page.\"}\n\n" +
+				"event: response.completed\n" +
+				"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"vision-response\",\"status\":\"completed\",\"usage\":{\"input_tokens\":10,\"output_tokens\":3,\"total_tokens\":13}}}\n\n",
 		)),
 	}}}
 	openAISvc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
@@ -106,6 +122,7 @@ func TestOpenAIOAuthDescribeImage(t *testing.T) {
 	require.Equal(t, "vision-response", requestID)
 	require.Equal(t, 10, usage.InputTokens)
 	require.Equal(t, 3, usage.OutputTokens)
+	require.True(t, gjson.GetBytes(upstream.requestBodies[0], "stream").Bool())
 	require.Equal(t, "input_image", gjson.GetBytes(upstream.requestBodies[0], "input.0.content.1.type").String())
 	require.Equal(t, "https://example.com/a.png", gjson.GetBytes(upstream.requestBodies[0], "input.0.content.1.image_url").String())
 }
