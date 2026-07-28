@@ -208,7 +208,7 @@ func (s *GatewayService) describeAnthropicImage(
 		s.parseSSEUsage(string(data), &usage)
 		if gjson.GetBytes(data, "type").String() == "content_block_delta" &&
 			gjson.GetBytes(data, "delta.type").String() == "text_delta" {
-			description.WriteString(gjson.GetBytes(data, "delta.text").String())
+			_, _ = description.WriteString(gjson.GetBytes(data, "delta.text").String())
 		}
 		requestID = firstNonEmpty(gjson.GetBytes(data, "message.id").String(), requestID)
 		streamErr = firstNonEmpty(streamErr, gjson.GetBytes(data, "error.message").String())
@@ -239,16 +239,4 @@ func anthropicImageBlock(imageURL string) (map[string]any, error) {
 		"type":   "image",
 		"source": map[string]any{"type": "url", "url": imageURL},
 	}, nil
-}
-
-func firstAnthropicText(body []byte) string {
-	content := gjson.GetBytes(body, "content")
-	var text string
-	content.ForEach(func(_, item gjson.Result) bool {
-		if item.Get("type").String() == "text" {
-			text = strings.TrimSpace(item.Get("text").String())
-		}
-		return text == ""
-	})
-	return text
 }

@@ -68,7 +68,7 @@ func (s *OpenAIGatewayService) describeOpenAIImage(
 	requestID := resp.Header.Get("x-request-id")
 	var streamErr string
 	forEachOpenAISSEDataPayload(string(respBody), func(data []byte) {
-		description.WriteString(gjson.GetBytes(data, "choices.0.delta.content").String())
+		_, _ = description.WriteString(gjson.GetBytes(data, "choices.0.delta.content").String())
 		if parsedUsage, ok := extractOpenAIUsageFromJSONBytes(data); ok {
 			usage = parsedUsage
 		}
@@ -134,7 +134,7 @@ func (s *OpenAIGatewayService) describeOpenAIOAuthImage(
 	var streamErr string
 	forEachOpenAISSEDataPayload(recorder.Body.String(), func(data []byte) {
 		if gjson.GetBytes(data, "type").String() == "response.output_text.delta" {
-			description.WriteString(gjson.GetBytes(data, "delta").String())
+			_, _ = description.WriteString(gjson.GetBytes(data, "delta").String())
 		}
 		streamErr = firstNonEmpty(streamErr, gjson.GetBytes(data, "error.message").String())
 	})
