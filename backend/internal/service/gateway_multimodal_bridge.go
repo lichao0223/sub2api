@@ -37,12 +37,12 @@ func (s *GatewayService) PrepareMultimodal(
 	}
 
 	targetAccount := account
-	release := func() {}
 	if policy.VisionGroupID > 0 {
-		targetAccount, release, err = s.selectMultimodalVisionAccount(ctx, policy.VisionGroupID, policy.VisionModel)
-		if err != nil {
-			return body, nil, err
+		selectedAccount, release, selectErr := s.selectMultimodalVisionAccount(ctx, policy.VisionGroupID, policy.VisionModel)
+		if selectErr != nil {
+			return body, nil, selectErr
 		}
+		targetAccount = selectedAccount
 		defer release()
 	}
 	if targetAccount.Type != AccountTypeAPIKey {
