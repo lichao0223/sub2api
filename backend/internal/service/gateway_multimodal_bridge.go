@@ -12,11 +12,13 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// PrepareMultimodal converts image blocks to descriptions with a vision model
-// on the same Anthropic API-key account.
+// PrepareMultimodal converts image blocks to descriptions with a vision model.
+// A configured vision group uses the existing group scheduler; otherwise the
+// already-selected source account is used for backward compatibility.
 func (s *GatewayService) PrepareMultimodal(
 	ctx context.Context,
 	c *gin.Context,
+	openAIService *OpenAIGatewayService,
 	account *Account,
 	body []byte,
 ) ([]byte, *MultimodalBridgeUsage, error) {
@@ -25,8 +27,8 @@ func (s *GatewayService) PrepareMultimodal(
 	if policy.Mode != multimodalModeVisionToText || !requestBodyHasImageInput(body) {
 		return body, nil, nil
 	}
-	if account.Type != AccountTypeAPIKey || policy.VisionModel == "" {
-		return body, nil, fmt.Errorf("vision-to-text requires an API-key account and vision model")
+	if policy.VisionModel == "" {
+		return body, nil, fmt.Errorf("vision-to-text requires a vision model")
 	}
 
 	root, images, err := imageBridgeInput(body)
@@ -34,12 +36,29 @@ func (s *GatewayService) PrepareMultimodal(
 		return body, nil, err
 	}
 
+	targetAccount := account
+	release := func() {}
+	if policy.VisionGroupID > 0 {
+		targetAccount, release, err = s.selectMultimodalVisionAccount(ctx, policy.VisionGroupID, policy.VisionModel)
+		if err != nil {
+			return body, nil, err
+		}
+		defer release()
+	}
+	if targetAccount.Type != AccountTypeAPIKey {
+		return body, nil, fmt.Errorf("vision-to-text requires an API-key target account")
+	}
+	if targetAccount.Platform != PlatformOpenAI && targetAccount.Platform != PlatformAnthropic {
+		return body, nil, fmt.Errorf("vision-to-text target must use OpenAI or Anthropic platform")
+	}
+
+	visionModel := targetAccount.GetMappedModel(policy.VisionModel)
 	startedAt := time.Now()
-	usage := &MultimodalBridgeUsage{Model: policy.VisionModel}
+	usage := &MultimodalBridgeUsage{Account: targetAccount, Model: visionModel}
 	descriptions := make([]string, 0, len(images))
 	for index, imageURL := range images {
-		description, requestID, tokens, describeErr := s.describeAnthropicImage(
-			ctx, c, account, policy.VisionModel, imageURL, index+1,
+		description, requestID, tokens, describeErr := s.describeMultimodalImage(
+			ctx, c, openAIService, targetAccount, visionModel, imageURL, index+1,
 		)
 		if describeErr != nil {
 			return body, nil, describeErr
@@ -60,6 +79,63 @@ func (s *GatewayService) PrepareMultimodal(
 		return body, nil, err
 	}
 	return rewritten, usage, nil
+}
+
+func (s *GatewayService) selectMultimodalVisionAccount(
+	ctx context.Context,
+	groupID int64,
+	model string,
+) (*Account, func(), error) {
+	excluded := make(map[int64]struct{})
+	for {
+		selection, err := s.SelectAccountWithLoadAwareness(ctx, &groupID, "", model, excluded, "", 0)
+		if err != nil {
+			return nil, nil, fmt.Errorf("select vision account: %w", err)
+		}
+		account := selection.Account
+		if account == nil {
+			return nil, nil, fmt.Errorf("select vision account: no account returned")
+		}
+		if account.Type != AccountTypeAPIKey ||
+			(account.Platform != PlatformOpenAI && account.Platform != PlatformAnthropic) {
+			if selection.Acquired && selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+			excluded[account.ID] = struct{}{}
+			continue
+		}
+		if !selection.Acquired || selection.ReleaseFunc == nil {
+			excluded[account.ID] = struct{}{}
+			continue
+		}
+		return account, selection.ReleaseFunc, nil
+	}
+}
+
+func (s *GatewayService) describeMultimodalImage(
+	ctx context.Context,
+	c *gin.Context,
+	openAIService *OpenAIGatewayService,
+	account *Account,
+	visionModel string,
+	imageURL string,
+	index int,
+) (string, string, ClaudeUsage, error) {
+	if account.Platform == PlatformOpenAI {
+		if openAIService == nil {
+			return "", "", ClaudeUsage{}, fmt.Errorf("OpenAI vision gateway is unavailable")
+		}
+		description, requestID, usage, err := openAIService.describeOpenAIImage(
+			ctx, c, account, visionModel, imageURL, index,
+		)
+		return description, requestID, ClaudeUsage{
+			InputTokens:              usage.InputTokens,
+			OutputTokens:             usage.OutputTokens,
+			CacheCreationInputTokens: usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     usage.CacheReadInputTokens,
+		}, err
+	}
+	return s.describeAnthropicImage(ctx, c, account, visionModel, imageURL, index)
 }
 
 func (s *GatewayService) describeAnthropicImage(

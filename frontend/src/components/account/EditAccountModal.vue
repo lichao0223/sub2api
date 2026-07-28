@@ -2543,7 +2543,6 @@
         v-if="!isSparkShadow && (account?.platform === 'openai' || account?.platform === 'anthropic')"
         v-model="multimodalConfig"
         :models="multimodalModelOptions"
-        :allow-vision-to-text="account?.type === 'apikey'"
       />
 
       <!-- Group Selection - 仅标准模式显示 -->
@@ -2782,8 +2781,6 @@ const multimodalModelOptions = computed(() =>
   [...new Set([
     ...allowedModels.value,
     ...modelMappings.value.map((mapping) => mapping.to),
-    multimodalConfig.value.defaultVisionModel,
-    ...multimodalConfig.value.rules.map((rule) => rule.visionModel),
     ...multimodalConfig.value.rules.map((rule) => rule.model)
   ].map((model) => model.trim()).filter(Boolean))]
 )

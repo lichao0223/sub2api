@@ -30,6 +30,7 @@ import (
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
 	gatewayService             *service.OpenAIGatewayService
+	multimodalGatewayService   *service.GatewayService
 	billingCacheService        *service.BillingCacheService
 	apiKeyService              *service.APIKeyService
 	usageRecordWorkerPool      *service.UsageRecordWorkerPool
