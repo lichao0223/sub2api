@@ -45,8 +45,8 @@ func (s *GatewayService) PrepareMultimodal(
 		targetAccount = selectedAccount
 		defer release()
 	}
-	if targetAccount.Type != AccountTypeAPIKey {
-		return body, nil, fmt.Errorf("vision-to-text requires an API-key target account")
+	if targetAccount.Type != AccountTypeAPIKey && !targetAccount.IsOpenAIOAuth() {
+		return body, nil, fmt.Errorf("vision-to-text requires an API-key or OpenAI OAuth target account")
 	}
 	if targetAccount.Platform != PlatformOpenAI && targetAccount.Platform != PlatformAnthropic {
 		return body, nil, fmt.Errorf("vision-to-text target must use OpenAI or Anthropic platform")
@@ -54,7 +54,11 @@ func (s *GatewayService) PrepareMultimodal(
 
 	visionModel := targetAccount.GetMappedModel(policy.VisionModel)
 	startedAt := time.Now()
-	usage := &MultimodalBridgeUsage{Account: targetAccount, Model: visionModel}
+	usage := &MultimodalBridgeUsage{
+		Account:        targetAccount,
+		PricingGroupID: policy.VisionGroupID,
+		Model:          visionModel,
+	}
 	descriptions := make([]string, 0, len(images))
 	for index, imageURL := range images {
 		description, requestID, tokens, describeErr := s.describeMultimodalImage(
@@ -96,7 +100,7 @@ func (s *GatewayService) selectMultimodalVisionAccount(
 		if account == nil {
 			return nil, nil, fmt.Errorf("select vision account: no account returned")
 		}
-		if account.Type != AccountTypeAPIKey ||
+		if (account.Type != AccountTypeAPIKey && !account.IsOpenAIOAuth()) ||
 			(account.Platform != PlatformOpenAI && account.Platform != PlatformAnthropic) {
 			if selection.Acquired && selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()

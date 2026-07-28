@@ -33,6 +33,7 @@ type OpenAIRecordUsageInput struct {
 	RequestPayloadHash string
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
+	PricingGroupID     int64  // internal subrequests may price against a different target group.
 	// CyberBlocked 为 true 时把该用量行标记为 cyber（request_type=cyber），计费逻辑不变。
 	CyberBlocked bool
 	ChannelUsageFields
@@ -130,6 +131,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	pricingAPIKey := apiKeyForPricingGroup(apiKey, input.PricingGroupID)
 	if !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
@@ -200,7 +202,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	cost, err = s.calculateOpenAIRecordUsageCost(
 		ctx,
 		result,
-		apiKey,
+		pricingAPIKey,
 		billingModels,
 		multiplier,
 		imageMultiplier,

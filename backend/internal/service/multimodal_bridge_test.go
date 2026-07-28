@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,81 @@ func TestAnthropicPrepareMultimodal(t *testing.T) {
 	require.NotNil(t, usage)
 	require.Equal(t, 8, usage.InputTokens)
 	require.Equal(t, 2, usage.OutputTokens)
+}
+
+func TestOpenAIOAuthDescribeImage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "X-Request-Id": []string{"vision-request"}},
+		Body: io.NopCloser(bytes.NewBufferString(
+			`{"id":"vision-response","object":"response","model":"gpt-5.5","status":"completed",` +
+				`"output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"A settings page."}]}],` +
+				`"usage":{"input_tokens":10,"output_tokens":3,"total_tokens":13}}`,
+		)),
+	}}}
+	openAISvc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+	account := &Account{
+		ID:          2,
+		Name:        "chatgpt-oauth",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "oauth-token"},
+	}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	description, requestID, usage, err := openAISvc.describeOpenAIImage(
+		context.Background(), c, account, "gpt-5.5", "https://example.com/a.png", 1,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "A settings page.", description)
+	require.Equal(t, "vision-response", requestID)
+	require.Equal(t, 10, usage.InputTokens)
+	require.Equal(t, 3, usage.OutputTokens)
+	require.Equal(t, "input_image", gjson.GetBytes(upstream.requestBodies[0], "input.0.content.1.type").String())
+	require.Equal(t, "https://example.com/a.png", gjson.GetBytes(upstream.requestBodies[0], "input.0.content.1.image_url").String())
+}
+
+func TestMultimodalPricingUsesVisionGroupWithoutChangingSourceGroup(t *testing.T) {
+	const sourceGroupID int64 = 12
+	const visionGroupID int64 = 34
+	inputPrice := 2.0
+	outputPrice := 4.0
+	cache := newEmptyChannelCache()
+	cache.pricingByGroupModel[channelModelKey{groupID: visionGroupID, model: "gpt-vision"}] = &ChannelModelPricing{
+		BillingMode: BillingModeToken,
+		InputPrice:  &inputPrice,
+		OutputPrice: &outputPrice,
+	}
+	cache.channelByGroupID[visionGroupID] = &Channel{ID: visionGroupID, Status: StatusActive}
+	cache.groupPlatform[visionGroupID] = ""
+	cache.loadedAt = time.Now()
+	channelService := &ChannelService{}
+	channelService.cache.Store(cache)
+	billingService := NewBillingService(&config.Config{}, nil)
+	svc := &GatewayService{
+		billingService: billingService,
+		resolver:       NewModelPricingResolver(channelService, billingService),
+	}
+	sourceKey := &APIKey{GroupID: i64p(sourceGroupID), Group: &Group{ID: sourceGroupID}}
+
+	cost := svc.calculateRecordUsageCost(
+		context.Background(),
+		&ForwardResult{Model: "gpt-vision", Usage: ClaudeUsage{InputTokens: 1000, OutputTokens: 100}},
+		apiKeyForPricingGroup(sourceKey, visionGroupID),
+		"gpt-vision",
+		1,
+		1,
+		&recordUsageOpts{},
+	)
+
+	require.Positive(t, cost.TotalCost)
+	require.Equal(t, sourceGroupID, sourceKey.Group.ID)
+	require.Equal(t, sourceGroupID, *sourceKey.GroupID)
 }
 
 func multimodalBridgeAccount(platform string) *Account {

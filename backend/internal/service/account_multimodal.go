@@ -37,6 +37,7 @@ type multimodalPolicy struct {
 // have different pricing from the downstream text model.
 type MultimodalBridgeUsage struct {
 	Account                  *Account
+	PricingGroupID           int64
 	RequestID                string
 	Model                    string
 	InputTokens              int

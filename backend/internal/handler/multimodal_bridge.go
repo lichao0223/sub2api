@@ -105,6 +105,7 @@ func (h *OpenAIGatewayHandler) recordOpenAIMultimodalUsage(
 			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
+			PricingGroupID:     usage.PricingGroupID,
 		}); err != nil {
 			logger.L().Error("openai multimodal bridge usage record failed", zap.Error(err))
 		}
@@ -155,6 +156,7 @@ func (h *GatewayHandler) recordAnthropicMultimodalUsage(
 			RequestPayloadHash: requestPayloadHash,
 			APIKeyService:      h.apiKeyService,
 			QuotaPlatform:      quotaPlatform,
+			PricingGroupID:     usage.PricingGroupID,
 		}); err != nil {
 			logger.L().Error("anthropic multimodal bridge usage record failed", zap.Error(err))
 		}

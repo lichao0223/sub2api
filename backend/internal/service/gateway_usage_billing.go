@@ -51,6 +51,7 @@ type RecordUsageInput struct {
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	PricingGroupID     int64              // 内部子请求可覆盖渠道定价查询分组；0 表示使用 API Key 原分组
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -91,6 +92,21 @@ func PlatformFromAPIKey(apiKey *APIKey) string {
 		return ""
 	}
 	return apiKey.Group.Platform
+}
+
+func apiKeyForPricingGroup(apiKey *APIKey, groupID int64) *APIKey {
+	if apiKey == nil || groupID <= 0 || (apiKey.Group != nil && apiKey.Group.ID == groupID) {
+		return apiKey
+	}
+	clone := *apiKey
+	group := Group{ID: groupID}
+	if apiKey.Group != nil {
+		group = *apiKey.Group
+		group.ID = groupID
+	}
+	clone.Group = &group
+	clone.GroupID = &groupID
+	return &clone
 }
 
 // QuotaPlatform 返回 user×platform 配额计量使用的平台标识。
@@ -578,6 +594,7 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		ForceCacheBilling:  input.ForceCacheBilling,
 		APIKeyService:      input.APIKeyService,
 		QuotaPlatform:      input.QuotaPlatform,
+		PricingGroupID:     input.PricingGroupID,
 		ChannelUsageFields: input.ChannelUsageFields,
 	}, &recordUsageOpts{})
 }
@@ -644,6 +661,7 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
+	PricingGroupID     int64
 	ChannelUsageFields
 }
 
@@ -655,6 +673,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	pricingAPIKey := apiKeyForPricingGroup(apiKey, input.PricingGroupID)
 	ApplyForwardImageBillingResolution(result)
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
@@ -701,11 +720,11 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	// 家族模糊匹配错计（如 Opus 流量按 Sonnet 兜底价）。除非管理员为别名显式配置了
 	// 渠道定价（OpenRouter 式自定价），composite 请求一律按实际转发的具体模型计费。
 	if apiKey.Group != nil && apiKey.Group.Platform == PlatformComposite {
-		billingModel = s.compositeBillableModel(ctx, apiKey, billingModel, concreteBillingModel)
+		billingModel = s.compositeBillableModel(ctx, pricingAPIKey, billingModel, concreteBillingModel)
 	}
 	// 通用兜底（与 OpenAI 路径的 usageBillingModelCandidates 语义对齐）：
 	// 选定模型查不到任何价格时回退到实际转发的具体模型。已定价流量不受影响。
-	billingModel = s.billableModelWithFallback(ctx, apiKey, billingModel, result.UpstreamModel, result.Model)
+	billingModel = s.billableModelWithFallback(ctx, pricingAPIKey, billingModel, result.UpstreamModel, result.Model)
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
 	requestedModel := result.Model
@@ -714,7 +733,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用
-	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
+	cost := s.calculateRecordUsageCost(ctx, result, pricingAPIKey, billingModel, multiplier, imageMultiplier, opts)
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
