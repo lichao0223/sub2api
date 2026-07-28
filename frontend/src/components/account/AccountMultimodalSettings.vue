@@ -110,7 +110,6 @@ import type {
 const props = defineProps<{
   modelValue: MultimodalConfig
   models?: string[]
-  allowVisionToText?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -120,13 +119,11 @@ const emit = defineEmits<{
 const visionGroups = ref<Array<{ id: number; name: string; platform: string }>>([])
 const modelsByGroup = ref<Record<number, string[]>>({})
 
-const modeOptions = computed<SelectOption[]>(() => [
+const modeOptions: SelectOption[] = [
   { value: 'passthrough', label: '交给上游处理（图片透传）' },
-  ...(props.allowVisionToText === false
-    ? []
-    : [{ value: 'vision_to_text', label: '视觉模型转文本' }]),
+  { value: 'vision_to_text', label: '视觉模型转文本' },
   { value: 'reject', label: '不支持图片（跳过此账号）' }
-])
+]
 
 const visionGroupOptions = computed<SelectOption[]>(() => [
   { value: 0, label: '当前账号（仅 API Key）' },
