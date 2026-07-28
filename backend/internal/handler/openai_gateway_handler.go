@@ -303,6 +303,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	c.Request = c.Request.WithContext(service.WithMultimodalRequest(c.Request.Context(), body))
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -541,7 +542,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
+			return h.forwardWithMultimodal(
+				c.Request.Context(), c, account, apiKey, subscription, attemptBody,
+				func(preparedBody []byte) (*service.OpenAIForwardResult, error) {
+					return h.gatewayService.Forward(c.Request.Context(), c, account, preparedBody)
+				},
+			)
 		}()
 		cyberBlockKeyHTTP := ""
 		if service.GetOpsCyberPolicy(c) != nil {
@@ -924,6 +930,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	c.Request = c.Request.WithContext(service.WithMultimodalRequest(c.Request.Context(), body))
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
@@ -1080,7 +1087,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, forwardBody, promptCacheKey, defaultMappedModel)
+			return h.forwardWithMultimodal(
+				c.Request.Context(), c, account, apiKey, subscription, forwardBody,
+				func(preparedBody []byte) (*service.OpenAIForwardResult, error) {
+					return h.gatewayService.ForwardAsAnthropic(c.Request.Context(), c, account, preparedBody, promptCacheKey, defaultMappedModel)
+				},
+			)
 		}()
 		cyberBlockKeyMsg := ""
 		if service.GetOpsCyberPolicy(c) != nil {

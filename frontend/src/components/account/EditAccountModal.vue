@@ -2539,6 +2539,13 @@
         </div>
       </div>
 
+      <AccountMultimodalSettings
+        v-if="!isSparkShadow && (account?.platform === 'openai' || account?.platform === 'anthropic')"
+        v-model="multimodalConfig"
+        :models="multimodalModelOptions"
+        :allow-vision-to-text="account?.type === 'apikey'"
+      />
+
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
         v-if="!authStore.isSimpleMode"
@@ -2631,6 +2638,12 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AccountMultimodalSettings from '@/components/account/AccountMultimodalSettings.vue'
+import {
+  applyMultimodalConfig,
+  defaultMultimodalConfig,
+  readMultimodalConfig
+} from '@/components/account/accountMultimodal'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
   applyAntigravityProjectID,
@@ -2764,6 +2777,16 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const multimodalConfig = ref(defaultMultimodalConfig())
+const multimodalModelOptions = computed(() =>
+  [...new Set([
+    ...allowedModels.value,
+    ...modelMappings.value.map((mapping) => mapping.to),
+    multimodalConfig.value.defaultVisionModel,
+    ...multimodalConfig.value.rules.map((rule) => rule.visionModel),
+    ...multimodalConfig.value.rules.map((rule) => rule.model)
+  ].map((model) => model.trim()).filter(Boolean))]
+)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -3286,6 +3309,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
+  multimodalConfig.value = readMultimodalConfig(credentials)
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -4712,6 +4736,17 @@ const handleSubmit = async () => {
         delete newExtra.model_provider
       }
       updatePayload.extra = newExtra
+    }
+
+    if (
+      !isSparkShadow.value &&
+      (props.account.platform === 'openai' || props.account.platform === 'anthropic')
+    ) {
+      const credentials =
+        (updatePayload.credentials as Record<string, unknown>) ||
+        { ...((props.account.credentials as Record<string, unknown>) || {}) }
+      applyMultimodalConfig(credentials, multimodalConfig.value)
+      updatePayload.credentials = credentials
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

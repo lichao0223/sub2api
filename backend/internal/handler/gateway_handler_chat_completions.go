@@ -67,6 +67,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	c.Request = c.Request.WithContext(service.WithMultimodalRequest(c.Request.Context(), body))
 
 	// Extract model and stream
 	modelResult := gjson.GetBytes(body, "model")
@@ -261,7 +262,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
 			result, err = h.antigravityGatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
 		} else {
-			result, err = h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
+			result, err = h.forwardWithMultimodal(
+				c.Request.Context(), c, account, apiKey, subscription, forwardBody,
+				func(preparedBody []byte) (*service.ForwardResult, error) {
+					return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, preparedBody, parsedReq)
+				},
+			)
 		}
 
 		if accountReleaseFunc != nil {
