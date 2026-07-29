@@ -1,10 +1,6 @@
 <template>
   <AppLayout>
     <div class="space-y-5">
-      <div>
-        <h1 class="text-2xl font-bold text-gray-900 dark:text-white">成本管理</h1>
-        <p class="mt-1 text-sm text-gray-500">旁路核算真实采购成本，不影响消费记录和账号调度</p>
-      </div>
       <div class="flex gap-6 border-b border-gray-200 dark:border-dark-700">
         <button v-for="item in tabs" :key="item.key" class="border-b-2 px-1 pb-3 text-sm font-medium" :class="tab===item.key?'border-primary-500 text-primary-600':'border-transparent text-gray-500'" @click="tab=item.key">{{ item.label }}</button>
       </div>
