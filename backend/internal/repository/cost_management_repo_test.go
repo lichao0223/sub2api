@@ -26,6 +26,14 @@ func TestFixedBillingPeriodPreservesOriginalAnchor(t *testing.T) {
 	require.Equal(t, "2026-03-31", end.Format("2006-01-02"))
 }
 
+func TestFixedBillingPeriodUsesCostTimezoneForDatabaseTimestamps(t *testing.T) {
+	day := time.Date(2026, time.July, 29, 0, 0, 0, 0, time.UTC)
+	anchor := time.Date(2026, time.June, 30, 16, 0, 0, 0, time.UTC)
+	start, end := fixedBillingPeriod(day, anchor)
+	require.Equal(t, "2026-07-01", start.Format("2006-01-02"))
+	require.Equal(t, "2026-08-01", end.Format("2006-01-02"))
+}
+
 func TestCostAnalysisRangeUsesExactBucketCounts(t *testing.T) {
 	now := time.Date(2026, time.July, 29, 12, 0, 0, 0, time.UTC)
 	start, grain := costAnalysisRange("month", now)
@@ -146,6 +154,32 @@ func TestPrepareSubscriptionUnitCreatesOnePurchasedInstance(t *testing.T) {
 	require.NoError(t, prepareSubscriptionUnitTx(context.Background(), tx, &input))
 	require.Equal(t, int64(29), *input.SubscriptionUnitID)
 	require.Empty(t, input.NewSubscriptionUnitName)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestEndCostSubscriptionUnitEndsCurrentAccountBindings(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 29, 10, 0, 0, 0, time.UTC)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT effective_from,effective_to").
+		WithArgs(int64(31)).
+		WillReturnRows(sqlmock.NewRows([]string{"effective_from", "effective_to"}).AddRow(start, nil))
+	mock.ExpectQuery("SELECT EXISTS").
+		WithArgs(int64(31), end).
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+	mock.ExpectExec("UPDATE cost_subscription_units").
+		WithArgs(int64(31), end).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE account_cost_configs").
+		WithArgs(int64(31), end).
+		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectCommit()
+
+	require.NoError(t, (&costManagementRepository{db: db}).EndCostSubscriptionUnit(context.Background(), 31, end))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

@@ -12,6 +12,9 @@ const api = vi.hoisted(() => ({
   plan: vi.fn(),
   modelOptions: vi.fn(),
   subscriptionUnits: vi.fn(),
+  createSubscriptionUnit: vi.fn(),
+  renameSubscriptionUnit: vi.fn(),
+  endSubscriptionUnit: vi.fn(),
   saveAccount: vi.fn(),
   saveAccounts: vi.fn(),
   endAccount: vi.fn(),
@@ -89,6 +92,9 @@ describe('CostManagementView', () => {
     })
     api.modelOptions.mockReset().mockResolvedValue({ items: [], total: 0 })
     api.subscriptionUnits.mockReset().mockResolvedValue([])
+    api.createSubscriptionUnit.mockReset().mockResolvedValue({})
+    api.renameSubscriptionUnit.mockReset().mockResolvedValue({})
+    api.endSubscriptionUnit.mockReset().mockResolvedValue({})
     api.saveAccount.mockReset().mockResolvedValue({})
     api.saveAccounts.mockReset().mockResolvedValue({})
     api.endAccount.mockReset().mockResolvedValue({})
@@ -121,7 +127,7 @@ describe('CostManagementView', () => {
       total: 1,
     })
     api.subscriptionUnits.mockResolvedValue([
-      { id: 31, plan_id: 12, name: '订阅 #1', effective_from: '2026-01-01', account_count: 2 },
+      { id: 31, plan_id: 12, name: '订阅 #1', created_at: '2026-01-01', account_count: 2 },
     ])
     const wrapper = mountView()
     await flushPromises()
@@ -144,6 +150,41 @@ describe('CostManagementView', () => {
       subscription_unit_id: undefined,
       new_subscription_unit_name: '订阅 #2',
     }))
+  })
+
+  it('creates, renames and ends a fixed-plan subscription instance', async () => {
+    api.plans.mockResolvedValue({
+      items: [{ id: 12, name: 'ChatGPT Plus', plan_type: 'fixed', status: 'active' }],
+      total: 1,
+    })
+    api.subscriptionUnits.mockResolvedValue([
+      { id: 31, plan_id: 12, name: '订阅 #1', created_at: '2026-07-29T01:02:03Z', account_count: 2 },
+    ])
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '订阅实例')!.trigger('click')
+    await flushPromises()
+
+    let dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('订阅实例 · ChatGPT Plus'))!
+    await dialog.get('input[placeholder="例如：ChatGPT Plus #3"]').setValue('订阅 #2')
+    await dialog.findAll('button').find(button => button.text() === '新建实例')!.trigger('click')
+    await flushPromises()
+    expect(api.createSubscriptionUnit).toHaveBeenCalledWith(12, '订阅 #2')
+
+    dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('订阅实例 · ChatGPT Plus'))!
+    await dialog.findAll('button').find(button => button.text() === '修改名称')!.trigger('click')
+    await dialog.get('input').setValue('主订阅')
+    await dialog.findAll('button').find(button => button.text() === '保存名称')!.trigger('click')
+    await flushPromises()
+    expect(api.renameSubscriptionUnit).toHaveBeenCalledWith(31, '主订阅')
+
+    await dialog.findAll('button').find(button => button.text() === '停用')!.trigger('click')
+    const confirm = wrapper.findAll('[data-test="confirm-dialog"]').find(item => item.text().includes('停用订阅实例'))!
+    await confirm.find('button').trigger('click')
+    await flushPromises()
+    expect(api.endSubscriptionUnit).toHaveBeenCalledWith(31)
   })
 
   it('shows only fields used by the selected billing mode', async () => {

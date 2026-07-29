@@ -162,12 +162,12 @@ type AccountCostRow struct {
 }
 
 type CostSubscriptionUnit struct {
-	ID            int64      `json:"id"`
-	PlanID        int64      `json:"plan_id"`
-	Name          string     `json:"name"`
-	EffectiveFrom time.Time  `json:"effective_from"`
-	EffectiveTo   *time.Time `json:"effective_to"`
-	AccountCount  int        `json:"account_count"`
+	ID           int64      `json:"id"`
+	PlanID       int64      `json:"plan_id"`
+	Name         string     `json:"name"`
+	CreatedAt    time.Time  `json:"created_at"`
+	EndedAt      *time.Time `json:"ended_at"`
+	AccountCount int        `json:"account_count"`
 }
 
 type CostOverview struct {
@@ -244,6 +244,9 @@ type CostManagementRepository interface {
 	DisableCostPlan(context.Context, int64) error
 	ListAccountCosts(context.Context, int, int, string, string) ([]AccountCostRow, int64, error)
 	ListCostSubscriptionUnits(context.Context, int64) ([]CostSubscriptionUnit, error)
+	CreateCostSubscriptionUnit(context.Context, int64, string) (*CostSubscriptionUnit, error)
+	RenameCostSubscriptionUnit(context.Context, int64, string) error
+	EndCostSubscriptionUnit(context.Context, int64, time.Time) error
 	ListCostModelOptions(context.Context, int, int, string) ([]CostModelOption, int64, error)
 	SaveAccountCost(context.Context, AccountCostInput) error
 	SaveAccountCosts(context.Context, []AccountCostInput) error
@@ -345,6 +348,30 @@ func (s *CostManagementService) ListSubscriptionUnits(ctx context.Context, planI
 	}
 	return s.repo.ListCostSubscriptionUnits(ctx, planID)
 }
+func (s *CostManagementService) CreateSubscriptionUnit(ctx context.Context, planID int64, name string) (*CostSubscriptionUnit, error) {
+	if planID <= 0 {
+		return nil, errors.New("固定成本方案无效")
+	}
+	if err := validateSubscriptionUnitName(name); err != nil {
+		return nil, err
+	}
+	return s.repo.CreateCostSubscriptionUnit(ctx, planID, strings.TrimSpace(name))
+}
+func (s *CostManagementService) RenameSubscriptionUnit(ctx context.Context, id int64, name string) error {
+	if id <= 0 {
+		return errors.New("订阅实例无效")
+	}
+	if err := validateSubscriptionUnitName(name); err != nil {
+		return err
+	}
+	return s.repo.RenameCostSubscriptionUnit(ctx, id, strings.TrimSpace(name))
+}
+func (s *CostManagementService) EndSubscriptionUnit(ctx context.Context, id int64) error {
+	if id <= 0 {
+		return errors.New("订阅实例无效")
+	}
+	return s.repo.EndCostSubscriptionUnit(ctx, id, time.Now())
+}
 func (s *CostManagementService) ListModelOptions(ctx context.Context, page, pageSize int, search string) ([]CostModelOption, int64, error) {
 	return s.repo.ListCostModelOptions(ctx, page, pageSize, search)
 }
@@ -393,11 +420,22 @@ func validateAccountCostInput(in AccountCostInput) error {
 		if hasExisting == hasNew {
 			return errors.New("固定成本账号必须选择一个订阅实例")
 		}
-		if utf8.RuneCountInString(name) > 120 {
-			return errors.New("订阅实例名称不能超过 120 个字符")
+		if hasNew {
+			return validateSubscriptionUnitName(name)
 		}
 	} else if in.SubscriptionUnitID != nil || strings.TrimSpace(in.NewSubscriptionUnitName) != "" {
 		return errors.New("按量账号不能选择订阅实例")
+	}
+	return nil
+}
+
+func validateSubscriptionUnitName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("订阅实例名称不能为空")
+	}
+	if utf8.RuneCountInString(name) > 120 {
+		return errors.New("订阅实例名称不能超过 120 个字符")
 	}
 	return nil
 }

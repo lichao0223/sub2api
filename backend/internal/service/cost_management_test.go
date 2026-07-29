@@ -66,6 +66,12 @@ func TestValidateAccountCostInputRequiresOneFixedSubscriptionUnit(t *testing.T) 
 	require.EqualError(t, validateAccountCostInput(base), "固定成本账号必须选择一个订阅实例")
 }
 
+func TestValidateSubscriptionUnitName(t *testing.T) {
+	require.EqualError(t, validateSubscriptionUnitName(" \t "), "订阅实例名称不能为空")
+	require.EqualError(t, validateSubscriptionUnitName(string(make([]rune, 121))), "订阅实例名称不能超过 120 个字符")
+	require.NoError(t, validateSubscriptionUnitName("ChatGPT Plus #3"))
+}
+
 func TestCostPlanInputAcceptsNumericCostAmounts(t *testing.T) {
 	var input CostPlanInput
 	require.NoError(t, json.Unmarshal([]byte(`{

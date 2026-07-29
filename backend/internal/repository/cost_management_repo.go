@@ -359,11 +359,11 @@ func (r *costManagementRepository) ListAccountCosts(ctx context.Context, page, p
 
 func (r *costManagementRepository) ListCostSubscriptionUnits(ctx context.Context, planID int64) ([]service.CostSubscriptionUnit, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT u.id,u.plan_id,u.name,u.effective_from,u.effective_to,
+		SELECT u.id,u.plan_id,u.name,u.created_at,u.effective_to,
 		       COUNT(c.id) FILTER(WHERE c.effective_from<=NOW() AND(c.effective_to IS NULL OR c.effective_to>NOW()))
 		FROM cost_subscription_units u
 		LEFT JOIN account_cost_configs c ON c.subscription_unit_id=u.id
-		WHERE u.plan_id=$1 AND(u.effective_to IS NULL OR u.effective_to>NOW())
+		WHERE u.plan_id=$1
 		GROUP BY u.id ORDER BY u.id`, planID)
 	if err != nil {
 		return nil, err
@@ -373,15 +373,80 @@ func (r *costManagementRepository) ListCostSubscriptionUnits(ctx context.Context
 	for rows.Next() {
 		var item service.CostSubscriptionUnit
 		var end sql.NullTime
-		if err = rows.Scan(&item.ID, &item.PlanID, &item.Name, &item.EffectiveFrom, &end, &item.AccountCount); err != nil {
+		if err = rows.Scan(&item.ID, &item.PlanID, &item.Name, &item.CreatedAt, &end, &item.AccountCount); err != nil {
 			return nil, err
 		}
 		if end.Valid {
-			item.EffectiveTo = &end.Time
+			item.EndedAt = &end.Time
 		}
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+func (r *costManagementRepository) CreateCostSubscriptionUnit(ctx context.Context, planID int64, name string) (*service.CostSubscriptionUnit, error) {
+	item := &service.CostSubscriptionUnit{PlanID: planID, Name: name}
+	err := r.db.QueryRowContext(ctx, `
+		INSERT INTO cost_subscription_units(plan_id,name,effective_from)
+		SELECT id,$2,NOW() FROM cost_plans WHERE id=$1 AND plan_type='fixed' AND status='active'
+		RETURNING id,created_at`, planID, name).Scan(&item.ID, &item.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, errors.New("固定成本方案不存在或已停用")
+	}
+	if isUniqueConstraintViolation(err) {
+		return nil, errors.New("该成本方案下已存在同名订阅实例")
+	}
+	return item, err
+}
+
+func (r *costManagementRepository) RenameCostSubscriptionUnit(ctx context.Context, id int64, name string) error {
+	result, err := r.db.ExecContext(ctx, `UPDATE cost_subscription_units SET name=$2,updated_at=NOW() WHERE id=$1`, id, name)
+	if isUniqueConstraintViolation(err) {
+		return errors.New("该成本方案下已存在同名订阅实例")
+	}
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (r *costManagementRepository) EndCostSubscriptionUnit(ctx context.Context, id int64, end time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var startsAt time.Time
+	var endedAt sql.NullTime
+	if err = tx.QueryRowContext(ctx, `SELECT effective_from,effective_to FROM cost_subscription_units WHERE id=$1 FOR UPDATE`, id).Scan(&startsAt, &endedAt); err != nil {
+		return err
+	}
+	if endedAt.Valid || !end.After(startsAt) {
+		return errors.New("订阅实例已经停用")
+	}
+	var futureBindings bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_cost_configs WHERE subscription_unit_id=$1 AND effective_from>=$2)`, id, end).Scan(&futureBindings); err != nil {
+		return err
+	}
+	if futureBindings {
+		return errors.New("订阅实例存在尚未生效的账号归属，不能停用")
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE cost_subscription_units SET effective_to=$2,updated_at=NOW() WHERE id=$1`, id, end); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `
+		UPDATE account_cost_configs SET effective_to=$2,updated_at=NOW()
+		WHERE subscription_unit_id=$1 AND effective_from<$2 AND(effective_to IS NULL OR effective_to>$2)`, id, end); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *costManagementRepository) ListCostModelOptions(ctx context.Context, page, pageSize int, search string) ([]service.CostModelOption, int64, error) {
@@ -573,12 +638,11 @@ func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostIn
 			return errors.New("固定成本账号必须选择一个订阅实例")
 		}
 		var unitPlanID int64
-		var unitFrom time.Time
 		var unitTo sql.NullTime
-		if err = tx.QueryRowContext(ctx, `SELECT plan_id,effective_from,effective_to FROM cost_subscription_units WHERE id=$1`, *in.SubscriptionUnitID).Scan(&unitPlanID, &unitFrom, &unitTo); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT plan_id,effective_to FROM cost_subscription_units WHERE id=$1`, *in.SubscriptionUnitID).Scan(&unitPlanID, &unitTo); err != nil {
 			return err
 		}
-		if in.PlanID == nil || unitPlanID != *in.PlanID || in.EffectiveFrom.Before(unitFrom) || unitTo.Valid && (in.EffectiveTo == nil || in.EffectiveTo.After(unitTo.Time)) {
+		if in.PlanID == nil || unitPlanID != *in.PlanID || unitTo.Valid && (in.EffectiveTo == nil || in.EffectiveTo.After(unitTo.Time)) {
 			return errors.New("订阅实例与固定成本方案或生效时间不匹配")
 		}
 	} else if in.SubscriptionUnitID != nil {
@@ -990,13 +1054,13 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		           AND legacy.effective_from<$4 AND(legacy.effective_to IS NULL OR legacy.effective_to>$3)
 		       ) THEN v.purchase_quantity ELSE (
 		         SELECT COUNT(*)::int FROM cost_subscription_units u
-		         WHERE u.plan_id=p.id AND u.effective_from<$4 AND(u.effective_to IS NULL OR u.effective_to>$3)
+		         WHERE u.plan_id=p.id AND(u.effective_to IS NULL OR u.effective_to>$3)
 		           AND EXISTS (
 		             SELECT 1 FROM account_cost_configs c
 		             JOIN usage_logs ul ON ul.account_id=c.account_id
 		               AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
 		             WHERE c.cost_mode='fixed' AND c.plan_id=p.id AND c.subscription_unit_id=u.id
-		               AND u.effective_from<=ul.created_at AND(u.effective_to IS NULL OR u.effective_to>ul.created_at)
+		               AND(u.effective_to IS NULL OR u.effective_to>ul.created_at)
 		               AND ul.created_at>=$3 AND ul.created_at<$4
 		           )
 		       ) END,
@@ -1108,7 +1172,8 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 }
 
 func fixedBillingPeriod(day, anchor time.Time) (time.Time, time.Time) {
-	loc := day.Location()
+	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
+	day, anchor = day.In(loc), anchor.In(loc)
 	periodStart := anchoredMonthDate(day.Year(), day.Month(), anchor.Day(), loc)
 	if periodStart.After(day) {
 		prev := day.AddDate(0, -1, 0)

@@ -111,6 +111,51 @@ func (h *CostManagementHandler) ListSubscriptionUnits(c *gin.Context) {
 	}
 	response.Success(c, items)
 }
+func (h *CostManagementHandler) CreateSubscriptionUnit(c *gin.Context) {
+	var req struct {
+		PlanID int64  `json:"plan_id"`
+		Name   string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	item, err := h.service.CreateSubscriptionUnit(c.Request.Context(), req.PlanID, req.Name)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Created(c, item)
+}
+func (h *CostManagementHandler) RenameSubscriptionUnit(c *gin.Context) {
+	id, ok := costID(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.service.RenameSubscriptionUnit(c.Request.Context(), id, req.Name); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"renamed": true})
+}
+func (h *CostManagementHandler) EndSubscriptionUnit(c *gin.Context) {
+	id, ok := costID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.EndSubscriptionUnit(c.Request.Context(), id); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"ended": true})
+}
 func (h *CostManagementHandler) SaveAccount(c *gin.Context) {
 	id, ok := costID(c)
 	if !ok {
