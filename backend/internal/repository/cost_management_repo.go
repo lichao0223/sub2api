@@ -386,7 +386,7 @@ func (r *costManagementRepository) DisableCostPlan(ctx context.Context, id int64
 	return nil
 }
 
-func (r *costManagementRepository) ListAccountCosts(ctx context.Context, page, pageSize int, mode, search string) ([]service.AccountCostRow, int64, error) {
+func (r *costManagementRepository) ListAccountCosts(ctx context.Context, page, pageSize int, mode, search string, start, end time.Time) ([]service.AccountCostRow, int64, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -401,7 +401,7 @@ func (r *costManagementRepository) ListAccountCosts(ctx context.Context, page, p
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM accounts a LEFT JOIN LATERAL(SELECT * FROM account_cost_configs WHERE account_id=a.id AND effective_from<=NOW() AND (effective_to IS NULL OR effective_to>NOW()) ORDER BY effective_from DESC LIMIT 1)c ON TRUE `+where, mode, search).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT a.id,a.name,a.platform,a.status,COALESCE(c.cost_mode,''),c.plan_id,COALESCE(p.name,''),c.subscription_unit_id,COALESCE(u.name,''),c.effective_from,c.effective_to,COALESCE(c.exclude_reason,''),COALESCE((SELECT SUM(pending_count) FROM cost_daily_aggregates d WHERE d.account_id=a.id AND d.calculation_status='pending'),0) FROM accounts a LEFT JOIN LATERAL(SELECT * FROM account_cost_configs WHERE account_id=a.id AND effective_from<=NOW() AND (effective_to IS NULL OR effective_to>NOW()) ORDER BY effective_from DESC LIMIT 1)c ON TRUE LEFT JOIN cost_plans p ON p.id=c.plan_id LEFT JOIN cost_subscription_units u ON u.id=c.subscription_unit_id `+where+` ORDER BY a.id DESC LIMIT $3 OFFSET $4`, mode, search, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `SELECT a.id,a.name,a.platform,a.status,COALESCE(c.cost_mode,''),c.plan_id,COALESCE(p.name,''),c.subscription_unit_id,COALESCE(u.name,''),c.effective_from,c.effective_to,COALESCE(c.exclude_reason,''),COALESCE((SELECT SUM(pending_count) FROM cost_daily_aggregates d WHERE d.account_id=a.id AND d.calculation_status='pending' AND d.bucket_date>=$3::date AND d.bucket_date<$4::date),0) FROM accounts a LEFT JOIN LATERAL(SELECT * FROM account_cost_configs WHERE account_id=a.id AND effective_from<=NOW() AND (effective_to IS NULL OR effective_to>NOW()) ORDER BY effective_from DESC LIMIT 1)c ON TRUE LEFT JOIN cost_plans p ON p.id=c.plan_id LEFT JOIN cost_subscription_units u ON u.id=c.subscription_unit_id `+where+` ORDER BY a.id DESC LIMIT $5 OFFSET $6`, mode, search, start, end, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -725,21 +725,27 @@ func prepareSubscriptionUnitTx(ctx context.Context, tx *sql.Tx, in *service.Acco
 }
 
 func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostInput) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id,effective_from FROM account_cost_configs WHERE account_id=$1 AND (effective_to IS NULL OR effective_to>$2) ORDER BY effective_from FOR UPDATE`, in.AccountID, in.EffectiveFrom)
+	rows, err := tx.QueryContext(ctx, `SELECT id,effective_from,(SELECT COUNT(*) FROM account_cost_configs WHERE account_id=$1) FROM account_cost_configs WHERE account_id=$1 AND (effective_to IS NULL OR effective_to>$2) ORDER BY effective_from FOR UPDATE`, in.AccountID, in.EffectiveFrom)
 	if err != nil {
 		return err
 	}
 	var closeIDs []int64
+	var correctionID int64
 	for rows.Next() {
 		var id int64
 		var from time.Time
-		if err = rows.Scan(&id, &from); err != nil {
+		var configCount int64
+		if err = rows.Scan(&id, &from, &configCount); err != nil {
 			_ = rows.Close()
 			return err
 		}
 		if !from.Before(in.EffectiveFrom) {
+			if configCount == 1 {
+				correctionID = id
+				continue
+			}
 			_ = rows.Close()
-			return errors.New("a future or overlapping account cost configuration exists")
+			return errors.New("存在更晚或重叠的账号成本配置，无法修改生效时间")
 		}
 		closeIDs = append(closeIDs, id)
 	}
@@ -775,6 +781,10 @@ func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostIn
 		}
 	} else if in.SubscriptionUnitID != nil {
 		return errors.New("只有固定成本账号可以选择订阅实例")
+	}
+	if correctionID != 0 {
+		_, err = tx.ExecContext(ctx, `UPDATE account_cost_configs SET cost_mode=$2,plan_id=$3,subscription_unit_id=$4,effective_from=$5,effective_to=$6,exclude_reason=$7,note=$8,updated_at=NOW() WHERE id=$1`, correctionID, in.CostMode, in.PlanID, in.SubscriptionUnitID, in.EffectiveFrom, in.EffectiveTo, in.ExcludeReason, in.Note)
+		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO account_cost_configs(account_id,cost_mode,plan_id,subscription_unit_id,effective_from,effective_to,exclude_reason,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, in.AccountID, in.CostMode, in.PlanID, in.SubscriptionUnitID, in.EffectiveFrom, in.EffectiveTo, in.ExcludeReason, in.Note)
 	if err != nil {

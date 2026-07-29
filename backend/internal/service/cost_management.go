@@ -307,7 +307,7 @@ type CostManagementRepository interface {
 	ChangeCostPlanPrice(context.Context, int64, CostPriceChangeInput) error
 	ListCostPriceHistory(context.Context, int64) ([]CostPriceVersion, error)
 	DisableCostPlan(context.Context, int64) error
-	ListAccountCosts(context.Context, int, int, string, string) ([]AccountCostRow, int64, error)
+	ListAccountCosts(context.Context, int, int, string, string, time.Time, time.Time) ([]AccountCostRow, int64, error)
 	ListCostSubscriptionUnits(context.Context, int64) ([]CostSubscriptionUnit, error)
 	CreateCostSubscriptionUnit(context.Context, CostSubscriptionUnitInput) (*CostSubscriptionUnit, error)
 	RenameCostSubscriptionUnit(context.Context, int64, string) error
@@ -438,8 +438,8 @@ func (s *CostManagementService) ListPriceHistory(ctx context.Context, id int64) 
 func (s *CostManagementService) DisablePlan(ctx context.Context, id int64) error {
 	return s.repo.DisableCostPlan(ctx, id)
 }
-func (s *CostManagementService) ListAccounts(ctx context.Context, page, pageSize int, mode, search string) ([]AccountCostRow, int64, error) {
-	return s.repo.ListAccountCosts(ctx, page, pageSize, mode, search)
+func (s *CostManagementService) ListAccounts(ctx context.Context, page, pageSize int, mode, search string, start, end time.Time) ([]AccountCostRow, int64, error) {
+	return s.repo.ListAccountCosts(ctx, page, pageSize, mode, search, start, end)
 }
 func (s *CostManagementService) ListSubscriptionUnits(ctx context.Context, planID int64) ([]CostSubscriptionUnit, error) {
 	if planID <= 0 {
@@ -514,14 +514,14 @@ func (s *CostManagementService) EndAccount(ctx context.Context, accountID int64,
 }
 func validateAccountCostInput(in AccountCostInput) error {
 	if in.AccountID <= 0 || in.EffectiveFrom.IsZero() || in.EffectiveTo != nil && !in.EffectiveTo.After(in.EffectiveFrom) {
-		return errors.New("invalid account cost period")
+		return errors.New("账号成本生效时间无效")
 	}
 	if in.CostMode == "excluded" {
 		if strings.TrimSpace(in.ExcludeReason) == "" || in.PlanID != nil || in.SubscriptionUnitID != nil || strings.TrimSpace(in.NewSubscriptionUnitName) != "" {
-			return errors.New("excluded account requires a reason and no plan")
+			return errors.New("不纳入核算的账号必须填写排除原因且不能选择成本方案")
 		}
 	} else if (in.CostMode != "metered" && in.CostMode != "fixed") || in.PlanID == nil {
-		return errors.New("metered or fixed account requires a plan")
+		return errors.New("请选择成本方案")
 	} else if in.CostMode == "fixed" {
 		name := strings.TrimSpace(in.NewSubscriptionUnitName)
 		hasExisting := in.SubscriptionUnitID != nil && *in.SubscriptionUnitID > 0

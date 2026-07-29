@@ -226,6 +226,56 @@ func TestEndCostSubscriptionUnitEndsCurrentAccountBindings(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestSaveAccountCostCorrectsOnlyExistingConfigurationStartTime(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	accountID, planID, unitID := int64(7), int64(11), int64(31)
+	original := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
+	corrected := time.Date(2026, 1, 29, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT id,effective_from").WithArgs(accountID, corrected).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "effective_from", "count"}).AddRow(41, original, 1))
+	mock.ExpectQuery("SELECT plan_type,status").WithArgs(planID).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status"}).AddRow("fixed", "active"))
+	mock.ExpectQuery("SELECT plan_id,effective_from,effective_to").WithArgs(unitID).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_id", "effective_from", "effective_to"}).AddRow(planID, corrected, nil))
+	mock.ExpectExec("UPDATE account_cost_configs SET cost_mode").
+		WithArgs(int64(41), "fixed", &planID, &unitID, corrected, nil, "", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	require.NoError(t, saveAccountCostTx(context.Background(), tx, service.AccountCostInput{
+		AccountID: accountID, CostMode: "fixed", PlanID: &planID, SubscriptionUnitID: &unitID, EffectiveFrom: corrected,
+	}))
+	mock.ExpectRollback()
+	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestListAccountCostsUsesTheOverviewDateRangeForPendingCounts(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT COUNT\\(\\*\\) FROM accounts").WithArgs("", "").
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery("d.bucket_date>=\\$3::date AND d.bucket_date<\\$4::date").
+		WithArgs("", "", start, end, 20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "platform", "status", "cost_mode", "plan_id", "plan_name", "subscription_unit_id", "subscription_unit_name", "effective_from", "effective_to", "exclude_reason", "pending_count"}).
+			AddRow(7, "GPT", "openai", "active", "fixed", 11, "GPT 订阅", 31, "订阅 #1", start, nil, "", 9))
+
+	items, total, err := (&costManagementRepository{db: db}).ListAccountCosts(context.Background(), 1, 20, "", "", start, end)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Equal(t, int64(9), items[0].PendingCount)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCreateCostRecalculationRejectsOverlappingActiveJob(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

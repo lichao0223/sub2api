@@ -110,7 +110,11 @@ func (h *CostManagementHandler) DisablePlan(c *gin.Context) {
 }
 func (h *CostManagementHandler) ListAccounts(c *gin.Context) {
 	page, size := response.ParsePagination(c)
-	items, total, err := h.service.ListAccounts(c.Request.Context(), page, size, c.Query("mode"), c.Query("search"))
+	start, end, ok := costDateRange(c)
+	if !ok {
+		return
+	}
+	items, total, err := h.service.ListAccounts(c.Request.Context(), page, size, c.Query("mode"), c.Query("search"), start, end)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

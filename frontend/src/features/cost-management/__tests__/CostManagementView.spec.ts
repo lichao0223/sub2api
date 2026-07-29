@@ -27,10 +27,11 @@ const api = vi.hoisted(() => ({
   createRecalculation: vi.fn(),
   cancelRecalculation: vi.fn(),
 }))
+const app = vi.hoisted(() => ({ showSuccess: vi.fn(), showError: vi.fn() }))
 
 vi.mock('@/api/admin/costManagement', () => ({ default: api }))
 vi.mock('@/stores', () => ({
-  useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }),
+  useAppStore: () => app,
 }))
 vi.mock('chart.js/auto', () => ({
   Chart: class {
@@ -108,6 +109,8 @@ describe('CostManagementView', () => {
     api.recalculations.mockReset().mockResolvedValue({ items: [], total: 0 })
     api.createRecalculation.mockReset().mockResolvedValue({})
     api.cancelRecalculation.mockReset().mockResolvedValue({})
+    app.showSuccess.mockReset()
+    app.showError.mockReset()
   })
 
   it('derives the cost mode from the selected plan', async () => {
@@ -118,11 +121,32 @@ describe('CostManagementView', () => {
     await wrapper.findAll('button').find(button => button.text() === '配置')!.trigger('click')
 
     const dialog = wrapper.get('[data-test="dialog"]')
+    expect(api.accounts).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String), end_date: expect.any(String) }))
     expect(dialog.text()).toContain('成本方案')
     expect(dialog.text()).not.toContain('成本方式')
     expect(dialog.text()).not.toContain('排除原因')
     await dialog.get('select').setValue('excluded')
     expect(dialog.text()).toContain('排除原因')
+  })
+
+  it('does not render the redundant metered accounting panel', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('按量成本核算')
+  })
+
+  it('rejects an account cost configuration without a plan before submitting', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '账号成本')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '配置')!.trigger('click')
+
+    await wrapper.get('[data-test="dialog"]').findAll('button').find(button => button.text() === '保存')!.trigger('click')
+
+    expect(api.saveAccount).not.toHaveBeenCalled()
+    expect(app.showError).toHaveBeenCalledOnce()
+    expect(app.showError).toHaveBeenCalledWith('请选择成本方案')
   })
 
   it('groups fixed-cost accounts into an existing or new subscription instance', async () => {
@@ -154,6 +178,30 @@ describe('CostManagementView', () => {
       subscription_unit_id: undefined,
       new_subscription_unit_name: '订阅 #2',
     }))
+  })
+
+  it('rejects an account assignment before the selected subscription starts', async () => {
+    api.plans.mockResolvedValue({
+      items: [{ id: 12, name: 'ChatGPT Plus', plan_type: 'fixed', status: 'active' }],
+      total: 1,
+    })
+    api.subscriptionUnits.mockResolvedValue([
+      { id: 31, plan_id: 12, name: '订阅 #1', effective_from: '2026-07-01T00:00:00Z', billing_cycle: 'monthly', fixed_unit_cost_cny: '140', monthly_unit_cost_cny: '140', version_no: 1, account_count: 0 },
+    ])
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '账号成本')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '配置')!.trigger('click')
+    const dialog = wrapper.get('[data-test="dialog"]')
+    await dialog.get('select').setValue('12')
+    await flushPromises()
+    await dialog.findAll('select').at(1)!.setValue('31')
+    await dialog.get('input[type="datetime-local"]').setValue('2026-02-03T14:42')
+    await dialog.findAll('button').find(button => button.text() === '保存')!.trigger('click')
+
+    expect(api.saveAccount).not.toHaveBeenCalled()
+    expect(app.showError).toHaveBeenCalledWith(expect.stringContaining('不能早于订阅实例开始时间'))
   })
 
   it('creates, renames and ends a fixed-plan subscription instance', async () => {
@@ -249,7 +297,7 @@ describe('CostManagementView', () => {
   it('uses the app confirmation dialog and closes after queuing a recalculation', async () => {
     const wrapper = mountView()
     await flushPromises()
-    await wrapper.findAll('button').find(button => button.text() === '历史补算')!.trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === '核算任务')!.trigger('click')
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '开始补算')!.trigger('click')
 
