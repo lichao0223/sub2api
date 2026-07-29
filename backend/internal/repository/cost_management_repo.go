@@ -632,7 +632,7 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		  FROM usage_logs ul WHERE ul.id>$1 ORDER BY ul.id LIMIT $2
 		), resolved AS (
 		  SELECT b.*,c.id config_id,c.cost_mode,c.plan_id,v.id version_id,mp.id price_id,
-		    mp.billing_mode,
+		    mp.billing_mode AS cost_billing_mode,
 		    mp.input_price_cny,mp.output_price_cny,mp.cache_write_price_cny,mp.cache_read_price_cny,
 		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny
 		  FROM batch b
@@ -647,12 +647,12 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		    COUNT(*)::bigint requests,SUM(input_tokens)::bigint inputs,SUM(output_tokens)::bigint outputs,SUM(cache_creation_tokens)::bigint cache_writes,SUM(cache_read_tokens)::bigint cache_reads,
 		    SUM(COALESCE(image_input_tokens,0))::bigint image_inputs,SUM(COALESCE(image_output_tokens,0))::bigint image_outputs,SUM(COALESCE(image_count,0))::bigint images,
 		    SUM(CASE WHEN price_id IS NULL THEN 0 ELSE
-		      CASE WHEN billing_mode IN('token','hybrid') THEN
+		      CASE WHEN cost_billing_mode IN('token','hybrid') THEN
 		        input_tokens*input_price_cny/1000000+output_tokens*output_price_cny/1000000+
 		        cache_creation_tokens*cache_write_price_cny/1000000+cache_read_tokens*cache_read_price_cny/1000000+
 		        COALESCE(image_input_tokens,0)*image_input_price_cny/1000000+COALESCE(image_output_tokens,0)*image_output_price_cny/1000000
 		      ELSE 0 END+
-		      CASE WHEN billing_mode IN('request','hybrid') THEN per_request_price_cny ELSE 0 END
+		      CASE WHEN cost_billing_mode IN('request','hybrid') THEN per_request_price_cny ELSE 0 END
 		    END) amount,
 		    COUNT(*) FILTER(WHERE config_id IS NULL OR final_model='' OR version_id IS NULL OR price_id IS NULL)::bigint pending
 		  FROM resolved WHERE COALESCE(cost_mode,'metered')='metered'
@@ -902,7 +902,7 @@ func rebuildUsageRange(ctx context.Context, tx *sql.Tx, start, end time.Time) er
 		WITH resolved AS (
 		  SELECT ul.*,COALESCE(NULLIF(BTRIM(ul.upstream_model),''),ul.model) AS final_model,
 		    c.id config_id,c.cost_mode,c.plan_id,v.id version_id,mp.id price_id,
-		    mp.billing_mode,
+		    mp.billing_mode AS cost_billing_mode,
 		    mp.input_price_cny,mp.output_price_cny,mp.cache_write_price_cny,mp.cache_read_price_cny,
 		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny
 		  FROM usage_logs ul
@@ -919,12 +919,12 @@ func rebuildUsageRange(ctx context.Context, tx *sql.Tx, start, end time.Time) er
 		    COUNT(*)::bigint requests,SUM(input_tokens)::bigint inputs,SUM(output_tokens)::bigint outputs,SUM(cache_creation_tokens)::bigint cache_writes,SUM(cache_read_tokens)::bigint cache_reads,
 		    SUM(COALESCE(image_input_tokens,0))::bigint image_inputs,SUM(COALESCE(image_output_tokens,0))::bigint image_outputs,SUM(COALESCE(image_count,0))::bigint images,
 		    SUM(CASE WHEN price_id IS NULL THEN 0 ELSE
-		      CASE WHEN billing_mode IN('token','hybrid') THEN
+		      CASE WHEN cost_billing_mode IN('token','hybrid') THEN
 		        input_tokens*input_price_cny/1000000+output_tokens*output_price_cny/1000000+
 		        cache_creation_tokens*cache_write_price_cny/1000000+cache_read_tokens*cache_read_price_cny/1000000+
 		        COALESCE(image_input_tokens,0)*image_input_price_cny/1000000+COALESCE(image_output_tokens,0)*image_output_price_cny/1000000
 		      ELSE 0 END+
-		      CASE WHEN billing_mode IN('request','hybrid') THEN per_request_price_cny ELSE 0 END
+		      CASE WHEN cost_billing_mode IN('request','hybrid') THEN per_request_price_cny ELSE 0 END
 		    END) amount,
 		    COUNT(*) FILTER(WHERE config_id IS NULL OR final_model='' OR version_id IS NULL OR price_id IS NULL)::bigint pending
 		  FROM resolved WHERE COALESCE(cost_mode,'metered')='metered'
