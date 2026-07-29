@@ -45,6 +45,27 @@ func TestValidateCostPlanInputRejectsInvalidBillingCycle(t *testing.T) {
 	require.EqualError(t, err, "invalid billing_cycle")
 }
 
+func TestValidateFixedCostPlanDoesNotRequirePurchaseQuantity(t *testing.T) {
+	require.NoError(t, validateCostPlanInput(CostPlanInput{
+		Name: "ChatGPT Plus", PlanType: "fixed", FixedCategory: "coding_plan",
+		EffectiveFrom: time.Now(), BillingCycle: "monthly", FixedUnitCostCNY: "140",
+	}))
+}
+
+func TestValidateAccountCostInputRequiresOneFixedSubscriptionUnit(t *testing.T) {
+	planID, unitID := int64(1), int64(2)
+	base := AccountCostInput{
+		AccountID: 1, CostMode: "fixed", PlanID: &planID, EffectiveFrom: time.Now(),
+	}
+	require.EqualError(t, validateAccountCostInput(base), "固定成本账号必须选择一个订阅实例")
+
+	base.SubscriptionUnitID = &unitID
+	require.NoError(t, validateAccountCostInput(base))
+
+	base.NewSubscriptionUnitName = "订阅 #2"
+	require.EqualError(t, validateAccountCostInput(base), "固定成本账号必须选择一个订阅实例")
+}
+
 func TestCostPlanInputAcceptsNumericCostAmounts(t *testing.T) {
 	var input CostPlanInput
 	require.NoError(t, json.Unmarshal([]byte(`{

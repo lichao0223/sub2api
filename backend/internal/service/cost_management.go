@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/shopspring/decimal"
@@ -124,6 +125,8 @@ type CostPlan struct {
 	FixedUnitCostCNY   string           `json:"fixed_unit_cost_cny"`
 	MonthlyUnitCostCNY string           `json:"monthly_unit_cost_cny"`
 	PurchaseQuantity   int              `json:"purchase_quantity"`
+	SubscriptionUnits  int              `json:"subscription_unit_count"`
+	UnassignedAccounts int              `json:"unassigned_account_count"`
 	ModelCount         int              `json:"model_count"`
 	AccountCount       int              `json:"account_count"`
 	Note               string           `json:"note"`
@@ -131,27 +134,40 @@ type CostPlan struct {
 }
 
 type AccountCostInput struct {
-	AccountID     int64      `json:"account_id"`
-	CostMode      string     `json:"cost_mode"`
-	PlanID        *int64     `json:"plan_id"`
-	EffectiveFrom time.Time  `json:"effective_from"`
-	EffectiveTo   *time.Time `json:"effective_to"`
-	ExcludeReason string     `json:"exclude_reason"`
-	Note          string     `json:"note"`
+	AccountID               int64      `json:"account_id"`
+	CostMode                string     `json:"cost_mode"`
+	PlanID                  *int64     `json:"plan_id"`
+	SubscriptionUnitID      *int64     `json:"subscription_unit_id"`
+	NewSubscriptionUnitName string     `json:"new_subscription_unit_name"`
+	EffectiveFrom           time.Time  `json:"effective_from"`
+	EffectiveTo             *time.Time `json:"effective_to"`
+	ExcludeReason           string     `json:"exclude_reason"`
+	Note                    string     `json:"note"`
 }
 
 type AccountCostRow struct {
-	AccountID     int64      `json:"account_id"`
-	AccountName   string     `json:"account_name"`
-	Platform      string     `json:"platform"`
-	AccountStatus string     `json:"account_status"`
-	CostMode      string     `json:"cost_mode"`
-	PlanID        *int64     `json:"plan_id"`
-	PlanName      string     `json:"plan_name"`
-	EffectiveFrom *time.Time `json:"effective_from"`
+	AccountID            int64      `json:"account_id"`
+	AccountName          string     `json:"account_name"`
+	Platform             string     `json:"platform"`
+	AccountStatus        string     `json:"account_status"`
+	CostMode             string     `json:"cost_mode"`
+	PlanID               *int64     `json:"plan_id"`
+	PlanName             string     `json:"plan_name"`
+	SubscriptionUnitID   *int64     `json:"subscription_unit_id"`
+	SubscriptionUnitName string     `json:"subscription_unit_name"`
+	EffectiveFrom        *time.Time `json:"effective_from"`
+	EffectiveTo          *time.Time `json:"effective_to"`
+	PendingCount         int64      `json:"pending_count"`
+	ExcludeReason        string     `json:"exclude_reason"`
+}
+
+type CostSubscriptionUnit struct {
+	ID            int64      `json:"id"`
+	PlanID        int64      `json:"plan_id"`
+	Name          string     `json:"name"`
+	EffectiveFrom time.Time  `json:"effective_from"`
 	EffectiveTo   *time.Time `json:"effective_to"`
-	PendingCount  int64      `json:"pending_count"`
-	ExcludeReason string     `json:"exclude_reason"`
+	AccountCount  int        `json:"account_count"`
 }
 
 type CostOverview struct {
@@ -227,6 +243,7 @@ type CostManagementRepository interface {
 	UpdateCostPlan(context.Context, int64, CostPlanInput) (*CostPlan, error)
 	DisableCostPlan(context.Context, int64) error
 	ListAccountCosts(context.Context, int, int, string, string) ([]AccountCostRow, int64, error)
+	ListCostSubscriptionUnits(context.Context, int64) ([]CostSubscriptionUnit, error)
 	ListCostModelOptions(context.Context, int, int, string) ([]CostModelOption, int64, error)
 	SaveAccountCost(context.Context, AccountCostInput) error
 	SaveAccountCosts(context.Context, []AccountCostInput) error
@@ -322,6 +339,12 @@ func (s *CostManagementService) DisablePlan(ctx context.Context, id int64) error
 func (s *CostManagementService) ListAccounts(ctx context.Context, page, pageSize int, mode, search string) ([]AccountCostRow, int64, error) {
 	return s.repo.ListAccountCosts(ctx, page, pageSize, mode, search)
 }
+func (s *CostManagementService) ListSubscriptionUnits(ctx context.Context, planID int64) ([]CostSubscriptionUnit, error) {
+	if planID <= 0 {
+		return nil, errors.New("invalid plan_id")
+	}
+	return s.repo.ListCostSubscriptionUnits(ctx, planID)
+}
 func (s *CostManagementService) ListModelOptions(ctx context.Context, page, pageSize int, search string) ([]CostModelOption, int64, error) {
 	return s.repo.ListCostModelOptions(ctx, page, pageSize, search)
 }
@@ -358,11 +381,23 @@ func validateAccountCostInput(in AccountCostInput) error {
 		return errors.New("invalid account cost period")
 	}
 	if in.CostMode == "excluded" {
-		if strings.TrimSpace(in.ExcludeReason) == "" || in.PlanID != nil {
+		if strings.TrimSpace(in.ExcludeReason) == "" || in.PlanID != nil || in.SubscriptionUnitID != nil || strings.TrimSpace(in.NewSubscriptionUnitName) != "" {
 			return errors.New("excluded account requires a reason and no plan")
 		}
 	} else if (in.CostMode != "metered" && in.CostMode != "fixed") || in.PlanID == nil {
 		return errors.New("metered or fixed account requires a plan")
+	} else if in.CostMode == "fixed" {
+		name := strings.TrimSpace(in.NewSubscriptionUnitName)
+		hasExisting := in.SubscriptionUnitID != nil && *in.SubscriptionUnitID > 0
+		hasNew := name != ""
+		if hasExisting == hasNew {
+			return errors.New("固定成本账号必须选择一个订阅实例")
+		}
+		if utf8.RuneCountInString(name) > 120 {
+			return errors.New("订阅实例名称不能超过 120 个字符")
+		}
+	} else if in.SubscriptionUnitID != nil || strings.TrimSpace(in.NewSubscriptionUnitName) != "" {
+		return errors.New("按量账号不能选择订阅实例")
 	}
 	return nil
 }
@@ -459,7 +494,7 @@ func validateCostPlanInput(in CostPlanInput) error {
 		}
 		return nil
 	}
-	if in.PlanType != "fixed" || in.PurchaseQuantity <= 0 ||
+	if in.PlanType != "fixed" ||
 		(in.FixedCategory != "coding_plan" && in.FixedCategory != "self_hosted" && in.FixedCategory != "other") {
 		return errors.New("invalid fixed cost plan")
 	}

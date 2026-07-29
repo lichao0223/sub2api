@@ -98,6 +98,19 @@ func (h *CostManagementHandler) ListModelOptions(c *gin.Context) {
 	}
 	response.Paginated(c, items, total, page, size)
 }
+func (h *CostManagementHandler) ListSubscriptionUnits(c *gin.Context) {
+	planID, err := strconv.ParseInt(c.Query("plan_id"), 10, 64)
+	if err != nil || planID <= 0 {
+		response.BadRequest(c, "invalid plan_id")
+		return
+	}
+	items, err := h.service.ListSubscriptionUnits(c.Request.Context(), planID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
 func (h *CostManagementHandler) SaveAccount(c *gin.Context) {
 	id, ok := costID(c)
 	if !ok {

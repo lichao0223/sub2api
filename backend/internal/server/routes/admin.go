@@ -139,6 +139,7 @@ func registerCostManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		costs.GET("/analysis", h.Admin.CostManagement.Analysis)
 		costs.GET("/accounts", h.Admin.CostManagement.ListAccounts)
 		costs.GET("/model-options", h.Admin.CostManagement.ListModelOptions)
+		costs.GET("/subscription-units", h.Admin.CostManagement.ListSubscriptionUnits)
 		costs.PUT("/accounts/batch", h.Admin.CostManagement.SaveAccounts)
 		costs.PUT("/accounts/:id", h.Admin.CostManagement.SaveAccount)
 		costs.DELETE("/accounts/:id", h.Admin.CostManagement.EndAccount)
