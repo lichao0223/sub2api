@@ -22,7 +22,7 @@ const (
 	multimodalModeVisionToText      = "vision_to_text"
 	// ponytail: fixed cap prevents unbounded secondary calls; make configurable only if real workloads need more.
 	multimodalBridgeMaxImages = 8
-	multimodalBridgeMaxTokens = 512
+	multimodalBridgeMaxTokens = 4096
 )
 
 type multimodalRequestContextKey struct{}
