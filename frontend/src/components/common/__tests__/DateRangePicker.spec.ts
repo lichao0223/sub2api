@@ -45,7 +45,8 @@ describe('DateRangePicker', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          Teleport: true
         }
       }
     })
@@ -64,7 +65,8 @@ describe('DateRangePicker', () => {
       },
       global: {
         stubs: {
-          Icon: true
+          Icon: true,
+          Teleport: true
         }
       }
     })
@@ -92,5 +94,28 @@ describe('DateRangePicker', () => {
         preset: 'last24Hours'
       }
     ])
+  })
+
+  it('teleports above the trigger when the dialog has no room below', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if ((this as HTMLElement).classList.contains('date-picker-dropdown')) {
+        return { top: 0, bottom: 280, left: 0, right: 320, width: 320, height: 280, x: 0, y: 0, toJSON: () => ({}) }
+      }
+      return { top: 650, bottom: 690, left: 80, right: 260, width: 180, height: 40, x: 80, y: 650, toJSON: () => ({}) }
+    })
+    const wrapper = mount(DateRangePicker, {
+      attachTo: document.body,
+      props: { startDate: '2026-07-01', endDate: '2026-07-29' },
+      global: { stubs: { Icon: true } }
+    })
+
+    await wrapper.find('.date-picker-trigger').trigger('click')
+    const dropdown = document.body.querySelector<HTMLElement>('.date-picker-dropdown')
+    expect(dropdown).not.toBeNull()
+    expect(dropdown!.style.position).toBe('fixed')
+    expect(dropdown!.style.bottom).not.toBe('')
+
+    wrapper.unmount()
+    rect.mockRestore()
   })
 })

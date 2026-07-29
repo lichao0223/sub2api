@@ -9,14 +9,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-sm font-medium">统计范围</span>
-            <button v-for="p in presets" :key="p.key" class="btn btn-secondary btn-sm" :class="rangePreset===p.key?'!border-primary-500 !text-primary-600':''" @click="applyPreset(p.key)">{{ p.label }}</button>
-            <Select v-model="rangeKind" :options="rangeKindOptions" class="w-24" />
-            <Select v-if="rangeKind==='month'" v-model="monthStart" :options="monthOptions" searchable class="w-32" />
-            <Select v-else v-model="yearStart" :options="yearOptions" class="w-28" />
-            <span class="text-gray-400">至</span>
-            <Select v-if="rangeKind==='month'" v-model="monthEnd" :options="monthOptions" searchable class="w-32" />
-            <Select v-else v-model="yearEnd" :options="yearOptions" class="w-28" />
-            <button class="btn btn-secondary btn-sm" @click="applySelectedRange">应用</button>
+            <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" @change="loadOverview" />
           </div>
           <span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span>
         </div>
@@ -105,11 +98,7 @@ import { useAppStore } from '@/stores'
 import costManagementAPI, { type AccountCostInput, type AccountCostRow, type CostAnalysis, type CostJob, type CostOverview, type CostPlan } from '@/api/admin/costManagement'
 
 const app=useAppStore(),tab=ref<'overview'|'accounts'|'plans'>('overview'),tabs=[{key:'overview',label:'成本总览'},{key:'accounts',label:'账号成本'},{key:'plans',label:'成本方案'}] as const
-const today=new Date().toISOString().slice(0,10),month=today.slice(0,7),currentYear=Number(today.slice(0,4)),monthStart=ref(month),monthEnd=ref(month),yearStart=ref(currentYear),yearEnd=ref(currentYear),rangeKind=ref<'month'|'year'>('month'),rangePreset=ref('month'),range=reactive({start:month+'-01',end:today})
-const presets=[{key:'week',label:'本周'},{key:'month',label:'本月'},{key:'lastMonth',label:'上月'},{key:'year',label:'本年'},{key:'lastYear',label:'去年'}]
-const rangeKindOptions=[{value:'month',label:'按月'},{value:'year',label:'按年'}]
-const monthOptions=Array.from({length:120},(_,i)=>{const d=new Date(currentYear,new Date().getMonth()-i,1),value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;return {value,label:value}})
-const yearOptions=Array.from({length:10},(_,i)=>({value:currentYear-i,label:String(currentYear-i)}))
+const today=new Date().toISOString().slice(0,10),month=today.slice(0,7),range=reactive({start:month+'-01',end:today})
 const overview=reactive<CostOverview>({dynamic_cost_cny:'0',fixed_cost_cny:'0',total_cost_cny:'0',pending_count:0,error_count:0,eligible_count:0,calculated_count:0,coverage_complete:true,previous_coverage_complete:true,previous_total_cost_cny:'0'}),analysis=reactive<CostAnalysis>({period:'day',total_cost_cny:'0',trend:[],top:[]})
 const completion=computed(()=>overview.eligible_count?Math.round(overview.calculated_count/overview.eligible_count*1000)/10:100),lastUpdated=computed(()=>overview.last_success_at?new Date(overview.last_success_at).toLocaleString():'尚未聚合')
 const aggregationDelayed=computed(()=>!overview.last_success_at||Date.now()-new Date(overview.last_success_at).getTime()>10*60*1000)
@@ -121,8 +110,6 @@ const chartPeriods=[{key:'week',label:'近一周'},{key:'day',label:'按天'},{k
 const chartRangeLabel=computed(()=>({week:'近 7 天',day:'近 30 天',month:'近 12 个月',year:'近 5 年'}[chartPeriod.value]))
 async function loadOverview(){Object.assign(overview,await costManagementAPI.overview({start_date:range.start,end_date:range.end}))}
 async function loadAnalysis(period=chartPeriod.value){chartPeriod.value=period;Object.assign(analysis,await costManagementAPI.analysis(period));await nextTick();chart.value?.destroy();if(!chartCanvas.value)return;chart.value=new Chart(chartCanvas.value,{type:'line',data:{labels:analysis.trend.map(x=>x.bucket),datasets:[{label:'总成本',data:analysis.trend.map(x=>+x.total_cost_cny),borderColor:'#7a5af8'},{label:'动态成本',data:analysis.trend.map(x=>+x.dynamic_cost_cny),borderColor:'#0866ed'},{label:'固定成本',data:analysis.trend.map(x=>+x.fixed_cost_cny),borderColor:'#ff7800'}]},options:{responsive:true,maintainAspectRatio:false}})}
-function applyPreset(key:string){rangePreset.value=key;const now=new Date(),y=now.getFullYear(),m=now.getMonth();if(key==='week'){const d=(now.getDay()+6)%7,s=new Date(now);s.setDate(now.getDate()-d);range.start=s.toISOString().slice(0,10);range.end=today}else if(key==='month'){range.start=month+'-01';range.end=today}else if(key==='lastMonth'){const s=new Date(y,m-1,1),e=new Date(y,m,0);range.start=s.toISOString().slice(0,10);range.end=e.toISOString().slice(0,10)}else if(key==='year'){range.start=y+'-01-01';range.end=today}else{range.start=(y-1)+'-01-01';range.end=(y-1)+'-12-31'}loadOverview()}
-function applySelectedRange(){rangePreset.value='';if(rangeKind.value==='month'){if(!monthStart.value||!monthEnd.value||monthStart.value>monthEnd.value)return;range.start=monthStart.value+'-01';const [y,m]=monthEnd.value.split('-').map(Number),end=new Date(y,m,0).toISOString().slice(0,10);range.end=end>today?today:end}else{if(yearStart.value>yearEnd.value)return;range.start=yearStart.value+'-01-01';range.end=yearEnd.value>=currentYear?today:yearEnd.value+'-12-31'}loadOverview()}
 const topWidth=(v:string)=>{const max=Math.max(...analysis.top.map(x=>+x.amount_cny),1);return Math.round(+v/max*100)+'%'}
 const topPercent=(v:string)=>Number(analysis.total_cost_cny)?(Number(v)/Number(analysis.total_cost_cny)*100).toFixed(1)+'%':'0%'
 

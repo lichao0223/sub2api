@@ -1,6 +1,7 @@
 <template>
   <div class="relative" ref="containerRef">
     <button
+      ref="triggerRef"
       type="button"
       @click="toggle"
       :class="['date-picker-trigger', isOpen && 'date-picker-trigger-open']"
@@ -20,8 +21,9 @@
       </span>
     </button>
 
-    <Transition name="date-picker-dropdown">
-      <div v-if="isOpen" class="date-picker-dropdown">
+    <Teleport to="body">
+      <Transition name="date-picker-dropdown">
+        <div v-if="isOpen" ref="dropdownRef" class="date-picker-dropdown" :style="dropdownStyle">
         <!-- Quick presets -->
         <div class="date-picker-presets">
           <button
@@ -70,13 +72,14 @@
             {{ t('dates.apply') }}
           </button>
         </div>
-      </div>
-    </Transition>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 
@@ -104,6 +107,9 @@ const { t, locale } = useI18n()
 
 const isOpen = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
+const triggerRef = ref<HTMLElement | null>(null)
+const dropdownRef = ref<HTMLElement | null>(null)
+const dropdownStyle = ref<Record<string, string>>({})
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
 const activePreset = ref<string | null>('last24Hours')
@@ -263,8 +269,36 @@ const onDateChange = () => {
   }
 }
 
-const toggle = () => {
+const updateDropdownPosition = () => {
+  if (!isOpen.value || !triggerRef.value || !dropdownRef.value) return
+  const padding = 8
+  const trigger = triggerRef.value.getBoundingClientRect()
+  const dropdown = dropdownRef.value.getBoundingClientRect()
+  const width = Math.min(Math.max(320, trigger.width), window.innerWidth - padding * 2)
+  const left = Math.min(Math.max(padding, trigger.left), window.innerWidth - width - padding)
+  const style: Record<string, string> = {
+    position: 'fixed',
+    left: `${left}px`,
+    width: `${width}px`,
+    maxHeight: `calc(100vh - ${padding * 2}px)`,
+    zIndex: '100000020'
+  }
+  const spaceBelow = window.innerHeight - trigger.bottom - padding
+  const spaceAbove = trigger.top - padding
+  if (dropdown.height > spaceBelow && spaceAbove > spaceBelow) {
+    style.bottom = `${window.innerHeight - trigger.top + padding}px`
+  } else {
+    style.top = `${trigger.bottom + padding}px`
+  }
+  dropdownStyle.value = style
+}
+
+const toggle = async () => {
   isOpen.value = !isOpen.value
+  if (isOpen.value) {
+    await nextTick()
+    updateDropdownPosition()
+  }
 }
 
 const apply = () => {
@@ -279,7 +313,8 @@ const apply = () => {
 }
 
 const handleClickOutside = (event: MouseEvent) => {
-  if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (containerRef.value && !containerRef.value.contains(target) && !dropdownRef.value?.contains(target)) {
     isOpen.value = false
   }
 }
@@ -310,6 +345,8 @@ watch(
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
   document.addEventListener('keydown', handleEscape)
+  window.addEventListener('resize', updateDropdownPosition)
+  window.addEventListener('scroll', updateDropdownPosition, true)
   // Initialize active preset detection
   onDateChange()
 })
@@ -317,6 +354,8 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   document.removeEventListener('keydown', handleEscape)
+  window.removeEventListener('resize', updateDropdownPosition)
+  window.removeEventListener('scroll', updateDropdownPosition, true)
 })
 </script>
 
@@ -350,13 +389,12 @@ onUnmounted(() => {
 }
 
 .date-picker-dropdown {
-  @apply absolute left-0 z-[100] mt-2;
+  @apply fixed;
   @apply bg-white dark:bg-dark-800;
   @apply rounded-xl;
   @apply border border-gray-200 dark:border-dark-700;
   @apply shadow-lg shadow-black/10 dark:shadow-black/30;
-  @apply overflow-hidden;
-  @apply min-w-[320px];
+  @apply overflow-x-hidden overflow-y-auto;
 }
 
 .date-picker-presets {
