@@ -65,31 +65,19 @@ func TestNormalizeCostAmountRemovesDatabaseScale(t *testing.T) {
 	require.Equal(t, "1.25", normalizeCostAmount("1.250000000000"))
 }
 
-func TestUpdateCostPlanRevisesTheOnlyVersionInPlace(t *testing.T) {
+func TestUpdateCostPlanOnlyChangesBasicInformation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
-	original := time.Date(2026, 7, 29, 10, 12, 0, 0, time.UTC)
-	revised := time.Date(2026, 1, 1, 10, 12, 0, 0, time.UTC)
-
-	mock.ExpectBegin()
-	mock.ExpectQuery("SELECT plan_type").WithArgs(int64(3)).
-		WillReturnRows(sqlmock.NewRows([]string{"plan_type"}).AddRow("fixed"))
-	mock.ExpectQuery("SELECT id,version_no,effective_from").WithArgs(int64(3)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "version_no", "effective_from"}).AddRow(21, 1, original))
-	mock.ExpectExec("UPDATE cost_plans").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("UPDATE cost_plan_versions SET effective_from").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("INSERT INTO cost_jobs").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectCommit()
+	effective := time.Date(2026, 1, 1, 10, 12, 0, 0, time.UTC)
+	mock.ExpectExec("UPDATE cost_plans").WithArgs(int64(3), "GLM MAX 订阅", "coding_plan", "备注").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectQuery("SELECT p.name,p.plan_type").
 		WithArgs(int64(3)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"name", "plan_type", "fixed_category", "status", "note", "version_id", "version_no",
 			"effective_from", "effective_to", "billing_cycle", "fixed_unit_cost_cny",
-			"monthly_unit_cost_cny", "purchase_quantity", "subscription_unit_count",
-			"unassigned_account_count", "account_count",
-		}).AddRow("GLM MAX 订阅", "fixed", "coding_plan", "active", "", 21, 1, revised, nil, "yearly", "4500.000000000000", "375.000000000000", 1, 0, 0, 0))
+			"monthly_unit_cost_cny", "subscription_unit_count", "account_count",
+		}).AddRow("GLM MAX 订阅", "fixed", "coding_plan", "active", "备注", 21, 1, effective, nil, "yearly", "4500.000000000000", "375.000000000000", 0, 0))
 	mock.ExpectQuery("SELECT upstream_model").
 		WithArgs(int64(21)).
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -98,13 +86,61 @@ func TestUpdateCostPlanRevisesTheOnlyVersionInPlace(t *testing.T) {
 			"image_output_price_cny", "per_request_price_cny",
 		}))
 
-	plan, err := (&costManagementRepository{db: db}).UpdateCostPlan(context.Background(), 3, service.CostPlanInput{
-		Name: "GLM MAX 订阅", PlanType: "fixed", FixedCategory: "coding_plan",
-		EffectiveFrom: revised, BillingCycle: "yearly", FixedUnitCostCNY: "4500", PurchaseQuantity: 1,
+	plan, err := (&costManagementRepository{db: db}).UpdateCostPlan(context.Background(), 3, service.CostPlanBasicInput{
+		Name: "GLM MAX 订阅", FixedCategory: "coding_plan", Note: "备注",
 	})
 	require.NoError(t, err)
-	require.Equal(t, revised, plan.EffectiveFrom)
+	require.Equal(t, effective, plan.EffectiveFrom)
 	require.Equal(t, "4500", plan.FixedUnitCostCNY)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAppendSubscriptionUnitPriceCreatesVersion(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	current := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	next := current.AddDate(0, 1, 0)
+	mock.ExpectQuery("SELECT effective_from,effective_to FROM cost_subscription_units").WithArgs(int64(9), int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"effective_from", "effective_to"}).AddRow(current, nil))
+	mock.ExpectQuery("SELECT id,version_no,effective_from FROM cost_subscription_unit_versions").WithArgs(int64(9)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "version_no", "effective_from"}).AddRow(17, 1, current))
+	mock.ExpectExec("UPDATE cost_subscription_unit_versions").WithArgs(int64(17), next).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO cost_subscription_unit_versions").WithArgs(int64(9), 2, next, "monthly", "160", "160").WillReturnResult(sqlmock.NewResult(1, 1))
+	require.NoError(t, appendSubscriptionUnitVersionTx(context.Background(), tx, 3, 9, next, "monthly", "160"))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestMeteredPriceChangeCreatesNewPlanVersion(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	current := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	next := current.AddDate(0, 1, 0)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT plan_type,status FROM cost_plans").WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status"}).AddRow("metered", "active"))
+	mock.ExpectQuery("SELECT id,version_no,effective_from FROM cost_plan_versions").WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "version_no", "effective_from"}).AddRow(17, 1, current))
+	mock.ExpectExec("UPDATE cost_plan_versions SET effective_to").WithArgs(int64(17), next).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("INSERT INTO cost_plan_versions").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(18))
+	mock.ExpectExec("INSERT INTO cost_model_prices").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO cost_jobs").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	err = (&costManagementRepository{db: db}).ChangeCostPlanPrice(context.Background(), 3, service.CostPriceChangeInput{
+		EffectiveFrom: next,
+		Prices: []service.CostModelPrice{{
+			UpstreamModel: "qwen3", BillingMode: "token", InputPriceCNY: "1", OutputPriceCNY: "2",
+		}},
+	})
+	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -125,7 +161,6 @@ func TestInsertFixedCostPlanIgnoresModelPrices(t *testing.T) {
 			PlanType:         "fixed",
 			BillingCycle:     "yearly",
 			FixedUnitCostCNY: "4500",
-			PurchaseQuantity: 1,
 			Prices:           []service.CostModelPrice{{}},
 		},
 	)
@@ -146,6 +181,9 @@ func TestPrepareSubscriptionUnitCreatesOnePurchasedInstance(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO cost_subscription_units").
 		WithArgs(planID, "ChatGPT Plus #3", effective).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(29))
+	mock.ExpectQuery("SELECT billing_cycle,fixed_unit_cost_cny").WithArgs(planID, effective).
+		WillReturnRows(sqlmock.NewRows([]string{"billing_cycle", "fixed_unit_cost_cny"}).AddRow("monthly", "140"))
+	mock.ExpectExec("INSERT INTO cost_subscription_unit_versions").WithArgs(int64(29), 1, effective, "monthly", "140", "140").WillReturnResult(sqlmock.NewResult(1, 1))
 
 	input := service.AccountCostInput{
 		CostMode: "fixed", PlanID: &planID, EffectiveFrom: effective,
@@ -174,9 +212,14 @@ func TestEndCostSubscriptionUnitEndsCurrentAccountBindings(t *testing.T) {
 	mock.ExpectExec("UPDATE cost_subscription_units").
 		WithArgs(int64(31), end).
 		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE cost_subscription_unit_versions").
+		WithArgs(int64(31), end).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("UPDATE account_cost_configs").
 		WithArgs(int64(31), end).
 		WillReturnResult(sqlmock.NewResult(0, 2))
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO cost_jobs").WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 
 	require.NoError(t, (&costManagementRepository{db: db}).EndCostSubscriptionUnit(context.Background(), 31, end))

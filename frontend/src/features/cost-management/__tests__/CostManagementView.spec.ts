@@ -20,6 +20,8 @@ const api = vi.hoisted(() => ({
   endAccount: vi.fn(),
   createPlan: vi.fn(),
   updatePlan: vi.fn(),
+  changePlanPrice: vi.fn(),
+  priceHistory: vi.fn(),
   disablePlan: vi.fn(),
   recalculations: vi.fn(),
   createRecalculation: vi.fn(),
@@ -87,7 +89,7 @@ describe('CostManagementView', () => {
       id: 11, name: 'GLM 按量', plan_type: 'metered', status: 'active',
       effective_from: '2026-01-01T02:12:00Z', effective_to: '2026-12-31T15:59:59Z',
       billing_cycle: 'monthly', fixed_unit_cost_cny: '0', monthly_unit_cost_cny: '0',
-      purchase_quantity: 1, model_count: 1, account_count: 0, note: '',
+      model_count: 1, account_count: 0, note: '',
       prices: [{ upstream_model: 'glm', billing_mode: 'token', input_price_cny: '1', output_price_cny: '2', cache_write_price_cny: '0', cache_read_price_cny: '0', image_input_price_cny: '0', image_output_price_cny: '0', per_request_price_cny: '0' }],
     })
     api.modelOptions.mockReset().mockResolvedValue({ items: [], total: 0 })
@@ -100,6 +102,8 @@ describe('CostManagementView', () => {
     api.endAccount.mockReset().mockResolvedValue({})
     api.createPlan.mockReset().mockResolvedValue({})
     api.updatePlan.mockReset().mockResolvedValue({})
+    api.changePlanPrice.mockReset().mockResolvedValue({})
+    api.priceHistory.mockReset().mockResolvedValue([])
     api.disablePlan.mockReset().mockResolvedValue({})
     api.recalculations.mockReset().mockResolvedValue({ items: [], total: 0 })
     api.createRecalculation.mockReset().mockResolvedValue({})
@@ -127,7 +131,7 @@ describe('CostManagementView', () => {
       total: 1,
     })
     api.subscriptionUnits.mockResolvedValue([
-      { id: 31, plan_id: 12, name: '订阅 #1', created_at: '2026-01-01', account_count: 2 },
+      { id: 31, plan_id: 12, name: '订阅 #1', effective_from: '2026-01-01', billing_cycle: 'monthly', fixed_unit_cost_cny: '140', monthly_unit_cost_cny: '140', version_no: 1, account_count: 2 },
     ])
     const wrapper = mountView()
     await flushPromises()
@@ -158,7 +162,7 @@ describe('CostManagementView', () => {
       total: 1,
     })
     api.subscriptionUnits.mockResolvedValue([
-      { id: 31, plan_id: 12, name: '订阅 #1', created_at: '2026-07-29T01:02:03Z', account_count: 2 },
+      { id: 31, plan_id: 12, name: '订阅 #1', effective_from: '2026-07-29T01:02:03Z', billing_cycle: 'monthly', fixed_unit_cost_cny: '140', monthly_unit_cost_cny: '140', version_no: 1, account_count: 2 },
     ])
     const wrapper = mountView()
     await flushPromises()
@@ -171,20 +175,20 @@ describe('CostManagementView', () => {
     await dialog.get('input[placeholder="例如：ChatGPT Plus #3"]').setValue('订阅 #2')
     await dialog.findAll('button').find(button => button.text() === '新建实例')!.trigger('click')
     await flushPromises()
-    expect(api.createSubscriptionUnit).toHaveBeenCalledWith(12, '订阅 #2')
+    expect(api.createSubscriptionUnit).toHaveBeenCalledWith(expect.objectContaining({ plan_id: 12, name: '订阅 #2', billing_cycle: 'monthly' }))
 
     dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('订阅实例 · ChatGPT Plus'))!
-    await dialog.findAll('button').find(button => button.text() === '修改名称')!.trigger('click')
+    await dialog.findAll('button').find(button => button.text() === '改名')!.trigger('click')
     await dialog.get('input').setValue('主订阅')
     await dialog.findAll('button').find(button => button.text() === '保存名称')!.trigger('click')
     await flushPromises()
     expect(api.renameSubscriptionUnit).toHaveBeenCalledWith(31, '主订阅')
 
-    await dialog.findAll('button').find(button => button.text() === '停用')!.trigger('click')
-    const confirm = wrapper.findAll('[data-test="confirm-dialog"]').find(item => item.text().includes('停用订阅实例'))!
-    await confirm.find('button').trigger('click')
+    await dialog.findAll('button').find(button => button.text() === '结束')!.trigger('click')
+    const endDialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('结束订阅实例'))!
+    await endDialog.findAll('button').find(button => button.text() === '确认结束')!.trigger('click')
     await flushPromises()
-    expect(api.endSubscriptionUnit).toHaveBeenCalledWith(31)
+    expect(api.endSubscriptionUnit).toHaveBeenCalledWith(31, expect.any(String))
   })
 
   it('shows only fields used by the selected billing mode', async () => {
@@ -202,7 +206,7 @@ describe('CostManagementView', () => {
     expect(dialog.text()).toContain('每次请求')
   })
 
-  it('preserves the saved effective dates when editing a cost plan', async () => {
+  it('keeps basic editing separate from creating a price version', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
@@ -211,13 +215,15 @@ describe('CostManagementView', () => {
     await flushPromises()
 
     const dialog = wrapper.get('[data-test="dialog"]')
-    const dateInputs = dialog.findAll('input[type="datetime-local"]')
-    expect(dateInputs.at(0)!.element.value).toBe('2026-01-01T10:12')
-    expect(dateInputs.at(1)!.element.value).toBe('2026-12-31T23:59')
-    expect(dialog.text()).toContain('将修正当前版本')
+    expect(dialog.find('input[type="datetime-local"]').exists()).toBe(false)
+    expect(dialog.text()).not.toContain('模型价格')
+    await dialog.findAll('button').find(button => button.text() === '保存')!.trigger('click')
+    await flushPromises()
+    expect(api.updatePlan).toHaveBeenCalledWith(11, expect.objectContaining({ name: 'GLM 按量' }))
 
-    await dateInputs.at(0)!.setValue('2027-01-01T00:00')
-    expect(dialog.text()).toContain('将创建新版本，只影响此时间之后的成本')
+    await wrapper.findAll('button').find(button => button.text() === '价格变更')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-test="dialog"]').text()).toContain('历史价格不会被覆盖')
   })
 
   it('serializes numeric fixed costs as strings', async () => {
@@ -229,16 +235,14 @@ describe('CostManagementView', () => {
 
     const dialog = wrapper.get('[data-test="dialog"]')
     await dialog.findAll('select').at(0)!.setValue('fixed')
-    await dialog.findAll('select').at(-1)!.setValue('yearly')
-    const inputs = dialog.findAll('input')
-    await inputs.at(0)!.setValue('GLM MAX 套餐')
-    await inputs.at(3)!.setValue(4500)
+    await dialog.findAll('select').at(1)!.setValue('yearly')
+    await dialog.find('input').setValue('GLM MAX 套餐')
+    await dialog.get('input[type="number"]').setValue(4500)
     await dialog.findAll('button').find(button => button.text() === '保存')!.trigger('click')
     await flushPromises()
 
     expect(api.createPlan).toHaveBeenCalledWith(expect.objectContaining({
       fixed_unit_cost_cny: '4500',
-      monthly_unit_cost_cny: '0',
     }))
   })
 

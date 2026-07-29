@@ -40,7 +40,6 @@ func TestValidateCostPlanInputRejectsInvalidBillingCycle(t *testing.T) {
 		EffectiveFrom:    time.Now(),
 		BillingCycle:     "weekly",
 		FixedUnitCostCNY: "1200",
-		PurchaseQuantity: 1,
 	})
 	require.EqualError(t, err, "invalid billing_cycle")
 }

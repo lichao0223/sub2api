@@ -57,7 +57,7 @@ func (h *CostManagementHandler) UpdatePlan(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var in service.CostPlanInput
+	var in service.CostPlanBasicInput
 	if err := c.ShouldBindJSON(&in); err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -68,6 +68,34 @@ func (h *CostManagementHandler) UpdatePlan(c *gin.Context) {
 		return
 	}
 	response.Success(c, x)
+}
+func (h *CostManagementHandler) ChangePlanPrice(c *gin.Context) {
+	id, ok := costID(c)
+	if !ok {
+		return
+	}
+	var in service.CostPriceChangeInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.service.ChangePlanPrice(c.Request.Context(), id, in); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"saved": true})
+}
+func (h *CostManagementHandler) ListPriceHistory(c *gin.Context) {
+	id, ok := costID(c)
+	if !ok {
+		return
+	}
+	items, err := h.service.ListPriceHistory(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
 }
 func (h *CostManagementHandler) DisablePlan(c *gin.Context) {
 	id, ok := costID(c)
@@ -112,15 +140,12 @@ func (h *CostManagementHandler) ListSubscriptionUnits(c *gin.Context) {
 	response.Success(c, items)
 }
 func (h *CostManagementHandler) CreateSubscriptionUnit(c *gin.Context) {
-	var req struct {
-		PlanID int64  `json:"plan_id"`
-		Name   string `json:"name"`
-	}
+	var req service.CostSubscriptionUnitInput
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
-	item, err := h.service.CreateSubscriptionUnit(c.Request.Context(), req.PlanID, req.Name)
+	item, err := h.service.CreateSubscriptionUnit(c.Request.Context(), req)
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
@@ -150,7 +175,14 @@ func (h *CostManagementHandler) EndSubscriptionUnit(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.service.EndSubscriptionUnit(c.Request.Context(), id); err != nil {
+	var req struct {
+		EffectiveTo time.Time `json:"effective_to"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	if err := h.service.EndSubscriptionUnit(c.Request.Context(), id, req.EffectiveTo); err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}

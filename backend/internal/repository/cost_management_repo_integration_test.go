@@ -123,6 +123,7 @@ func TestFixedCostCountsSharedSubscriptionOnce(t *testing.T) {
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM cost_daily_aggregates WHERE plan_id=$1 OR account_id IN($2,$3) OR user_id=$4`, plan.ID, accountA.ID, accountB.ID, user.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM usage_logs WHERE user_id=$1`, user.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM account_cost_configs WHERE account_id IN($1,$2)`, accountA.ID, accountB.ID)
+		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM cost_subscription_unit_versions WHERE subscription_unit_id IN(SELECT id FROM cost_subscription_units WHERE plan_id=$1)`, plan.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM cost_subscription_units WHERE plan_id=$1`, plan.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM cost_plan_versions WHERE plan_id=$1`, plan.ID)
 		_, _ = integrationDB.ExecContext(ctx, `DELETE FROM cost_plans WHERE id=$1`, plan.ID)
@@ -164,4 +165,19 @@ func TestFixedCostCountsSharedSubscriptionOnce(t *testing.T) {
 	value, err := decimal.NewFromString(amount)
 	require.NoError(t, err)
 	require.True(t, value.Equal(decimal.NewFromInt(10)), "shared subscription charged more than once: %s", amount)
+
+	_, err = integrationDB.ExecContext(ctx, `UPDATE accounts SET deleted_at=NOW() WHERE id IN($1,$2)`, accountA.ID, accountB.ID)
+	require.NoError(t, err)
+	tx, err = integrationDB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	require.NoError(t, repo.rebuildFixedDay(ctx, tx, now))
+	require.NoError(t, tx.Commit())
+	var afterDelete string
+	require.NoError(t, integrationDB.QueryRowContext(ctx, `
+		SELECT amount_cny::text FROM cost_daily_aggregates
+		WHERE bucket_date=$1::date AND aggregate_scope='fixed_plan_total' AND subscription_unit_id=$2
+	`, now, unitID).Scan(&afterDelete))
+	afterDeleteValue, err := decimal.NewFromString(afterDelete)
+	require.NoError(t, err)
+	require.True(t, afterDeleteValue.Equal(decimal.NewFromInt(10)), "soft-deleted account changed historical cost: %s", afterDelete)
 }

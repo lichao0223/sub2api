@@ -76,7 +76,6 @@ type CostPlanInput struct {
 	BillingCycle       string           `json:"billing_cycle"`
 	FixedUnitCostCNY   string           `json:"fixed_unit_cost_cny"`
 	MonthlyUnitCostCNY string           `json:"monthly_unit_cost_cny"`
-	PurchaseQuantity   int              `json:"purchase_quantity"`
 	Note               string           `json:"note"`
 	Prices             []CostModelPrice `json:"prices"`
 }
@@ -124,13 +123,52 @@ type CostPlan struct {
 	BillingCycle       string           `json:"billing_cycle"`
 	FixedUnitCostCNY   string           `json:"fixed_unit_cost_cny"`
 	MonthlyUnitCostCNY string           `json:"monthly_unit_cost_cny"`
-	PurchaseQuantity   int              `json:"purchase_quantity"`
 	SubscriptionUnits  int              `json:"subscription_unit_count"`
-	UnassignedAccounts int              `json:"unassigned_account_count"`
 	ModelCount         int              `json:"model_count"`
 	AccountCount       int              `json:"account_count"`
 	Note               string           `json:"note"`
 	Prices             []CostModelPrice `json:"prices,omitempty"`
+}
+
+type CostPlanBasicInput struct {
+	Name          string `json:"name"`
+	FixedCategory string `json:"fixed_category"`
+	Note          string `json:"note"`
+}
+
+type CostPriceChangeInput struct {
+	EffectiveFrom       time.Time        `json:"effective_from"`
+	BillingCycle        string           `json:"billing_cycle"`
+	FixedUnitCostCNY    string           `json:"fixed_unit_cost_cny"`
+	UpdateDefault       bool             `json:"update_default"`
+	SubscriptionUnitIDs []int64          `json:"subscription_unit_ids"`
+	Prices              []CostModelPrice `json:"prices"`
+}
+
+func (in *CostPriceChangeInput) UnmarshalJSON(data []byte) error {
+	type alias CostPriceChangeInput
+	raw := struct {
+		*alias
+		FixedUnitCostCNY json.RawMessage `json:"fixed_unit_cost_cny"`
+	}{alias: (*alias)(in)}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	return unmarshalCostAmount(raw.FixedUnitCostCNY, &in.FixedUnitCostCNY)
+}
+
+type CostPriceVersion struct {
+	ID                   int64            `json:"id"`
+	PlanID               int64            `json:"plan_id"`
+	SubscriptionUnitID   *int64           `json:"subscription_unit_id"`
+	SubscriptionUnitName string           `json:"subscription_unit_name"`
+	VersionNo            int              `json:"version_no"`
+	EffectiveFrom        time.Time        `json:"effective_from"`
+	EffectiveTo          *time.Time       `json:"effective_to"`
+	BillingCycle         string           `json:"billing_cycle"`
+	FixedUnitCostCNY     string           `json:"fixed_unit_cost_cny"`
+	MonthlyUnitCostCNY   string           `json:"monthly_unit_cost_cny"`
+	Prices               []CostModelPrice `json:"prices,omitempty"`
 }
 
 type AccountCostInput struct {
@@ -162,12 +200,37 @@ type AccountCostRow struct {
 }
 
 type CostSubscriptionUnit struct {
-	ID           int64      `json:"id"`
-	PlanID       int64      `json:"plan_id"`
-	Name         string     `json:"name"`
-	CreatedAt    time.Time  `json:"created_at"`
-	EndedAt      *time.Time `json:"ended_at"`
-	AccountCount int        `json:"account_count"`
+	ID                 int64      `json:"id"`
+	PlanID             int64      `json:"plan_id"`
+	Name               string     `json:"name"`
+	EffectiveFrom      time.Time  `json:"effective_from"`
+	EffectiveTo        *time.Time `json:"effective_to"`
+	BillingCycle       string     `json:"billing_cycle"`
+	FixedUnitCostCNY   string     `json:"fixed_unit_cost_cny"`
+	MonthlyUnitCostCNY string     `json:"monthly_unit_cost_cny"`
+	VersionNo          int        `json:"version_no"`
+	PriceEffectiveFrom time.Time  `json:"price_effective_from"`
+	AccountCount       int        `json:"account_count"`
+}
+
+type CostSubscriptionUnitInput struct {
+	PlanID           int64     `json:"plan_id"`
+	Name             string    `json:"name"`
+	EffectiveFrom    time.Time `json:"effective_from"`
+	BillingCycle     string    `json:"billing_cycle"`
+	FixedUnitCostCNY string    `json:"fixed_unit_cost_cny"`
+}
+
+func (in *CostSubscriptionUnitInput) UnmarshalJSON(data []byte) error {
+	type alias CostSubscriptionUnitInput
+	raw := struct {
+		*alias
+		FixedUnitCostCNY json.RawMessage `json:"fixed_unit_cost_cny"`
+	}{alias: (*alias)(in)}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	return unmarshalCostAmount(raw.FixedUnitCostCNY, &in.FixedUnitCostCNY)
 }
 
 type CostOverview struct {
@@ -240,11 +303,13 @@ type CostManagementRepository interface {
 	ListCostPlans(context.Context, int, int, string, string) ([]CostPlan, int64, error)
 	GetCostPlan(context.Context, int64) (*CostPlan, error)
 	CreateCostPlan(context.Context, CostPlanInput) (*CostPlan, error)
-	UpdateCostPlan(context.Context, int64, CostPlanInput) (*CostPlan, error)
+	UpdateCostPlan(context.Context, int64, CostPlanBasicInput) (*CostPlan, error)
+	ChangeCostPlanPrice(context.Context, int64, CostPriceChangeInput) error
+	ListCostPriceHistory(context.Context, int64) ([]CostPriceVersion, error)
 	DisableCostPlan(context.Context, int64) error
 	ListAccountCosts(context.Context, int, int, string, string) ([]AccountCostRow, int64, error)
 	ListCostSubscriptionUnits(context.Context, int64) ([]CostSubscriptionUnit, error)
-	CreateCostSubscriptionUnit(context.Context, int64, string) (*CostSubscriptionUnit, error)
+	CreateCostSubscriptionUnit(context.Context, CostSubscriptionUnitInput) (*CostSubscriptionUnit, error)
 	RenameCostSubscriptionUnit(context.Context, int64, string) error
 	EndCostSubscriptionUnit(context.Context, int64, time.Time) error
 	ListCostModelOptions(context.Context, int, int, string) ([]CostModelOption, int64, error)
@@ -330,11 +395,45 @@ func (s *CostManagementService) CreatePlan(ctx context.Context, in CostPlanInput
 	}
 	return s.repo.CreateCostPlan(ctx, in)
 }
-func (s *CostManagementService) UpdatePlan(ctx context.Context, id int64, in CostPlanInput) (*CostPlan, error) {
-	if err := validateCostPlanInput(in); err != nil {
-		return nil, err
+func (s *CostManagementService) UpdatePlan(ctx context.Context, id int64, in CostPlanBasicInput) (*CostPlan, error) {
+	if id <= 0 || strings.TrimSpace(in.Name) == "" {
+		return nil, errors.New("成本方案名称不能为空")
+	}
+	if in.FixedCategory != "" && in.FixedCategory != "coding_plan" && in.FixedCategory != "self_hosted" && in.FixedCategory != "other" {
+		return nil, errors.New("固定成本分类无效")
 	}
 	return s.repo.UpdateCostPlan(ctx, id, in)
+}
+func (s *CostManagementService) ChangePlanPrice(ctx context.Context, id int64, in CostPriceChangeInput) error {
+	if id <= 0 || in.EffectiveFrom.IsZero() {
+		return errors.New("价格生效时间不能为空")
+	}
+	plan, err := s.repo.GetCostPlan(ctx, id)
+	if err != nil {
+		return err
+	}
+	if plan.PlanType == "metered" {
+		if err = validateModelPrices(in.Prices); err != nil {
+			return err
+		}
+	} else {
+		if in.BillingCycle != "monthly" && in.BillingCycle != "yearly" {
+			return errors.New("付费周期无效")
+		}
+		if err = validateNonnegativeCost(in.FixedUnitCostCNY); err != nil {
+			return err
+		}
+		if !in.UpdateDefault && len(in.SubscriptionUnitIDs) == 0 {
+			return errors.New("请选择要改价的订阅实例或更新新实例默认价")
+		}
+	}
+	return s.repo.ChangeCostPlanPrice(ctx, id, in)
+}
+func (s *CostManagementService) ListPriceHistory(ctx context.Context, id int64) ([]CostPriceVersion, error) {
+	if id <= 0 {
+		return nil, errors.New("成本方案无效")
+	}
+	return s.repo.ListCostPriceHistory(ctx, id)
 }
 func (s *CostManagementService) DisablePlan(ctx context.Context, id int64) error {
 	return s.repo.DisableCostPlan(ctx, id)
@@ -348,14 +447,24 @@ func (s *CostManagementService) ListSubscriptionUnits(ctx context.Context, planI
 	}
 	return s.repo.ListCostSubscriptionUnits(ctx, planID)
 }
-func (s *CostManagementService) CreateSubscriptionUnit(ctx context.Context, planID int64, name string) (*CostSubscriptionUnit, error) {
-	if planID <= 0 {
+func (s *CostManagementService) CreateSubscriptionUnit(ctx context.Context, in CostSubscriptionUnitInput) (*CostSubscriptionUnit, error) {
+	if in.PlanID <= 0 {
 		return nil, errors.New("固定成本方案无效")
 	}
-	if err := validateSubscriptionUnitName(name); err != nil {
+	if err := validateSubscriptionUnitName(in.Name); err != nil {
 		return nil, err
 	}
-	return s.repo.CreateCostSubscriptionUnit(ctx, planID, strings.TrimSpace(name))
+	if in.EffectiveFrom.IsZero() {
+		return nil, errors.New("订阅开始时间不能为空")
+	}
+	if in.BillingCycle != "monthly" && in.BillingCycle != "yearly" {
+		return nil, errors.New("付费周期无效")
+	}
+	if err := validateNonnegativeCost(in.FixedUnitCostCNY); err != nil {
+		return nil, err
+	}
+	in.Name = strings.TrimSpace(in.Name)
+	return s.repo.CreateCostSubscriptionUnit(ctx, in)
 }
 func (s *CostManagementService) RenameSubscriptionUnit(ctx context.Context, id int64, name string) error {
 	if id <= 0 {
@@ -366,11 +475,11 @@ func (s *CostManagementService) RenameSubscriptionUnit(ctx context.Context, id i
 	}
 	return s.repo.RenameCostSubscriptionUnit(ctx, id, strings.TrimSpace(name))
 }
-func (s *CostManagementService) EndSubscriptionUnit(ctx context.Context, id int64) error {
-	if id <= 0 {
+func (s *CostManagementService) EndSubscriptionUnit(ctx context.Context, id int64, end time.Time) error {
+	if id <= 0 || end.IsZero() {
 		return errors.New("订阅实例无效")
 	}
-	return s.repo.EndCostSubscriptionUnit(ctx, id, time.Now())
+	return s.repo.EndCostSubscriptionUnit(ctx, id, end)
 }
 func (s *CostManagementService) ListModelOptions(ctx context.Context, page, pageSize int, search string) ([]CostModelOption, int64, error) {
 	return s.repo.ListCostModelOptions(ctx, page, pageSize, search)
@@ -508,29 +617,7 @@ func validateCostPlanInput(in CostPlanInput) error {
 		return errors.New("effective_to must be after effective_from")
 	}
 	if in.PlanType == "metered" {
-		if len(in.Prices) == 0 {
-			return errors.New("metered plan requires at least one model price")
-		}
-		seen := make(map[string]struct{}, len(in.Prices))
-		for _, p := range in.Prices {
-			model := strings.TrimSpace(p.UpstreamModel)
-			if model == "" {
-				return errors.New("upstream_model is required")
-			}
-			if _, ok := seen[model]; ok {
-				return errors.New("duplicate upstream_model")
-			}
-			seen[model] = struct{}{}
-			if p.BillingMode != "" && p.BillingMode != "token" && p.BillingMode != "request" && p.BillingMode != "hybrid" {
-				return errors.New("invalid billing_mode")
-			}
-			for _, value := range []string{p.InputPriceCNY, p.OutputPriceCNY, p.CacheWritePriceCNY, p.CacheReadPriceCNY, p.ImageInputPriceCNY, p.ImageOutputPriceCNY, p.PerRequestPriceCNY} {
-				if err := validateNonnegativeCost(value); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
+		return validateModelPrices(in.Prices)
 	}
 	if in.PlanType != "fixed" ||
 		(in.FixedCategory != "coding_plan" && in.FixedCategory != "self_hosted" && in.FixedCategory != "other") {
@@ -544,6 +631,32 @@ func validateCostPlanInput(in CostPlanInput) error {
 		amount = in.MonthlyUnitCostCNY
 	}
 	return validateNonnegativeCost(amount)
+}
+
+func validateModelPrices(prices []CostModelPrice) error {
+	if len(prices) == 0 {
+		return errors.New("metered plan requires at least one model price")
+	}
+	seen := make(map[string]struct{}, len(prices))
+	for _, p := range prices {
+		model := strings.TrimSpace(p.UpstreamModel)
+		if model == "" {
+			return errors.New("upstream_model is required")
+		}
+		if _, ok := seen[model]; ok {
+			return errors.New("duplicate upstream_model")
+		}
+		seen[model] = struct{}{}
+		if p.BillingMode != "" && p.BillingMode != "token" && p.BillingMode != "request" && p.BillingMode != "hybrid" {
+			return errors.New("invalid billing_mode")
+		}
+		for _, value := range []string{p.InputPriceCNY, p.OutputPriceCNY, p.CacheWritePriceCNY, p.CacheReadPriceCNY, p.ImageInputPriceCNY, p.ImageOutputPriceCNY, p.PerRequestPriceCNY} {
+			if err := validateNonnegativeCost(value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func validateNonnegativeCost(value string) error {

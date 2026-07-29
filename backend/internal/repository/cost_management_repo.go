@@ -37,11 +37,10 @@ func (r *costManagementRepository) ListCostPlans(ctx context.Context, page, page
 		SELECT p.id,p.name,p.plan_type,COALESCE(p.fixed_category,''),p.status,p.note,
 		       COALESCE(v.version_no,0),COALESCE(v.effective_from,'epoch'),v.effective_to,
 		       COALESCE(v.billing_cycle,'monthly'),COALESCE(v.fixed_unit_cost_cny,v.monthly_unit_cost_cny,0)::text,
-		       COALESCE(v.monthly_unit_cost_cny,0)::text,COALESCE(v.purchase_quantity,1),
+		       COALESCE(v.monthly_unit_cost_cny,0)::text,
 		       (SELECT COUNT(*) FROM cost_subscription_units u WHERE u.plan_id=p.id AND u.effective_from<=NOW() AND(u.effective_to IS NULL OR u.effective_to>NOW())),
-		       (SELECT COUNT(*) FROM account_cost_configs ac WHERE ac.plan_id=p.id AND ac.cost_mode='fixed' AND ac.subscription_unit_id IS NULL AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW())),
 		       (SELECT COUNT(*) FROM cost_model_prices mp WHERE mp.plan_version_id=v.id),
-		       (SELECT COUNT(*) FROM account_cost_configs ac WHERE ac.plan_id=p.id AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW()))
+		       (SELECT COUNT(*) FROM account_cost_configs ac JOIN accounts a ON a.id=ac.account_id AND a.deleted_at IS NULL WHERE ac.plan_id=p.id AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW()))
 		FROM cost_plans p
 		LEFT JOIN LATERAL (
 		  SELECT * FROM cost_plan_versions WHERE plan_id=p.id ORDER BY version_no DESC LIMIT 1
@@ -54,7 +53,7 @@ func (r *costManagementRepository) ListCostPlans(ctx context.Context, page, page
 	for rows.Next() {
 		var p service.CostPlan
 		var end sql.NullTime
-		if err := rows.Scan(&p.ID, &p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &p.VersionNo, &p.EffectiveFrom, &end, &p.BillingCycle, &p.FixedUnitCostCNY, &p.MonthlyUnitCostCNY, &p.PurchaseQuantity, &p.SubscriptionUnits, &p.UnassignedAccounts, &p.ModelCount, &p.AccountCount); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &p.VersionNo, &p.EffectiveFrom, &end, &p.BillingCycle, &p.FixedUnitCostCNY, &p.MonthlyUnitCostCNY, &p.SubscriptionUnits, &p.ModelCount, &p.AccountCount); err != nil {
 			return nil, 0, err
 		}
 		if end.Valid {
@@ -73,14 +72,13 @@ func (r *costManagementRepository) GetCostPlan(ctx context.Context, id int64) (*
 	var end sql.NullTime
 	err := r.db.QueryRowContext(ctx, `
 		SELECT p.name,p.plan_type,COALESCE(p.fixed_category,''),p.status,p.note,
-		       v.id,v.version_no,v.effective_from,v.effective_to,v.billing_cycle,v.fixed_unit_cost_cny::text,
-		       v.monthly_unit_cost_cny::text,v.purchase_quantity,
+		       v.id,v.version_no,v.effective_from,v.effective_to,COALESCE(v.billing_cycle,'monthly'),v.fixed_unit_cost_cny::text,
+		       v.monthly_unit_cost_cny::text,
 		       (SELECT COUNT(*) FROM cost_subscription_units u WHERE u.plan_id=p.id AND u.effective_from<=NOW() AND(u.effective_to IS NULL OR u.effective_to>NOW())),
-		       (SELECT COUNT(*) FROM account_cost_configs ac WHERE ac.plan_id=p.id AND ac.cost_mode='fixed' AND ac.subscription_unit_id IS NULL AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW())),
-		       (SELECT COUNT(*) FROM account_cost_configs ac WHERE ac.plan_id=p.id AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW()))
+		       (SELECT COUNT(*) FROM account_cost_configs ac JOIN accounts a ON a.id=ac.account_id AND a.deleted_at IS NULL WHERE ac.plan_id=p.id AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW()))
 		FROM cost_plans p JOIN LATERAL (
 		  SELECT * FROM cost_plan_versions WHERE plan_id=p.id ORDER BY version_no DESC LIMIT 1
-		) v ON TRUE WHERE p.id=$1`, id).Scan(&p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &versionID, &p.VersionNo, &p.EffectiveFrom, &end, &p.BillingCycle, &p.FixedUnitCostCNY, &p.MonthlyUnitCostCNY, &p.PurchaseQuantity, &p.SubscriptionUnits, &p.UnassignedAccounts, &p.AccountCount)
+	  ) v ON TRUE WHERE p.id=$1`, id).Scan(&p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &versionID, &p.VersionNo, &p.EffectiveFrom, &end, &p.BillingCycle, &p.FixedUnitCostCNY, &p.MonthlyUnitCostCNY, &p.SubscriptionUnits, &p.AccountCount)
 	if err != nil {
 		return nil, err
 	}
@@ -140,66 +138,21 @@ func (r *costManagementRepository) CreateCostPlan(ctx context.Context, in servic
 	return r.GetCostPlan(ctx, id)
 }
 
-func (r *costManagementRepository) UpdateCostPlan(ctx context.Context, id int64, in service.CostPlanInput) (*service.CostPlan, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
+func (r *costManagementRepository) UpdateCostPlan(ctx context.Context, id int64, in service.CostPlanBasicInput) (*service.CostPlan, error) {
+	category := any(nil)
+	if in.FixedCategory != "" {
+		category = in.FixedCategory
+	}
+	res, err := r.db.ExecContext(ctx, `UPDATE cost_plans SET name=$2,fixed_category=CASE WHEN plan_type='fixed' THEN COALESCE($3,fixed_category) ELSE NULL END,note=$4,updated_at=NOW() WHERE id=$1`, id, strings.TrimSpace(in.Name), category, in.Note)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback() }()
-	var planType string
-	if err = tx.QueryRowContext(ctx, `SELECT plan_type FROM cost_plans WHERE id=$1 FOR UPDATE`, id).Scan(&planType); err != nil {
+	affected, err := res.RowsAffected()
+	if err != nil {
 		return nil, err
 	}
-	if planType != in.PlanType {
-		return nil, errors.New("成本方案类型不能修改")
-	}
-	var latestVersionID int64
-	var latestVersion int
-	var latestEffectiveFrom time.Time
-	if err = tx.QueryRowContext(ctx, `SELECT id,version_no,effective_from FROM cost_plan_versions WHERE plan_id=$1 ORDER BY version_no DESC LIMIT 1 FOR UPDATE`, id).Scan(&latestVersionID, &latestVersion, &latestEffectiveFrom); err != nil {
-		return nil, err
-	}
-	category := any(nil)
-	if in.PlanType == "fixed" {
-		category = in.FixedCategory
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE cost_plans SET name=$2,fixed_category=$3,note=$4,updated_at=NOW() WHERE id=$1`, id, strings.TrimSpace(in.Name), category, in.Note); err != nil {
-		return nil, err
-	}
-	recalculationStart := in.EffectiveFrom
-	if !in.EffectiveFrom.After(latestEffectiveFrom) {
-		if latestVersion > 1 {
-			var previousVersionID int64
-			var previousEffectiveFrom time.Time
-			if err = tx.QueryRowContext(ctx, `SELECT id,effective_from FROM cost_plan_versions WHERE plan_id=$1 AND version_no<$2 ORDER BY version_no DESC LIMIT 1`, id, latestVersion).Scan(&previousVersionID, &previousEffectiveFrom); err != nil {
-				return nil, err
-			}
-			if !in.EffectiveFrom.After(previousEffectiveFrom) {
-				return nil, errors.New("生效时间必须晚于上一个成本方案版本")
-			}
-			if _, err = tx.ExecContext(ctx, `UPDATE cost_plan_versions SET effective_to=$2 WHERE id=$1`, previousVersionID, in.EffectiveFrom); err != nil {
-				return nil, err
-			}
-		}
-		if latestEffectiveFrom.Before(recalculationStart) {
-			recalculationStart = latestEffectiveFrom
-		}
-		if err = r.updateCostPlanVersion(ctx, tx, latestVersionID, in); err != nil {
-			return nil, err
-		}
-	} else {
-		if _, err = tx.ExecContext(ctx, `UPDATE cost_plan_versions SET effective_to=$2 WHERE id=$1`, latestVersionID, in.EffectiveFrom); err != nil {
-			return nil, err
-		}
-		if err = r.insertCostPlanVersion(ctx, tx, id, latestVersion+1, in); err != nil {
-			return nil, err
-		}
-	}
-	if err = enqueueCostRecalculationTx(ctx, tx, recalculationStart); err != nil {
-		return nil, err
-	}
-	if err = tx.Commit(); err != nil {
-		return nil, err
+	if affected == 0 {
+		return nil, sql.ErrNoRows
 	}
 	return r.GetCostPlan(ctx, id)
 }
@@ -209,12 +162,12 @@ func (r *costManagementRepository) insertCostPlanVersion(ctx context.Context, tx
 	if err != nil {
 		return err
 	}
-	qty := in.PurchaseQuantity
-	if qty < 1 {
-		qty = 1
+	cycleValue := any(nil)
+	if in.PlanType == "fixed" {
+		cycleValue = cycle
 	}
 	var versionID int64
-	if err := tx.QueryRowContext(ctx, `INSERT INTO cost_plan_versions(plan_id,version_no,effective_from,effective_to,billing_cycle,fixed_unit_cost_cny,monthly_unit_cost_cny,purchase_quantity) VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8) RETURNING id`, planID, version, in.EffectiveFrom, in.EffectiveTo, cycle, unit, monthly, qty).Scan(&versionID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO cost_plan_versions(plan_id,version_no,effective_from,effective_to,billing_cycle,fixed_unit_cost_cny,monthly_unit_cost_cny) VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric) RETURNING id`, planID, version, in.EffectiveFrom, in.EffectiveTo, cycleValue, unit, monthly).Scan(&versionID); err != nil {
 		return err
 	}
 	if in.PlanType != "metered" {
@@ -223,25 +176,147 @@ func (r *costManagementRepository) insertCostPlanVersion(ctx context.Context, tx
 	return insertCostModelPrices(ctx, tx, versionID, in.Prices)
 }
 
-func (r *costManagementRepository) updateCostPlanVersion(ctx context.Context, tx *sql.Tx, versionID int64, in service.CostPlanInput) error {
-	cycle, unit, monthly, err := normalizeFixedCost(in.BillingCycle, in.FixedUnitCostCNY, in.MonthlyUnitCostCNY)
+func (r *costManagementRepository) ChangeCostPlanPrice(ctx context.Context, planID int64, in service.CostPriceChangeInput) error {
+	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	qty := in.PurchaseQuantity
-	if qty < 1 {
-		qty = 1
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE cost_plan_versions SET effective_from=$2,effective_to=$3,billing_cycle=$4,fixed_unit_cost_cny=$5::numeric,monthly_unit_cost_cny=$6::numeric,purchase_quantity=$7 WHERE id=$1`, versionID, in.EffectiveFrom, in.EffectiveTo, cycle, unit, monthly, qty); err != nil {
+	defer func() { _ = tx.Rollback() }()
+	var planType, status string
+	if err = tx.QueryRowContext(ctx, `SELECT plan_type,status FROM cost_plans WHERE id=$1 FOR UPDATE`, planID).Scan(&planType, &status); err != nil {
 		return err
 	}
-	if in.PlanType != "metered" {
-		return nil
+	if status != "active" {
+		return errors.New("已停用的成本方案不能改价")
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM cost_model_prices WHERE plan_version_id=$1`, versionID); err != nil {
+	if planType == "metered" || in.UpdateDefault {
+		if err = r.appendPlanPriceVersionTx(ctx, tx, planID, planType, in); err != nil {
+			return err
+		}
+	}
+	if planType == "fixed" {
+		seen := make(map[int64]struct{}, len(in.SubscriptionUnitIDs))
+		for _, unitID := range in.SubscriptionUnitIDs {
+			if unitID <= 0 {
+				return errors.New("订阅实例无效")
+			}
+			if _, ok := seen[unitID]; ok {
+				continue
+			}
+			seen[unitID] = struct{}{}
+			if err = appendSubscriptionUnitVersionTx(ctx, tx, planID, unitID, in.EffectiveFrom, in.BillingCycle, in.FixedUnitCostCNY); err != nil {
+				return err
+			}
+		}
+	}
+	if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
 		return err
 	}
-	return insertCostModelPrices(ctx, tx, versionID, in.Prices)
+	return tx.Commit()
+}
+
+func (r *costManagementRepository) appendPlanPriceVersionTx(ctx context.Context, tx *sql.Tx, planID int64, planType string, in service.CostPriceChangeInput) error {
+	var latestID int64
+	var latestVersion int
+	var latestFrom time.Time
+	if err := tx.QueryRowContext(ctx, `SELECT id,version_no,effective_from FROM cost_plan_versions WHERE plan_id=$1 ORDER BY version_no DESC LIMIT 1 FOR UPDATE`, planID).Scan(&latestID, &latestVersion, &latestFrom); err != nil {
+		return err
+	}
+	if !in.EffectiveFrom.After(latestFrom) {
+		return errors.New("价格生效时间必须晚于当前版本")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE cost_plan_versions SET effective_to=$2 WHERE id=$1`, latestID, in.EffectiveFrom); err != nil {
+		return err
+	}
+	return r.insertCostPlanVersion(ctx, tx, planID, latestVersion+1, service.CostPlanInput{
+		PlanType: planType, EffectiveFrom: in.EffectiveFrom, BillingCycle: in.BillingCycle,
+		FixedUnitCostCNY: in.FixedUnitCostCNY, Prices: in.Prices,
+	})
+}
+
+func appendSubscriptionUnitVersionTx(ctx context.Context, tx *sql.Tx, planID, unitID int64, effective time.Time, cycle, amount string) error {
+	var latestID int64
+	var latestVersion int
+	var latestFrom time.Time
+	var unitFrom time.Time
+	var unitTo sql.NullTime
+	if err := tx.QueryRowContext(ctx, `SELECT effective_from,effective_to FROM cost_subscription_units WHERE id=$1 AND plan_id=$2 FOR UPDATE`, unitID, planID).Scan(&unitFrom, &unitTo); err != nil {
+		return err
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT id,version_no,effective_from FROM cost_subscription_unit_versions WHERE subscription_unit_id=$1 ORDER BY version_no DESC LIMIT 1 FOR UPDATE`, unitID).Scan(&latestID, &latestVersion, &latestFrom); err != nil {
+		return err
+	}
+	if !effective.After(latestFrom) || effective.Before(unitFrom) || unitTo.Valid && !effective.Before(unitTo.Time) {
+		return errors.New("价格生效时间必须处于订阅有效期内且晚于当前价格版本")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE cost_subscription_unit_versions SET effective_to=$2 WHERE id=$1`, latestID, effective); err != nil {
+		return err
+	}
+	return insertSubscriptionUnitVersionTx(ctx, tx, unitID, latestVersion+1, effective, cycle, amount)
+}
+
+func (r *costManagementRepository) ListCostPriceHistory(ctx context.Context, planID int64) ([]service.CostPriceVersion, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT v.id,v.plan_id,NULL::bigint,''::text,v.version_no,v.effective_from,v.effective_to,
+		       COALESCE(v.billing_cycle,''),v.fixed_unit_cost_cny::text,v.monthly_unit_cost_cny::text
+		FROM cost_plan_versions v WHERE v.plan_id=$1
+		UNION ALL
+		SELECT v.id,u.plan_id,u.id,u.name,v.version_no,v.effective_from,v.effective_to,
+		       v.billing_cycle,v.fixed_unit_cost_cny::text,v.monthly_unit_cost_cny::text
+		FROM cost_subscription_unit_versions v JOIN cost_subscription_units u ON u.id=v.subscription_unit_id
+		WHERE u.plan_id=$1
+		ORDER BY effective_from DESC,id DESC`, planID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]service.CostPriceVersion, 0)
+	for rows.Next() {
+		var item service.CostPriceVersion
+		var unitID sql.NullInt64
+		var end sql.NullTime
+		if err = rows.Scan(&item.ID, &item.PlanID, &unitID, &item.SubscriptionUnitName, &item.VersionNo, &item.EffectiveFrom, &end, &item.BillingCycle, &item.FixedUnitCostCNY, &item.MonthlyUnitCostCNY); err != nil {
+			return nil, err
+		}
+		if unitID.Valid {
+			item.SubscriptionUnitID = &unitID.Int64
+		}
+		if end.Valid {
+			item.EffectiveTo = &end.Time
+		}
+		item.FixedUnitCostCNY = normalizeCostAmount(item.FixedUnitCostCNY)
+		item.MonthlyUnitCostCNY = normalizeCostAmount(item.MonthlyUnitCostCNY)
+		items = append(items, item)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	planVersionIndexes := make(map[int64]int)
+	for i := range items {
+		if items[i].SubscriptionUnitID == nil {
+			planVersionIndexes[items[i].ID] = i
+		}
+	}
+	priceRows, err := r.db.QueryContext(ctx, `SELECT mp.plan_version_id,mp.upstream_model,mp.billing_mode,mp.input_price_cny::text,mp.output_price_cny::text,mp.cache_write_price_cny::text,mp.cache_read_price_cny::text,mp.image_input_price_cny::text,mp.image_output_price_cny::text,mp.per_request_price_cny::text FROM cost_model_prices mp JOIN cost_plan_versions v ON v.id=mp.plan_version_id WHERE v.plan_id=$1 ORDER BY mp.plan_version_id,mp.upstream_model`, planID)
+	if err != nil {
+		return nil, err
+	}
+	for priceRows.Next() {
+		var versionID int64
+		var price service.CostModelPrice
+		if err = priceRows.Scan(&versionID, &price.UpstreamModel, &price.BillingMode, &price.InputPriceCNY, &price.OutputPriceCNY, &price.CacheWritePriceCNY, &price.CacheReadPriceCNY, &price.ImageInputPriceCNY, &price.ImageOutputPriceCNY, &price.PerRequestPriceCNY); err != nil {
+			_ = priceRows.Close()
+			return nil, err
+		}
+		if index, ok := planVersionIndexes[versionID]; ok {
+			items[index].Prices = append(items[index].Prices, price)
+		}
+	}
+	if err = priceRows.Err(); err != nil {
+		_ = priceRows.Close()
+		return nil, err
+	}
+	return items, priceRows.Close()
 }
 
 func insertCostModelPrices(ctx context.Context, tx *sql.Tx, versionID int64, prices []service.CostModelPrice) error {
@@ -293,12 +368,14 @@ func normalizeCostAmount(value string) string {
 }
 
 func (r *costManagementRepository) DisableCostPlan(ctx context.Context, id int64) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
+	var inUse bool
+	if err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_cost_configs WHERE plan_id=$1 AND(effective_to IS NULL OR effective_to>NOW())) OR EXISTS(SELECT 1 FROM cost_subscription_units WHERE plan_id=$1 AND(effective_to IS NULL OR effective_to>NOW()))`, id).Scan(&inUse); err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `UPDATE cost_plans SET status='disabled',updated_at=NOW() WHERE id=$1`)
+	if inUse {
+		return errors.New("请先结束该方案下正在使用的账号成本和订阅实例")
+	}
+	res, err := r.db.ExecContext(ctx, `UPDATE cost_plans SET status='disabled',updated_at=NOW() WHERE id=$1`)
 	if err != nil {
 		return err
 	}
@@ -306,10 +383,7 @@ func (r *costManagementRepository) DisableCostPlan(ctx context.Context, id int64
 	if n == 0 {
 		return sql.ErrNoRows
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE cost_plan_versions SET effective_to=NOW() WHERE plan_id=$1 AND effective_from<NOW() AND(effective_to IS NULL OR effective_to>NOW())`, id); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return nil
 }
 
 func (r *costManagementRepository) ListAccountCosts(ctx context.Context, page, pageSize int, mode, search string) ([]service.AccountCostRow, int64, error) {
@@ -359,12 +433,14 @@ func (r *costManagementRepository) ListAccountCosts(ctx context.Context, page, p
 
 func (r *costManagementRepository) ListCostSubscriptionUnits(ctx context.Context, planID int64) ([]service.CostSubscriptionUnit, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT u.id,u.plan_id,u.name,u.created_at,u.effective_to,
-		       COUNT(c.id) FILTER(WHERE c.effective_from<=NOW() AND(c.effective_to IS NULL OR c.effective_to>NOW()))
+		SELECT u.id,u.plan_id,u.name,u.effective_from,u.effective_to,
+		       v.billing_cycle,v.fixed_unit_cost_cny::text,v.monthly_unit_cost_cny::text,v.version_no,v.effective_from,
+		       COUNT(c.id) FILTER(WHERE c.effective_from<=NOW() AND(c.effective_to IS NULL OR c.effective_to>NOW()) AND EXISTS(SELECT 1 FROM accounts a WHERE a.id=c.account_id AND a.deleted_at IS NULL))
 		FROM cost_subscription_units u
+		JOIN LATERAL(SELECT * FROM cost_subscription_unit_versions WHERE subscription_unit_id=u.id ORDER BY version_no DESC LIMIT 1)v ON TRUE
 		LEFT JOIN account_cost_configs c ON c.subscription_unit_id=u.id
 		WHERE u.plan_id=$1
-		GROUP BY u.id ORDER BY u.id`, planID)
+		GROUP BY u.id,v.id ORDER BY u.id`, planID)
 	if err != nil {
 		return nil, err
 	}
@@ -373,30 +449,58 @@ func (r *costManagementRepository) ListCostSubscriptionUnits(ctx context.Context
 	for rows.Next() {
 		var item service.CostSubscriptionUnit
 		var end sql.NullTime
-		if err = rows.Scan(&item.ID, &item.PlanID, &item.Name, &item.CreatedAt, &end, &item.AccountCount); err != nil {
+		if err = rows.Scan(&item.ID, &item.PlanID, &item.Name, &item.EffectiveFrom, &end, &item.BillingCycle, &item.FixedUnitCostCNY, &item.MonthlyUnitCostCNY, &item.VersionNo, &item.PriceEffectiveFrom, &item.AccountCount); err != nil {
 			return nil, err
 		}
 		if end.Valid {
-			item.EndedAt = &end.Time
+			item.EffectiveTo = &end.Time
 		}
+		item.FixedUnitCostCNY = normalizeCostAmount(item.FixedUnitCostCNY)
+		item.MonthlyUnitCostCNY = normalizeCostAmount(item.MonthlyUnitCostCNY)
 		items = append(items, item)
 	}
 	return items, rows.Err()
 }
 
-func (r *costManagementRepository) CreateCostSubscriptionUnit(ctx context.Context, planID int64, name string) (*service.CostSubscriptionUnit, error) {
-	item := &service.CostSubscriptionUnit{PlanID: planID, Name: name}
-	err := r.db.QueryRowContext(ctx, `
+func (r *costManagementRepository) CreateCostSubscriptionUnit(ctx context.Context, in service.CostSubscriptionUnitInput) (*service.CostSubscriptionUnit, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var id int64
+	err = tx.QueryRowContext(ctx, `
 		INSERT INTO cost_subscription_units(plan_id,name,effective_from)
-		SELECT id,$2,NOW() FROM cost_plans WHERE id=$1 AND plan_type='fixed' AND status='active'
-		RETURNING id,created_at`, planID, name).Scan(&item.ID, &item.CreatedAt)
+		SELECT id,$2,$3 FROM cost_plans WHERE id=$1 AND plan_type='fixed' AND status='active'
+		RETURNING id`, in.PlanID, in.Name, in.EffectiveFrom).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, errors.New("固定成本方案不存在或已停用")
 	}
 	if isUniqueConstraintViolation(err) {
 		return nil, errors.New("该成本方案下已存在同名订阅实例")
 	}
-	return item, err
+	if err != nil {
+		return nil, err
+	}
+	if err = insertSubscriptionUnitVersionTx(ctx, tx, id, 1, in.EffectiveFrom, in.BillingCycle, in.FixedUnitCostCNY); err != nil {
+		return nil, err
+	}
+	if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
+		return nil, err
+	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	items, err := r.ListCostSubscriptionUnits(ctx, in.PlanID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		if items[i].ID == id {
+			return &items[i], nil
+		}
+	}
+	return nil, sql.ErrNoRows
 }
 
 func (r *costManagementRepository) RenameCostSubscriptionUnit(ctx context.Context, id int64, name string) error {
@@ -441,12 +545,27 @@ func (r *costManagementRepository) EndCostSubscriptionUnit(ctx context.Context, 
 	if _, err = tx.ExecContext(ctx, `UPDATE cost_subscription_units SET effective_to=$2,updated_at=NOW() WHERE id=$1`, id, end); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE cost_subscription_unit_versions SET effective_to=$2 WHERE subscription_unit_id=$1 AND effective_from<$2 AND(effective_to IS NULL OR effective_to>$2)`, id, end); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `
 		UPDATE account_cost_configs SET effective_to=$2,updated_at=NOW()
 		WHERE subscription_unit_id=$1 AND effective_from<$2 AND(effective_to IS NULL OR effective_to>$2)`, id, end); err != nil {
 		return err
 	}
+	if err = enqueueCostRecalculationTx(ctx, tx, end); err != nil {
+		return err
+	}
 	return tx.Commit()
+}
+
+func insertSubscriptionUnitVersionTx(ctx context.Context, tx *sql.Tx, unitID int64, version int, effective time.Time, cycle, amount string) error {
+	cycle, unit, monthly, err := normalizeFixedCost(cycle, amount, "")
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO cost_subscription_unit_versions(subscription_unit_id,version_no,effective_from,billing_cycle,fixed_unit_cost_cny,monthly_unit_cost_cny) VALUES($1,$2,$3,$4,$5::numeric,$6::numeric)`, unitID, version, effective, cycle, unit, monthly)
+	return err
 }
 
 func (r *costManagementRepository) ListCostModelOptions(ctx context.Context, page, pageSize int, search string) ([]service.CostModelOption, int64, error) {
@@ -594,7 +713,14 @@ func prepareSubscriptionUnitTx(ctx context.Context, tx *sql.Tx, in *service.Acco
 	}
 	in.SubscriptionUnitID = &id
 	in.NewSubscriptionUnitName = ""
-	return nil
+	var cycle, amount string
+	if err = tx.QueryRowContext(ctx, `
+		SELECT billing_cycle,fixed_unit_cost_cny::text FROM cost_plan_versions
+		WHERE plan_id=$1 AND effective_from<=$2 AND(effective_to IS NULL OR effective_to>$2)
+		ORDER BY version_no DESC LIMIT 1`, *in.PlanID, in.EffectiveFrom).Scan(&cycle, &amount); err != nil {
+		return errors.New("订阅开始时间没有可用的默认价格")
+	}
+	return insertSubscriptionUnitVersionTx(ctx, tx, id, 1, in.EffectiveFrom, cycle, amount)
 }
 
 func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostInput) error {
@@ -638,11 +764,12 @@ func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostIn
 			return errors.New("固定成本账号必须选择一个订阅实例")
 		}
 		var unitPlanID int64
+		var unitFrom time.Time
 		var unitTo sql.NullTime
-		if err = tx.QueryRowContext(ctx, `SELECT plan_id,effective_to FROM cost_subscription_units WHERE id=$1`, *in.SubscriptionUnitID).Scan(&unitPlanID, &unitTo); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT plan_id,effective_from,effective_to FROM cost_subscription_units WHERE id=$1`, *in.SubscriptionUnitID).Scan(&unitPlanID, &unitFrom, &unitTo); err != nil {
 			return err
 		}
-		if in.PlanID == nil || unitPlanID != *in.PlanID || unitTo.Valid && (in.EffectiveTo == nil || in.EffectiveTo.After(unitTo.Time)) {
+		if in.PlanID == nil || unitPlanID != *in.PlanID || in.EffectiveFrom.Before(unitFrom) || unitTo.Valid && (in.EffectiveTo == nil || in.EffectiveTo.After(unitTo.Time)) {
 			return errors.New("订阅实例与固定成本方案或生效时间不匹配")
 		}
 	} else if in.SubscriptionUnitID != nil {
@@ -996,7 +1123,7 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 			SELECT DISTINCT DATE_TRUNC('month',ul.created_at AT TIME ZONE 'Asia/Shanghai')::date
 			FROM usage_logs ul
 			JOIN LATERAL (
-			  SELECT plan_id FROM account_cost_configs c
+			  SELECT plan_id,subscription_unit_id FROM account_cost_configs c
 			  WHERE c.account_id=ul.account_id AND c.cost_mode='fixed'
 			    AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
 			  ORDER BY c.effective_from DESC LIMIT 1
@@ -1004,7 +1131,7 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 			WHERE ul.id>$1 AND ul.id<=$2
 			  AND NOT EXISTS (
 			    SELECT 1 FROM cost_daily_aggregates d
-			    WHERE d.aggregate_scope='fixed_plan_total' AND d.plan_id=c.plan_id
+			    WHERE d.aggregate_scope='fixed_plan_total' AND d.subscription_unit_id=c.subscription_unit_id
 			      AND d.bucket_date>=DATE_TRUNC('month',ul.created_at AT TIME ZONE 'Asia/Shanghai')::date
 			      AND d.bucket_date<(DATE_TRUNC('month',ul.created_at AT TIME ZONE 'Asia/Shanghai')+INTERVAL '1 month')::date
 			  )`, checkpoint, maxID.Int64)
@@ -1046,95 +1173,74 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		return err
 	}
 	rows, err := tx.QueryContext(ctx, `
-		SELECT p.id,v.id,v.monthly_unit_cost_cny::text,
-		       CASE WHEN EXISTS (
-		         SELECT 1 FROM account_cost_configs legacy
-		         WHERE legacy.cost_mode='fixed' AND legacy.plan_id=p.id
-		           AND legacy.subscription_unit_id IS NULL
-		           AND legacy.effective_from<$4 AND(legacy.effective_to IS NULL OR legacy.effective_to>$3)
-		       ) THEN v.purchase_quantity ELSE (
-		         SELECT COUNT(*)::int FROM cost_subscription_units u
-		         WHERE u.plan_id=p.id AND(u.effective_to IS NULL OR u.effective_to>$3)
-		           AND EXISTS (
-		             SELECT 1 FROM account_cost_configs c
-		             JOIN usage_logs ul ON ul.account_id=c.account_id
-		               AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
-		             WHERE c.cost_mode='fixed' AND c.plan_id=p.id AND c.subscription_unit_id=u.id
-		               AND(u.effective_to IS NULL OR u.effective_to>ul.created_at)
-		               AND ul.created_at>=$3 AND ul.created_at<$4
-		           )
-		       ) END,
-		       (SELECT MIN(anchor.effective_from) FROM cost_plan_versions anchor WHERE anchor.plan_id=p.id),
-		       v.effective_from,v.effective_to
-		FROM cost_plans p
-		JOIN cost_plan_versions v ON v.plan_id=p.id
+		SELECT u.id,u.plan_id,v.id,v.monthly_unit_cost_cny::text,u.effective_from,u.effective_to,v.effective_from,v.effective_to
+		FROM cost_subscription_units u
+		JOIN cost_subscription_unit_versions v ON v.subscription_unit_id=u.id
 		  AND v.effective_from<$2 AND(v.effective_to IS NULL OR v.effective_to>$1)
-		WHERE p.plan_type='fixed'
-		  AND(p.status='active' OR v.effective_from<p.updated_at)
+		WHERE u.effective_from<$2 AND(u.effective_to IS NULL OR u.effective_to>$1)
 		  AND EXISTS (
-		    SELECT 1
-		    FROM account_cost_configs c
-		    WHERE c.cost_mode='fixed' AND c.plan_id=p.id
-		      AND EXISTS (
-		        SELECT 1 FROM usage_logs ul
-		        WHERE ul.account_id=c.account_id
-		          AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
-		          AND ul.created_at>=$3 AND ul.created_at<$4
-		      )
+		    SELECT 1 FROM account_cost_configs c
+		    JOIN usage_logs ul ON ul.account_id=c.account_id
+		      AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
+		    WHERE c.cost_mode='fixed' AND c.subscription_unit_id=u.id
+		      AND ul.created_at>=$3 AND ul.created_at<$4
 		  )
 		`, bucket, bucket.AddDate(0, 0, 1), monthStart, monthEnd)
 	if err != nil {
 		return err
 	}
-	type fixedPlan struct {
-		planID, versionID int64
-		monthly           string
-		quantity          int
-		anchor            time.Time
-		effectiveFrom     time.Time
-		effectiveTo       sql.NullTime
+	type fixedUnit struct {
+		unitID, planID, versionID int64
+		monthly                   string
+		unitFrom, effectiveFrom   time.Time
+		unitTo, effectiveTo       sql.NullTime
 	}
-	var plans []fixedPlan
+	var units []fixedUnit
 	for rows.Next() {
-		var p fixedPlan
-		if err = rows.Scan(&p.planID, &p.versionID, &p.monthly, &p.quantity, &p.anchor, &p.effectiveFrom, &p.effectiveTo); err != nil {
+		var unit fixedUnit
+		if err = rows.Scan(&unit.unitID, &unit.planID, &unit.versionID, &unit.monthly, &unit.unitFrom, &unit.unitTo, &unit.effectiveFrom, &unit.effectiveTo); err != nil {
 			_ = rows.Close()
 			return err
 		}
-		plans = append(plans, p)
+		units = append(units, unit)
 	}
 	if err = rows.Close(); err != nil {
 		return err
 	}
-	for _, p := range plans {
-		start, end := fixedBillingPeriod(bucket, p.anchor)
-		daily, err := decimal.NewFromString(p.monthly)
+	for _, unit := range units {
+		start, end := fixedBillingPeriod(bucket, unit.unitFrom)
+		daily, err := decimal.NewFromString(unit.monthly)
 		if err != nil {
 			return err
 		}
 		activeStart, activeEnd := bucket, bucket.AddDate(0, 0, 1)
-		if p.effectiveFrom.After(activeStart) {
-			activeStart = p.effectiveFrom
+		if unit.unitFrom.After(activeStart) {
+			activeStart = unit.unitFrom
 		}
-		if p.effectiveTo.Valid && p.effectiveTo.Time.Before(activeEnd) {
-			activeEnd = p.effectiveTo.Time
+		if unit.unitTo.Valid && unit.unitTo.Time.Before(activeEnd) {
+			activeEnd = unit.unitTo.Time
+		}
+		if unit.effectiveFrom.After(activeStart) {
+			activeStart = unit.effectiveFrom
+		}
+		if unit.effectiveTo.Valid && unit.effectiveTo.Time.Before(activeEnd) {
+			activeEnd = unit.effectiveTo.Time
 		}
 		if !activeEnd.After(activeStart) {
 			continue
 		}
-		daily = daily.Mul(decimal.NewFromInt(int64(p.quantity))).
-			Mul(decimal.NewFromInt(activeEnd.Unix() - activeStart.Unix())).
+		daily = daily.Mul(decimal.NewFromInt(activeEnd.Unix() - activeStart.Unix())).
 			Div(decimal.NewFromInt(end.Unix() - start.Unix()))
-		if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,plan_version_id,amount_cny) VALUES($1,'fixed_plan_total',$2,$3,$4::numeric)`, bucket, p.planID, p.versionID, daily.String()); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,subscription_unit_id,subscription_unit_version_id,amount_cny) VALUES($1,'fixed_plan_total',$2,$3,$4,$5::numeric)`, bucket, unit.planID, unit.unitID, unit.versionID, daily.String()); err != nil {
 			return err
 		}
 		weights, err := tx.QueryContext(ctx, `
 			SELECT ul.user_id,COUNT(*)::bigint,
 			       SUM(ul.input_tokens+ul.output_tokens+ul.cache_creation_tokens+ul.cache_read_tokens)::bigint
-			FROM usage_logs ul JOIN account_cost_configs c ON c.account_id=ul.account_id AND c.cost_mode='fixed' AND c.plan_id=$2
+			FROM usage_logs ul JOIN account_cost_configs c ON c.account_id=ul.account_id AND c.cost_mode='fixed' AND c.subscription_unit_id=$2
 			  AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
 			WHERE ul.created_at >= $1 AND ul.created_at < $1::timestamptz+INTERVAL '1 day'
-			GROUP BY ul.user_id`, bucket, p.planID)
+			GROUP BY ul.user_id`, bucket, unit.unitID)
 		if err != nil {
 			return err
 		}
@@ -1163,7 +1269,7 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 				continue
 			}
 			amount := daily.Mul(decimal.NewFromInt(num)).Div(decimal.NewFromInt(den))
-			if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,plan_version_id,request_count,amount_cny) VALUES($1,'fixed_user_allocation',$2,$3,$4,$5,$6::numeric)`, bucket, w.userID, p.planID, p.versionID, w.requests, amount.String()); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,subscription_unit_id,subscription_unit_version_id,request_count,amount_cny) VALUES($1,'fixed_user_allocation',$2,$3,$4,$5,$6,$7::numeric)`, bucket, w.userID, unit.planID, unit.unitID, unit.versionID, w.requests, amount.String()); err != nil {
 				return err
 			}
 		}
@@ -1249,7 +1355,7 @@ func (r *costManagementRepository) RunNextCostRecalculation(ctx context.Context)
 	if completed >= total {
 		status = "succeeded"
 	}
-	if _, err = r.db.ExecContext(ctx, `UPDATE cost_jobs SET status=$2,finished_at=CASE WHEN $2='succeeded' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$1 AND status='running'`, id, status); err != nil {
+	if _, err = r.db.ExecContext(ctx, `UPDATE cost_jobs SET status=$2::varchar,finished_at=CASE WHEN $2::varchar='succeeded' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$1 AND status='running'`, id, status); err != nil {
 		return true, err
 	}
 	return true, nil

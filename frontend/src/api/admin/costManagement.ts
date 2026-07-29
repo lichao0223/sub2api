@@ -5,7 +5,7 @@ export interface CostPlan {
   id: number; name: string; plan_type: 'metered'|'fixed'; fixed_category?: string; status: string
   version_no: number; effective_from: string; effective_to?: string; billing_cycle: 'monthly'|'yearly'
   fixed_unit_cost_cny: string; monthly_unit_cost_cny: string
-  purchase_quantity: number; subscription_unit_count: number; unassigned_account_count: number
+  subscription_unit_count: number
   model_count: number; account_count: number; note: string; prices?: CostModelPrice[]
 }
 export interface CostModelPrice {
@@ -19,7 +19,13 @@ export interface AccountCostRow {
   effective_from?:string;effective_to?:string;pending_count:number;exclude_reason:string
 }
 export interface CostSubscriptionUnit {
-  id:number;plan_id:number;name:string;created_at:string;ended_at?:string;account_count:number
+  id:number;plan_id:number;name:string;effective_from:string;effective_to?:string;billing_cycle:'monthly'|'yearly'
+  fixed_unit_cost_cny:string;monthly_unit_cost_cny:string;version_no:number;price_effective_from:string;account_count:number
+}
+export interface CostPriceVersion {
+  id:number;plan_id:number;subscription_unit_id?:number;subscription_unit_name:string;version_no:number
+  effective_from:string;effective_to?:string;billing_cycle?:'monthly'|'yearly';fixed_unit_cost_cny:string
+  monthly_unit_cost_cny:string;prices?:CostModelPrice[]
 }
 export interface CostOverview {
   dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string;pending_count:number;error_count:number
@@ -46,9 +52,9 @@ export const costManagementAPI={
   accounts:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<AccountCostRow>>(`${base}/accounts`,{params})).data,
   modelOptions:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<{model:string}>>(`${base}/model-options`,{params})).data,
   subscriptionUnits:async(plan_id:number)=>(await apiClient.get<CostSubscriptionUnit[]>(`${base}/subscription-units`,{params:{plan_id}})).data,
-  createSubscriptionUnit:async(plan_id:number,name:string)=>(await apiClient.post<CostSubscriptionUnit>(`${base}/subscription-units`,{plan_id,name})).data,
+  createSubscriptionUnit:async(input:{plan_id:number;name:string;effective_from:string;billing_cycle:'monthly'|'yearly';fixed_unit_cost_cny:string})=>(await apiClient.post<CostSubscriptionUnit>(`${base}/subscription-units`,input)).data,
   renameSubscriptionUnit:async(id:number,name:string)=>(await apiClient.put(`${base}/subscription-units/${id}`,{name})).data,
-  endSubscriptionUnit:async(id:number)=>(await apiClient.delete(`${base}/subscription-units/${id}`)).data,
+  endSubscriptionUnit:async(id:number,effective_to:string)=>(await apiClient.post(`${base}/subscription-units/${id}/end`,{effective_to})).data,
   saveAccount:async(id:number,input:AccountCostInput)=>(await apiClient.put(`${base}/accounts/${id}`,input)).data,
   endAccount:async(id:number)=>(await apiClient.delete(`${base}/accounts/${id}`)).data,
   saveAccounts:async(account_ids:number[],input:AccountCostInput)=>(await apiClient.put(`${base}/accounts/batch`,{account_ids,...input})).data,
@@ -56,6 +62,8 @@ export const costManagementAPI={
   plan:async(id:number)=>(await apiClient.get<CostPlan>(`${base}/plans/${id}`)).data,
   createPlan:async(input:Record<string,unknown>)=>(await apiClient.post<CostPlan>(`${base}/plans`,input)).data,
   updatePlan:async(id:number,input:Record<string,unknown>)=>(await apiClient.put<CostPlan>(`${base}/plans/${id}`,input)).data,
+  changePlanPrice:async(id:number,input:Record<string,unknown>)=>(await apiClient.post(`${base}/plans/${id}/price-changes`,input)).data,
+  priceHistory:async(id:number)=>(await apiClient.get<CostPriceVersion[]>(`${base}/plans/${id}/price-history`)).data,
   disablePlan:async(id:number)=>(await apiClient.delete(`${base}/plans/${id}`)).data,
   userCosts:async(params:{start_date:string;end_date:string})=>(await apiClient.get<{items:Array<{user_id:number;dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string}>;unallocated_fixed_cost_cny:string;platform_total_cost_cny:string}>(`${base}/user-costs`,{params})).data,
   recalculations:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<CostJob>>(`${base}/recalculations`,{params})).data,
