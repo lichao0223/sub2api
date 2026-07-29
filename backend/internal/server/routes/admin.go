@@ -94,6 +94,9 @@ func RegisterAdminRoutes(
 		// 使用记录管理
 		registerUsageRoutes(admin, h)
 
+		// 真实成本旁路核算
+		registerCostManagementRoutes(admin, h)
+
 		// 用户属性管理
 		registerUserAttributeRoutes(admin, h)
 
@@ -126,6 +129,27 @@ func RegisterAdminRoutes(
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerCostManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	costs := admin.Group("/cost-management")
+	{
+		costs.GET("/overview", h.Admin.CostManagement.Overview)
+		costs.GET("/analysis", h.Admin.CostManagement.Analysis)
+		costs.GET("/accounts", h.Admin.CostManagement.ListAccounts)
+		costs.GET("/model-options", h.Admin.CostManagement.ListModelOptions)
+		costs.PUT("/accounts/batch", h.Admin.CostManagement.SaveAccounts)
+		costs.PUT("/accounts/:id", h.Admin.CostManagement.SaveAccount)
+		costs.DELETE("/accounts/:id", h.Admin.CostManagement.EndAccount)
+		costs.GET("/plans", h.Admin.CostManagement.ListPlans)
+		costs.GET("/plans/:id", h.Admin.CostManagement.GetPlan)
+		costs.POST("/plans", h.Admin.CostManagement.CreatePlan)
+		costs.PUT("/plans/:id", h.Admin.CostManagement.UpdatePlan)
+		costs.DELETE("/plans/:id", h.Admin.CostManagement.DisablePlan)
+		costs.GET("/recalculations", h.Admin.CostManagement.ListRecalculations)
+		costs.POST("/recalculations", h.Admin.CostManagement.CreateRecalculation)
+		costs.GET("/user-costs", h.Admin.CostManagement.UserCosts)
 	}
 }
 

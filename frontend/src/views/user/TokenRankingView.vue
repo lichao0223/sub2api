@@ -148,6 +148,16 @@
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.nonworkTokenRatio') }}</div>
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatPercent(totals.nonworkTokenRatio) }}</div>
             </div>
+            <template v-if="authStore.isAdmin">
+              <div class="card p-4">
+                <div class="text-xs font-medium text-gray-500 dark:text-gray-400">平台真实总成本</div>
+                <div class="mt-2 text-2xl font-bold text-primary-600">¥{{ formatCost(costSummary.platformTotal) }}</div>
+              </div>
+              <div class="card p-4">
+                <div class="text-xs font-medium text-gray-500 dark:text-gray-400">未分摊固定成本</div>
+                <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatCost(costSummary.unallocatedFixed) }}</div>
+              </div>
+            </template>
           </div>
 
           <div class="card flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -190,6 +200,11 @@
                     <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.activeDuration') }}</th>
                     <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.nonworkActiveDuration') }}</th>
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
+                    <template v-if="authStore.isAdmin">
+                      <th class="px-4 py-3 text-right">动态成本</th>
+                      <th class="px-4 py-3 text-right">固定成本</th>
+                      <th class="px-4 py-3 text-right">总成本</th>
+                    </template>
                   </tr>
                 </thead>
                 <tbody>
@@ -216,6 +231,11 @@
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
+                    <template v-if="authStore.isAdmin">
+                      <td class="px-4 py-3 text-right">¥{{ formatCost(item.dynamic_cost_cny || 0) }}</td>
+                      <td class="px-4 py-3 text-right">¥{{ formatCost(item.fixed_cost_cny || 0) }}</td>
+                      <td class="px-4 py-3 text-right font-semibold text-primary-600">¥{{ formatCost(item.total_cost_cny || 0) }}</td>
+                    </template>
                   </tr>
                 </tbody>
               </table>
@@ -359,7 +379,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { saveAs } from 'file-saver'
@@ -371,6 +391,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import * as adminUsageAPI from '@/api/admin/usage'
+import costManagementAPI from '@/api/admin/costManagement'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -394,7 +415,8 @@ const exportMenuRef = ref<HTMLElement | null>(null)
 const rankingTableScrollRef = ref<HTMLElement | null>(null)
 const error = ref(false)
 const rankingScope = ref<'all' | 'nonwork'>('all')
-const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration' | 'actual_cost'>('tokens')
+const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration' | 'actual_cost' | 'total_cost'>('tokens')
+const costSummary = reactive({ platformTotal: 0, unallocatedFixed: 0 })
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const rankingItems = ref<UserTokenRankingItem[]>([])
 const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
@@ -435,6 +457,7 @@ const rankByOptions = computed<SelectOption[]>(() => [
   { value: 'active_duration', label: t('tokenRanking.rankByActiveDuration') },
   { value: 'nonwork_active_duration', label: t('tokenRanking.rankByNonworkActiveDuration') },
   { value: 'actual_cost', label: t('tokenRanking.rankBySpend') },
+  ...(authStore.isAdmin ? [{ value: 'total_cost', label: '真实总成本' }] : []),
 ])
 
 const sortOrderOptions = computed<SelectOption[]>(() => [
@@ -871,15 +894,43 @@ async function loadRanking() {
   loading.value = true
   error.value = false
   try {
+    const costsPromise = authStore.isAdmin
+      ? costManagementAPI.userCosts({ start_date: startDate.value, end_date: endDate.value }).catch((costError) => {
+          console.warn('Failed to load cost overlay:', costError)
+          return null
+        })
+      : null
     const response = await usageAPI.getDashboardNonworkTokenRanking({
       start_date: startDate.value,
       end_date: endDate.value,
       limit: 10000,
       scope: rankingScope.value,
-      rank_by: rankBy.value,
+      rank_by: rankBy.value === 'total_cost' ? 'tokens' : rankBy.value,
       sort_order: sortOrder.value
     })
     rankingItems.value = response.ranking || []
+    if (costsPromise) {
+      const costs = await costsPromise
+      if (costs) {
+        costSummary.platformTotal = Number(costs.platform_total_cost_cny || 0)
+        costSummary.unallocatedFixed = Number(costs.unallocated_fixed_cost_cny || 0)
+        const byUser = new Map(costs.items.map(item => [item.user_id, item]))
+        rankingItems.value = rankingItems.value.map(item => {
+          const cost = byUser.get(item.user_id)
+          return cost ? { ...item, dynamic_cost_cny: Number(cost.dynamic_cost_cny), fixed_cost_cny: Number(cost.fixed_cost_cny), total_cost_cny: Number(cost.total_cost_cny) } : item
+        })
+      } else {
+        costSummary.platformTotal = 0
+        costSummary.unallocatedFixed = 0
+      }
+    } else {
+      costSummary.platformTotal = 0
+      costSummary.unallocatedFixed = 0
+    }
+    if (rankBy.value === 'total_cost') {
+      const direction = sortOrder.value === 'asc' ? 1 : -1
+      rankingItems.value.sort((a, b) => ((a.total_cost_cny || 0) - (b.total_cost_cny || 0)) * direction)
+    }
     clampPagination()
     totals.value = {
       totalTokens: response.total_tokens || 0,

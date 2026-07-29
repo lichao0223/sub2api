@@ -1,0 +1,79 @@
+import { flushPromises, mount } from '@vue/test-utils'
+import { defineComponent } from 'vue'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
+import CostManagementView from '../CostManagementView.vue'
+
+const api = vi.hoisted(() => ({
+  overview: vi.fn(),
+  analysis: vi.fn(),
+  accounts: vi.fn(),
+  plans: vi.fn(),
+  modelOptions: vi.fn(),
+}))
+
+vi.mock('@/api/admin/costManagement', () => ({ default: api }))
+vi.mock('@/stores', () => ({
+  useAppStore: () => ({ showSuccess: vi.fn(), showError: vi.fn() }),
+}))
+vi.mock('chart.js/auto', () => ({
+  Chart: class {
+    destroy() {}
+  },
+}))
+
+const SelectStub = defineComponent({
+  props: ['modelValue', 'options'],
+  emits: ['update:modelValue', 'change'],
+  template: `<select :value="modelValue" @change="$emit('update:modelValue', $event.target.value);$emit('change', $event.target.value)">
+    <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
+  </select>`,
+})
+const BaseDialogStub = defineComponent({
+  props: ['show', 'title'],
+  emits: ['close'],
+  template: '<div v-if="show" data-test="dialog"><h2>{{ title }}</h2><slot /><slot name="footer" /></div>',
+})
+
+const mountView = () => mount(CostManagementView, {
+  global: {
+    stubs: {
+      AppLayout: { template: '<div><slot /></div>' },
+      Select: SelectStub,
+      BaseDialog: BaseDialogStub,
+      DateRangePicker: true,
+      Pagination: true,
+    },
+  },
+})
+
+describe('CostManagementView', () => {
+  beforeEach(() => {
+    api.overview.mockReset().mockResolvedValue({
+      dynamic_cost_cny: '0', fixed_cost_cny: '0', total_cost_cny: '0',
+      pending_count: 0, error_count: 0, eligible_count: 0, calculated_count: 0,
+      coverage_complete: true, previous_total_cost_cny: '0',
+    })
+    api.analysis.mockReset().mockResolvedValue({ period: 'day', trend: [], top: [] })
+    api.accounts.mockReset().mockResolvedValue({
+      items: [{ account_id: 7, account_name: 'GLM Anthropic', platform: 'anthropic', account_status: 'active', cost_mode: '', plan_name: '', pending_count: 0, exclude_reason: '' }],
+      total: 1,
+    })
+    api.plans.mockReset().mockResolvedValue({ items: [], total: 0 })
+    api.modelOptions.mockReset().mockResolvedValue({ items: [], total: 0 })
+  })
+
+  it('switches account fields with the selected cost mode', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '账号成本')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '配置')!.trigger('click')
+
+    const dialog = wrapper.get('[data-test="dialog"]')
+    expect(dialog.text()).toContain('成本方案')
+    expect(dialog.text()).not.toContain('排除原因')
+    await dialog.get('select').setValue('excluded')
+    expect(dialog.text()).toContain('排除原因')
+  })
+})

@@ -623,6 +623,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/cost-management',
+    name: 'AdminCostManagement',
+    component: () => import('@/features/cost-management/CostManagementView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Cost Management',
+      titleKey: 'nav.costManagement'
+    }
+  },
+  {
     path: '/admin/usage',
     name: 'AdminUsage',
     component: () => import('@/views/admin/UsageView.vue'),
