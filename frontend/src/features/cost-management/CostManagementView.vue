@@ -9,7 +9,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-sm font-medium">统计范围</span>
-            <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" @change="loadOverview" />
+            <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" period-mode @change="loadOverview" />
           </div>
           <span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span>
         </div>
@@ -61,14 +61,16 @@
           <div v-for="(p,i) in planForm.prices" :key="i" class="space-y-3 rounded border border-gray-200 p-3">
             <div class="flex gap-3"><Select v-model="p.upstream_model" :options="modelOptions" searchable creatable class="min-w-0 flex-1" placeholder="选择或输入上游模型" /><button class="text-red-500" :disabled="planForm.prices.length===1" @click="planForm.prices.splice(i,1)">删除</button></div>
             <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div><label class="input-label">计价方式</label><Select v-model="p.billing_mode" :options="billingModeOptions" /></div>
-              <div><label class="input-label">输入 Token</label><input v-model="p.input_price_cny" class="input w-full" type="number" min="0"></div>
-              <div><label class="input-label">输出 Token</label><input v-model="p.output_price_cny" class="input w-full" type="number" min="0"></div>
-              <div><label class="input-label">缓存写入 Token</label><input v-model="p.cache_write_price_cny" class="input w-full" type="number" min="0"></div>
-              <div><label class="input-label">缓存读取 Token</label><input v-model="p.cache_read_price_cny" class="input w-full" type="number" min="0"></div>
-              <div><label class="input-label">图片输入 Token</label><input v-model="p.image_input_price_cny" class="input w-full" type="number" min="0"></div>
-              <div><label class="input-label">图片输出 Token</label><input v-model="p.image_output_price_cny" class="input w-full" type="number" min="0"></div>
-              <div><label class="input-label">每次请求</label><input v-model="p.per_request_price_cny" class="input w-full" type="number" min="0"></div>
+              <div><label class="input-label">计价方式</label><Select v-model="p.billing_mode" :options="billingModeOptions" @change="changeBillingMode(p,$event)" /></div>
+              <template v-if="p.billing_mode!=='request'">
+                <div><label class="input-label">输入 Token</label><input v-model="p.input_price_cny" class="input w-full" type="number" min="0"></div>
+                <div><label class="input-label">输出 Token</label><input v-model="p.output_price_cny" class="input w-full" type="number" min="0"></div>
+                <div><label class="input-label">缓存写入 Token</label><input v-model="p.cache_write_price_cny" class="input w-full" type="number" min="0"></div>
+                <div><label class="input-label">缓存读取 Token</label><input v-model="p.cache_read_price_cny" class="input w-full" type="number" min="0"></div>
+                <div><label class="input-label">图片输入 Token</label><input v-model="p.image_input_price_cny" class="input w-full" type="number" min="0"></div>
+                <div><label class="input-label">图片输出 Token</label><input v-model="p.image_output_price_cny" class="input w-full" type="number" min="0"></div>
+              </template>
+              <div v-if="p.billing_mode!=='token'"><label class="input-label">每次请求</label><input v-model="p.per_request_price_cny" class="input w-full" type="number" min="0"></div>
             </div>
           </div>
         </div>
@@ -142,11 +144,12 @@ async function saveAccountForm(){const input:AccountCostInput={...accountForm,pl
 async function endAccountCost(){if(!editingAccount.value||!confirm('确认结束当前账号的成本核算？历史成本不会改变。'))return;try{await costManagementAPI.endAccount(editingAccount.value);app.showSuccess('当前成本核算已结束');accountDialog.value=false;loadAccounts()}catch(e:any){app.showError(e.message||'结束失败')}}
 
 const plans=ref<CostPlan[]>([]),planTotal=ref(0),planPage=ref(1),planSearch=ref(''),planType=ref(''),planDialog=ref(false),editingPlanId=ref<number>()
-const planTypeOptions=[{value:'',label:'全部类型'},{value:'metered',label:'按量成本'},{value:'fixed',label:'固定成本'}],createPlanTypeOptions=planTypeOptions.slice(1),fixedCategoryOptions=[{value:'coding_plan',label:'Coding Plan'},{value:'self_hosted',label:'本地部署'},{value:'other',label:'其他'}],billingCycleOptions=[{value:'monthly',label:'月付'},{value:'yearly',label:'年付'}]
+const planTypeOptions=[{value:'',label:'全部类型'},{value:'metered',label:'按量成本'},{value:'fixed',label:'固定成本'}],createPlanTypeOptions=planTypeOptions.slice(1),fixedCategoryOptions=[{value:'coding_plan',label:'订阅制'},{value:'self_hosted',label:'本地部署'},{value:'other',label:'其他'}],billingCycleOptions=[{value:'monthly',label:'月付'},{value:'yearly',label:'年付'}]
 const billingModeOptions=[{value:'token',label:'按 Token'},{value:'request',label:'按请求'},{value:'hybrid',label:'混合计价'}]
 const modelOptions=ref<Array<{value:string;label:string}>>([])
 async function loadModelOptions(){const r=await costManagementAPI.modelOptions({page:1,page_size:100});modelOptions.value=r.items.map(x=>({value:x.model,label:x.model}))}
 const emptyPrice=()=>({upstream_model:'',billing_mode:'token',input_price_cny:'0',output_price_cny:'0',cache_write_price_cny:'0',cache_read_price_cny:'0',image_input_price_cny:'0',image_output_price_cny:'0',per_request_price_cny:'0'})
+function changeBillingMode(price:any,mode:unknown){price.billing_mode=mode;if(mode==='request'){price.input_price_cny=price.output_price_cny=price.cache_write_price_cny=price.cache_read_price_cny=price.image_input_price_cny=price.image_output_price_cny='0'}else if(mode==='token')price.per_request_price_cny='0'}
 const planForm=reactive<any>({name:'',plan_type:'metered',fixed_category:'coding_plan',effective_from:new Date().toISOString().slice(0,16),effective_to:'',billing_cycle:'monthly',fixed_unit_cost_cny:'0',purchase_quantity:1,note:'',prices:[emptyPrice()]})
 async function loadPlans(){const r=await costManagementAPI.plans({page:planPage.value,page_size:pageSize.value,search:planSearch.value,type:planType.value});plans.value=r.items;planTotal.value=r.total}
 function openPlan(){editingPlanId.value=undefined;Object.assign(planForm,{name:'',plan_type:'metered',fixed_category:'coding_plan',effective_from:new Date().toISOString().slice(0,16),effective_to:'',billing_cycle:'monthly',fixed_unit_cost_cny:'0',purchase_quantity:1,note:'',prices:[emptyPrice()]});planDialog.value=true}

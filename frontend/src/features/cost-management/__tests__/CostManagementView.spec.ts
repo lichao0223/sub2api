@@ -80,4 +80,19 @@ describe('CostManagementView', () => {
     await dialog.get('select').setValue('excluded')
     expect(dialog.text()).toContain('排除原因')
   })
+
+  it('shows only fields used by the selected billing mode', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '新建成本方案')!.trigger('click')
+
+    const dialog = wrapper.get('[data-test="dialog"]')
+    expect(dialog.text()).toContain('输入 Token')
+    expect(dialog.text()).not.toContain('每次请求')
+    await dialog.findAll('select').at(-1)!.setValue('request')
+    expect(dialog.text()).not.toContain('输入 Token')
+    expect(dialog.text()).toContain('每次请求')
+  })
 })

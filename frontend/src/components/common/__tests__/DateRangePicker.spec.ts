@@ -13,8 +13,17 @@ const messages: Record<string, string> = {
   'dates.last30Days': 'Last 30 Days',
   'dates.thisMonth': 'This Month',
   'dates.lastMonth': 'Last Month',
+  'dates.thisWeek': 'This Week',
+  'dates.thisYear': 'This Year',
+  'dates.lastYear': 'Last Year',
   'dates.startDate': 'Start Date',
   'dates.endDate': 'End Date',
+  'dates.selectByMonth': 'Select by Month',
+  'dates.selectByYear': 'Select by Year',
+  'dates.startMonth': 'Start Month',
+  'dates.endMonth': 'End Month',
+  'dates.startYear': 'Start Year',
+  'dates.endYear': 'End Year',
   'dates.apply': 'Apply',
   'dates.selectDateRange': 'Select date range'
 }
@@ -117,5 +126,27 @@ describe('DateRangePicker', () => {
 
     wrapper.unmount()
     rect.mockRestore()
+  })
+
+  it('offers month and year selection in period mode', async () => {
+    const now = new Date()
+    const wrapper = mount(DateRangePicker, {
+      props: {
+        startDate: formatLocalDate(new Date(now.getFullYear(), now.getMonth(), 1)),
+        endDate: formatLocalDate(now),
+        periodMode: true
+      },
+      global: { stubs: { Icon: true, Teleport: true } }
+    })
+
+    expect(wrapper.text()).toContain('This Month')
+    await wrapper.find('.date-picker-trigger').trigger('click')
+    expect(wrapper.text()).toContain('This Week')
+    expect(wrapper.text()).toContain('This Year')
+    expect(wrapper.text()).toContain('Last Year')
+    expect(wrapper.text()).toContain('Start Month')
+    await wrapper.findAll('.date-picker-period-tab').at(1)!.trigger('click')
+    expect(wrapper.text()).toContain('Start Year')
+    expect(wrapper.text()).toContain('End Year')
   })
 })

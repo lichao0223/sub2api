@@ -25,9 +25,9 @@
       <Transition name="date-picker-dropdown">
         <div v-if="isOpen" ref="dropdownRef" class="date-picker-dropdown" :style="dropdownStyle">
         <!-- Quick presets -->
-        <div class="date-picker-presets">
+        <div class="date-picker-presets" :class="periodMode && 'date-picker-presets-period'">
           <button
-            v-for="preset in presets"
+            v-for="preset in availablePresets"
             :key="preset.value"
             @click="selectPreset(preset)"
             :class="['date-picker-preset', isPresetActive(preset) && 'date-picker-preset-active']"
@@ -38,24 +38,35 @@
 
         <div class="date-picker-divider"></div>
 
+        <div v-if="periodMode" class="date-picker-period-tabs">
+          <button :class="['date-picker-period-tab', periodGranularity==='month' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('month')">{{ t('dates.selectByMonth') }}</button>
+          <button :class="['date-picker-period-tab', periodGranularity==='year' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('year')">{{ t('dates.selectByYear') }}</button>
+        </div>
+
         <!-- Custom date range inputs -->
         <div class="date-picker-custom">
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t('dates.startDate') }}</label>
+            <label class="date-picker-label">{{ t(periodMode ? (periodGranularity==='month' ? 'dates.startMonth' : 'dates.startYear') : 'dates.startDate') }}</label>
             <input
+              v-if="!periodMode"
               type="date"
               v-model="localStartDate"
               :max="localEndDate || tomorrow"
               class="date-picker-input"
               @change="onDateChange"
             />
+            <input v-else-if="periodGranularity==='month'" v-model="startMonth" type="month" :max="endMonth || currentMonth" class="date-picker-input" @change="onDateChange" />
+            <select v-else v-model="startYear" class="date-picker-input" @change="onDateChange">
+              <option v-for="year in yearOptions" :key="year" :value="year" :disabled="Number(year)>Number(endYear)">{{ year }}年</option>
+            </select>
           </div>
           <div class="date-picker-separator">
             <Icon name="arrowRight" size="sm" class="text-gray-400" />
           </div>
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t('dates.endDate') }}</label>
+            <label class="date-picker-label">{{ t(periodMode ? (periodGranularity==='month' ? 'dates.endMonth' : 'dates.endYear') : 'dates.endDate') }}</label>
             <input
+              v-if="!periodMode"
               type="date"
               v-model="localEndDate"
               :min="localStartDate"
@@ -63,6 +74,10 @@
               class="date-picker-input"
               @change="onDateChange"
             />
+            <input v-else-if="periodGranularity==='month'" v-model="endMonth" type="month" :min="startMonth" :max="currentMonth" class="date-picker-input" @change="onDateChange" />
+            <select v-else v-model="endYear" class="date-picker-input" @change="onDateChange">
+              <option v-for="year in yearOptions" :key="year" :value="year" :disabled="Number(year)<Number(startYear)">{{ year }}年</option>
+            </select>
           </div>
         </div>
 
@@ -92,6 +107,7 @@ interface DatePreset {
 interface Props {
   startDate: string
   endDate: string
+  periodMode?: boolean
 }
 
 interface Emits {
@@ -100,7 +116,7 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = defineProps<Props>()
+const props = withDefaults(defineProps<Props>(), { periodMode: false })
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
@@ -112,7 +128,8 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const dropdownStyle = ref<Record<string, string>>({})
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
-const activePreset = ref<string | null>('last24Hours')
+const activePreset = ref<string | null>(props.periodMode ? 'thisMonth' : 'last24Hours')
+const periodGranularity = ref<'month' | 'year'>('month')
 
 const today = computed(() => {
   // Use local timezone to avoid UTC timezone issues
@@ -139,7 +156,7 @@ const formatDateToString = (date: Date): string => {
   return `${year}-${month}-${day}`
 }
 
-const presets: DatePreset[] = [
+const dayPresets: DatePreset[] = [
   {
     labelKey: 'dates.today',
     value: 'today',
@@ -224,9 +241,63 @@ const presets: DatePreset[] = [
   }
 ]
 
+const periodPresets: DatePreset[] = [
+  {
+    labelKey: 'dates.thisWeek',
+    value: 'thisWeek',
+    getRange: () => {
+      const now = new Date()
+      const start = new Date(now)
+      start.setDate(now.getDate() - (now.getDay() + 6) % 7)
+      return { start: formatDateToString(start), end: today.value }
+    }
+  },
+  dayPresets[6],
+  dayPresets[7],
+  {
+    labelKey: 'dates.thisYear',
+    value: 'thisYear',
+    getRange: () => ({ start: `${new Date().getFullYear()}-01-01`, end: today.value })
+  },
+  {
+    labelKey: 'dates.lastYear',
+    value: 'lastYear',
+    getRange: () => {
+      const year = new Date().getFullYear() - 1
+      return { start: `${year}-01-01`, end: `${year}-12-31` }
+    }
+  }
+]
+const availablePresets = computed(() => props.periodMode ? periodPresets : dayPresets)
+const currentMonth = computed(() => today.value.slice(0, 7))
+const yearOptions = computed(() => Array.from({ length: 10 }, (_, index) => String(new Date().getFullYear() - index)))
+const startMonth = computed({
+  get: () => localStartDate.value.slice(0, 7),
+  set: (value: string) => { localStartDate.value = `${value}-01` }
+})
+const endMonth = computed({
+  get: () => localEndDate.value.slice(0, 7),
+  set: (value: string) => {
+    const [year, month] = value.split('-').map(Number)
+    const end = formatDateToString(new Date(year, month, 0))
+    localEndDate.value = end > today.value ? today.value : end
+  }
+})
+const startYear = computed({
+  get: () => localStartDate.value.slice(0, 4),
+  set: (value: string) => { localStartDate.value = `${value}-01-01` }
+})
+const endYear = computed({
+  get: () => localEndDate.value.slice(0, 4),
+  set: (value: string) => {
+    const end = `${value}-12-31`
+    localEndDate.value = end > today.value ? today.value : end
+  }
+})
+
 const displayValue = computed(() => {
   if (activePreset.value) {
-    const preset = presets.find((p) => p.value === activePreset.value)
+    const preset = availablePresets.value.find((p) => p.value === activePreset.value)
     if (preset) return t(preset.labelKey)
   }
 
@@ -260,7 +331,7 @@ const selectPreset = (preset: DatePreset) => {
 const onDateChange = () => {
   // Check if current dates match any preset
   activePreset.value = null
-  for (const preset of presets) {
+  for (const preset of availablePresets.value) {
     const range = preset.getRange()
     if (range.start === localStartDate.value && range.end === localEndDate.value) {
       activePreset.value = preset.value
@@ -269,12 +340,17 @@ const onDateChange = () => {
   }
 }
 
+const setPeriodGranularity = (value: 'month' | 'year') => {
+  periodGranularity.value = value
+  activePreset.value = null
+}
+
 const updateDropdownPosition = () => {
   if (!isOpen.value || !triggerRef.value || !dropdownRef.value) return
   const padding = 8
   const trigger = triggerRef.value.getBoundingClientRect()
   const dropdown = dropdownRef.value.getBoundingClientRect()
-  const width = Math.min(Math.max(320, trigger.width), window.innerWidth - padding * 2)
+  const width = Math.min(Math.max(props.periodMode ? 520 : 320, trigger.width), window.innerWidth - padding * 2)
   const left = Math.min(Math.max(padding, trigger.left), window.innerWidth - width - padding)
   const style: Record<string, string> = {
     position: 'fixed',
@@ -401,6 +477,10 @@ onUnmounted(() => {
   @apply grid grid-cols-2 gap-1 p-2;
 }
 
+.date-picker-presets-period {
+  @apply grid-cols-3;
+}
+
 .date-picker-preset {
   @apply rounded-md px-3 py-1.5 text-xs font-medium;
   @apply text-gray-600 dark:text-gray-400;
@@ -415,6 +495,18 @@ onUnmounted(() => {
 
 .date-picker-divider {
   @apply border-t border-gray-100 dark:border-dark-700;
+}
+
+.date-picker-period-tabs {
+  @apply grid grid-cols-2 gap-2 p-3 pb-0;
+}
+
+.date-picker-period-tab {
+  @apply rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 dark:border-dark-600 dark:text-gray-300;
+}
+
+.date-picker-period-tab-active {
+  @apply border-primary-300 bg-primary-50 text-primary-600 dark:border-primary-700 dark:bg-primary-900/20 dark:text-primary-300;
 }
 
 .date-picker-custom {
