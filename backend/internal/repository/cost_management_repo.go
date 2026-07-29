@@ -440,7 +440,8 @@ func (r *costManagementRepository) ListCostSubscriptionUnits(ctx context.Context
 		JOIN LATERAL(SELECT * FROM cost_subscription_unit_versions WHERE subscription_unit_id=u.id ORDER BY version_no DESC LIMIT 1)v ON TRUE
 		LEFT JOIN account_cost_configs c ON c.subscription_unit_id=u.id
 		WHERE u.plan_id=$1
-		GROUP BY u.id,v.id ORDER BY u.id`, planID)
+		GROUP BY u.id,v.id,v.billing_cycle,v.fixed_unit_cost_cny,v.monthly_unit_cost_cny,v.version_no,v.effective_from
+		ORDER BY u.id`, planID)
 	if err != nil {
 		return nil, err
 	}
