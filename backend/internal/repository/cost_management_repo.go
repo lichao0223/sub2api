@@ -63,7 +63,7 @@ func (r *costManagementRepository) ListCostPlans(ctx context.Context, page, page
 }
 
 func (r *costManagementRepository) GetCostPlan(ctx context.Context, id int64) (*service.CostPlan, error) {
-	p := &service.CostPlan{ID: id}
+	p := &service.CostPlan{ID: id, Prices: make([]service.CostModelPrice, 0)}
 	var versionID int64
 	var end sql.NullTime
 	err := r.db.QueryRowContext(ctx, `
@@ -488,7 +488,12 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	a := &service.CostAnalysis{Period: period}
+	a := &service.CostAnalysis{
+		Period:       period,
+		TotalCostCNY: "0",
+		Trend:        make([]service.CostTrendPoint, 0),
+		Top:          make([]service.CostPlanShare, 0),
+	}
 	for rows.Next() {
 		var p service.CostTrendPoint
 		if err = rows.Scan(&p.Bucket, &p.DynamicCostCNY, &p.FixedCostCNY, &p.TotalCostCNY); err != nil {
@@ -529,7 +534,7 @@ func (r *costManagementRepository) GetUserCosts(ctx context.Context, start, end 
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []service.UserCost
+	out := make([]service.UserCost, 0)
 	for rows.Next() {
 		var x service.UserCost
 		if err = rows.Scan(&x.UserID, &x.DynamicCostCNY, &x.FixedCostCNY, &x.TotalCostCNY); err != nil {
@@ -559,7 +564,7 @@ func (r *costManagementRepository) ListCostJobs(ctx context.Context, page, pageS
 		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []service.CostJob
+	out := make([]service.CostJob, 0)
 	for rows.Next() {
 		var x service.CostJob
 		var s, e, f sql.NullTime

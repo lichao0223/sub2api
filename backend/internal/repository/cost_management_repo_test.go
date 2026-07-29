@@ -1,9 +1,12 @@
 package repository
 
 import (
+	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,4 +40,22 @@ func TestPreviousCostRangePreservesWholeMonths(t *testing.T) {
 	previousStart, previousEnd := previousCostRange(start, end)
 	require.Equal(t, "2026-01-01", previousStart.Format("2006-01-02"))
 	require.Equal(t, "2026-02-01", previousEnd.Format("2006-01-02"))
+}
+
+func TestCostAnalysisEmptyCollectionsMarshalAsArrays(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery("SELECT TO_CHAR").
+		WillReturnRows(sqlmock.NewRows([]string{"bucket", "dynamic", "fixed", "total"}))
+	mock.ExpectQuery("SELECT p.id").
+		WillReturnRows(sqlmock.NewRows([]string{"plan_id", "plan_name", "amount", "total"}))
+
+	analysis, err := (&costManagementRepository{db: db}).GetCostAnalysis(context.Background(), "day", time.Now())
+	require.NoError(t, err)
+	body, err := json.Marshal(analysis)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"period":"day","total_cost_cny":"0","trend":[],"top":[]}`, string(body))
+	require.NoError(t, mock.ExpectationsWereMet())
 }
