@@ -51,9 +51,8 @@
 
     <BaseDialog :show="accountDialog" :title="batchMode?'批量配置账号成本':'配置账号成本'" @close="accountDialog=false">
       <div class="space-y-4">
-        <div><label class="input-label">成本方式</label><Select v-model="accountForm.cost_mode" :options="costModeOptions" @change="accountForm.plan_id=undefined;accountForm.exclude_reason=''" /></div>
-        <div v-if="accountForm.cost_mode!=='excluded'"><label class="input-label">成本方案</label><Select v-model="accountForm.plan_id" :options="availablePlanOptions" /></div>
-        <div v-else><label class="input-label">排除原因</label><input v-model="accountForm.exclude_reason" class="input w-full"></div>
+        <div><label class="input-label">成本方案</label><Select v-model="selectedAccountPlan" :options="accountPlanOptions" /></div>
+        <div v-if="accountForm.cost_mode==='excluded'"><label class="input-label">排除原因</label><input v-model="accountForm.exclude_reason" class="input w-full"></div>
         <div><label class="input-label">生效时间</label><input v-model="accountForm.effective_from" type="datetime-local" class="input w-full"></div>
         <div><label class="input-label">结束时间（可选）</label><input v-model="accountForm.effective_to" type="datetime-local" class="input w-full"></div>
       </div>
@@ -63,7 +62,7 @@
     <BaseDialog :show="planDialog" :title="editingPlanId?'编辑成本方案':'新建成本方案'" width="wide" @close="planDialog=false">
       <div class="space-y-4">
         <div class="grid gap-4 md:grid-cols-2"><div><label class="input-label">方案名称</label><input v-model="planForm.name" class="input w-full"></div><div><label class="input-label">类型</label><Select v-model="planForm.plan_type" :options="createPlanTypeOptions" :disabled="!!editingPlanId" /></div></div>
-        <div class="grid gap-4 md:grid-cols-2"><div><label class="input-label">生效时间</label><input v-model="planForm.effective_from" type="datetime-local" class="input w-full"></div><div><label class="input-label">结束时间（可选）</label><input v-model="planForm.effective_to" type="datetime-local" class="input w-full"></div><template v-if="planForm.plan_type==='fixed'"><div><label class="input-label">固定成本分类</label><Select v-model="planForm.fixed_category" :options="fixedCategoryOptions" /></div><div><label class="input-label">单份月成本（CNY）</label><input v-model="planForm.monthly_unit_cost_cny" type="number" min="0" class="input w-full"></div><div><label class="input-label">采购数量</label><input v-model.number="planForm.purchase_quantity" type="number" min="1" class="input w-full"></div></template></div>
+        <div class="grid gap-4 md:grid-cols-2"><div><label class="input-label">生效时间</label><input v-model="planForm.effective_from" type="datetime-local" class="input w-full"></div><div><label class="input-label">结束时间（可选）</label><input v-model="planForm.effective_to" type="datetime-local" class="input w-full"></div><template v-if="planForm.plan_type==='fixed'"><div><label class="input-label">固定成本分类</label><Select v-model="planForm.fixed_category" :options="fixedCategoryOptions" /></div><div><label class="input-label">付费周期</label><Select v-model="planForm.billing_cycle" :options="billingCycleOptions" /></div><div><label class="input-label">单份{{ planForm.billing_cycle==='yearly'?'年':'月' }}成本（CNY）</label><input v-model="planForm.fixed_unit_cost_cny" type="number" min="0" class="input w-full"><p v-if="planForm.billing_cycle==='yearly'" class="mt-1 text-xs text-gray-500">后台按年费 ÷ 12 折算每月成本</p></div><div><label class="input-label">采购数量</label><input v-model.number="planForm.purchase_quantity" type="number" min="1" class="input w-full"></div></template></div>
         <div v-if="planForm.plan_type==='metered'" class="space-y-2">
           <div class="flex justify-between"><b>模型价格（Token 价格为 CNY / MTok）</b><button class="btn btn-secondary btn-sm" @click="addPrice">添加模型</button></div>
           <div v-for="(p,i) in planForm.prices" :key="i" class="space-y-3 rounded border border-gray-200 p-3">
@@ -135,25 +134,35 @@ function toggleAccount(id:number){const s=new Set(selectedAccounts.value);s.has(
 function toggleAllAccounts(){const s=new Set(selectedAccounts.value);allAccountsSelected.value?accounts.value.forEach(x=>s.delete(x.account_id)):accounts.value.forEach(x=>s.add(x.account_id));selectedAccounts.value=s}
 const modeLabel=(v:string)=>({metered:'按使用量',fixed:'固定成本',excluded:'不纳入核算'}[v]||'未配置'),date=(v?:string)=>v?new Date(v).toLocaleDateString():'-'
 const accountDialog=ref(false),batchMode=ref(false),editingAccount=ref<number>(),editingAccountConfigured=ref(false),accountForm=reactive<any>({cost_mode:'metered',plan_id:undefined,effective_from:new Date().toISOString().slice(0,16),effective_to:'',exclude_reason:''})
-const costModeOptions=[{value:'metered',label:'按使用量'},{value:'fixed',label:'固定成本'},{value:'excluded',label:'不纳入核算'}]
 const planChoices=ref<CostPlan[]>([])
 // ponytail: local search over 100 plans; switch Select to remote search if deployments exceed this.
 async function loadPlanChoices(){const r=await costManagementAPI.plans({page:1,page_size:100});planChoices.value=r.items}
-const availablePlanOptions=computed(()=>planChoices.value.filter(x=>x.status==='active'&&x.plan_type===accountForm.cost_mode).map(x=>({value:x.id,label:x.name})))
+const accountPlanOptions=computed(()=>[
+  ...planChoices.value.map(x=>({value:x.id,label:`${x.name}（${x.plan_type==='metered'?'按量':'固定'}）`,disabled:x.status!=='active'})),
+  {value:'excluded',label:'不纳入成本核算',disabled:false},
+])
+const selectedAccountPlan=computed<string|number|undefined>({
+  get:()=>accountForm.cost_mode==='excluded'?'excluded':accountForm.plan_id,
+  set:value=>{
+    if(value==='excluded'){accountForm.cost_mode='excluded';accountForm.plan_id=undefined;return}
+    const plan=planChoices.value.find(x=>x.id===value)
+    accountForm.cost_mode=plan?.plan_type||'metered';accountForm.plan_id=value;accountForm.exclude_reason=''
+  },
+})
 function openAccount(x:AccountCostRow){batchMode.value=false;editingAccount.value=x.account_id;editingAccountConfigured.value=!!x.cost_mode;Object.assign(accountForm,{cost_mode:x.cost_mode||'metered',plan_id:x.plan_id,effective_from:new Date().toISOString().slice(0,16),effective_to:'',exclude_reason:x.exclude_reason||''});accountDialog.value=true}
 function openBatch(){batchMode.value=true;editingAccount.value=undefined;Object.assign(accountForm,{cost_mode:'metered',plan_id:undefined,effective_from:new Date().toISOString().slice(0,16),effective_to:'',exclude_reason:''});accountDialog.value=true}
 async function saveAccountForm(){const input:AccountCostInput={...accountForm,plan_id:accountForm.cost_mode==='excluded'?undefined:accountForm.plan_id,exclude_reason:accountForm.cost_mode==='excluded'?accountForm.exclude_reason:'',effective_from:new Date(accountForm.effective_from).toISOString(),effective_to:accountForm.effective_to?new Date(accountForm.effective_to).toISOString():undefined};try{batchMode.value?await costManagementAPI.saveAccounts([...selectedAccounts.value],input):await costManagementAPI.saveAccount(editingAccount.value!,input);app.showSuccess('成本配置已保存');accountDialog.value=false;selectedAccounts.value=new Set();loadAccounts()}catch(e:any){app.showError(e.message||'保存失败')}}
 async function endAccountCost(){if(!editingAccount.value||!confirm('确认结束当前账号的成本核算？历史成本不会改变。'))return;try{await costManagementAPI.endAccount(editingAccount.value);app.showSuccess('当前成本核算已结束');accountDialog.value=false;loadAccounts()}catch(e:any){app.showError(e.message||'结束失败')}}
 
 const plans=ref<CostPlan[]>([]),planTotal=ref(0),planPage=ref(1),planSearch=ref(''),planType=ref(''),planDialog=ref(false),editingPlanId=ref<number>()
-const planTypeOptions=[{value:'',label:'全部类型'},{value:'metered',label:'按量成本'},{value:'fixed',label:'固定成本'}],createPlanTypeOptions=planTypeOptions.slice(1),fixedCategoryOptions=[{value:'coding_plan',label:'Coding Plan'},{value:'self_hosted',label:'本地部署'},{value:'other',label:'其他'}]
+const planTypeOptions=[{value:'',label:'全部类型'},{value:'metered',label:'按量成本'},{value:'fixed',label:'固定成本'}],createPlanTypeOptions=planTypeOptions.slice(1),fixedCategoryOptions=[{value:'coding_plan',label:'Coding Plan'},{value:'self_hosted',label:'本地部署'},{value:'other',label:'其他'}],billingCycleOptions=[{value:'monthly',label:'月付'},{value:'yearly',label:'年付'}]
 const billingModeOptions=[{value:'token',label:'按 Token'},{value:'request',label:'按请求'},{value:'hybrid',label:'混合计价'}]
 const modelOptions=ref<Array<{value:string;label:string}>>([])
 async function loadModelOptions(){const r=await costManagementAPI.modelOptions({page:1,page_size:100});modelOptions.value=r.items.map(x=>({value:x.model,label:x.model}))}
 const emptyPrice=()=>({upstream_model:'',billing_mode:'token',input_price_cny:'0',output_price_cny:'0',cache_write_price_cny:'0',cache_read_price_cny:'0',image_input_price_cny:'0',image_output_price_cny:'0',per_request_price_cny:'0'})
-const planForm=reactive<any>({name:'',plan_type:'metered',fixed_category:'coding_plan',effective_from:new Date().toISOString().slice(0,16),effective_to:'',monthly_unit_cost_cny:'0',purchase_quantity:1,note:'',prices:[emptyPrice()]})
+const planForm=reactive<any>({name:'',plan_type:'metered',fixed_category:'coding_plan',effective_from:new Date().toISOString().slice(0,16),effective_to:'',billing_cycle:'monthly',fixed_unit_cost_cny:'0',purchase_quantity:1,note:'',prices:[emptyPrice()]})
 async function loadPlans(){const r=await costManagementAPI.plans({page:planPage.value,page_size:pageSize.value,search:planSearch.value,type:planType.value});plans.value=r.items;planTotal.value=r.total}
-function openPlan(){editingPlanId.value=undefined;Object.assign(planForm,{name:'',plan_type:'metered',fixed_category:'coding_plan',effective_from:new Date().toISOString().slice(0,16),effective_to:'',monthly_unit_cost_cny:'0',purchase_quantity:1,note:'',prices:[emptyPrice()]});planDialog.value=true}
+function openPlan(){editingPlanId.value=undefined;Object.assign(planForm,{name:'',plan_type:'metered',fixed_category:'coding_plan',effective_from:new Date().toISOString().slice(0,16),effective_to:'',billing_cycle:'monthly',fixed_unit_cost_cny:'0',purchase_quantity:1,note:'',prices:[emptyPrice()]});planDialog.value=true}
 async function editPlan(x:CostPlan){const p=await costManagementAPI.plan(x.id);editingPlanId.value=x.id;Object.assign(planForm,{...p,effective_from:new Date().toISOString().slice(0,16),effective_to:'',prices:p.prices?.length?p.prices.map(y=>({...y})):[emptyPrice()]});planDialog.value=true}
 function addPrice(){planForm.prices.push(emptyPrice())}
 async function savePlan(){try{if(planForm.plan_type==='metered'){const models=planForm.prices.map((x:any)=>x.upstream_model.trim());if(models.some((x:string)=>!x)||new Set(models).size!==models.length)throw new Error('上游模型不能为空且不能重复')}const input={...planForm,effective_from:new Date(planForm.effective_from).toISOString(),effective_to:planForm.effective_to?new Date(planForm.effective_to).toISOString():undefined};editingPlanId.value?await costManagementAPI.updatePlan(editingPlanId.value,input):await costManagementAPI.createPlan(input);app.showSuccess('成本方案已保存');planDialog.value=false;loadPlans()}catch(e:any){app.showError(e.message||'保存失败')}}

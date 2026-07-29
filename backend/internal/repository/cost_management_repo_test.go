@@ -42,6 +42,14 @@ func TestPreviousCostRangePreservesWholeMonths(t *testing.T) {
 	require.Equal(t, "2026-02-01", previousEnd.Format("2006-01-02"))
 }
 
+func TestNormalizeFixedCostConvertsYearlyToMonthly(t *testing.T) {
+	cycle, unit, monthly, err := normalizeFixedCost("yearly", "1200", "")
+	require.NoError(t, err)
+	require.Equal(t, "yearly", cycle)
+	require.Equal(t, "1200", unit)
+	require.Equal(t, "100", monthly)
+}
+
 func TestCostAnalysisEmptyCollectionsMarshalAsArrays(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

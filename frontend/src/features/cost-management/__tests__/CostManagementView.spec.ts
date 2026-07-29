@@ -59,11 +59,14 @@ describe('CostManagementView', () => {
       items: [{ account_id: 7, account_name: 'GLM Anthropic', platform: 'anthropic', account_status: 'active', cost_mode: '', plan_name: '', pending_count: 0, exclude_reason: '' }],
       total: 1,
     })
-    api.plans.mockReset().mockResolvedValue({ items: [], total: 0 })
+    api.plans.mockReset().mockResolvedValue({
+      items: [{ id: 11, name: 'GLM 按量', plan_type: 'metered', status: 'active' }],
+      total: 1,
+    })
     api.modelOptions.mockReset().mockResolvedValue({ items: [], total: 0 })
   })
 
-  it('switches account fields with the selected cost mode', async () => {
+  it('derives the cost mode from the selected plan', async () => {
     const wrapper = mountView()
     await flushPromises()
     await wrapper.findAll('button').find(button => button.text() === '账号成本')!.trigger('click')
@@ -72,6 +75,7 @@ describe('CostManagementView', () => {
 
     const dialog = wrapper.get('[data-test="dialog"]')
     expect(dialog.text()).toContain('成本方案')
+    expect(dialog.text()).not.toContain('成本方式')
     expect(dialog.text()).not.toContain('排除原因')
     await dialog.get('select').setValue('excluded')
     expect(dialog.text()).toContain('排除原因')

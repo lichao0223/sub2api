@@ -36,6 +36,7 @@ func (r *costManagementRepository) ListCostPlans(ctx context.Context, page, page
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT p.id,p.name,p.plan_type,COALESCE(p.fixed_category,''),p.status,p.note,
 		       COALESCE(v.version_no,0),COALESCE(v.effective_from,'epoch'),v.effective_to,
+		       COALESCE(v.billing_cycle,'monthly'),COALESCE(v.fixed_unit_cost_cny,v.monthly_unit_cost_cny,0)::text,
 		       COALESCE(v.monthly_unit_cost_cny,0)::text,COALESCE(v.purchase_quantity,1),
 		       (SELECT COUNT(*) FROM cost_model_prices mp WHERE mp.plan_version_id=v.id),
 		       (SELECT COUNT(*) FROM account_cost_configs ac WHERE ac.plan_id=p.id AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW()))
@@ -51,7 +52,7 @@ func (r *costManagementRepository) ListCostPlans(ctx context.Context, page, page
 	for rows.Next() {
 		var p service.CostPlan
 		var end sql.NullTime
-		if err := rows.Scan(&p.ID, &p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &p.VersionNo, &p.EffectiveFrom, &end, &p.MonthlyUnitCostCNY, &p.PurchaseQuantity, &p.ModelCount, &p.AccountCount); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &p.VersionNo, &p.EffectiveFrom, &end, &p.BillingCycle, &p.FixedUnitCostCNY, &p.MonthlyUnitCostCNY, &p.PurchaseQuantity, &p.ModelCount, &p.AccountCount); err != nil {
 			return nil, 0, err
 		}
 		if end.Valid {
@@ -68,11 +69,12 @@ func (r *costManagementRepository) GetCostPlan(ctx context.Context, id int64) (*
 	var end sql.NullTime
 	err := r.db.QueryRowContext(ctx, `
 		SELECT p.name,p.plan_type,COALESCE(p.fixed_category,''),p.status,p.note,
-		       v.id,v.version_no,v.effective_from,v.effective_to,v.monthly_unit_cost_cny::text,v.purchase_quantity,
+		       v.id,v.version_no,v.effective_from,v.effective_to,v.billing_cycle,v.fixed_unit_cost_cny::text,
+		       v.monthly_unit_cost_cny::text,v.purchase_quantity,
 		       (SELECT COUNT(*) FROM account_cost_configs ac WHERE ac.plan_id=p.id AND ac.effective_from<=NOW() AND(ac.effective_to IS NULL OR ac.effective_to>NOW()))
 		FROM cost_plans p JOIN LATERAL (
 		  SELECT * FROM cost_plan_versions WHERE plan_id=p.id ORDER BY version_no DESC LIMIT 1
-		) v ON TRUE WHERE p.id=$1`, id).Scan(&p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &versionID, &p.VersionNo, &p.EffectiveFrom, &end, &p.MonthlyUnitCostCNY, &p.PurchaseQuantity, &p.AccountCount)
+		) v ON TRUE WHERE p.id=$1`, id).Scan(&p.Name, &p.PlanType, &p.FixedCategory, &p.Status, &p.Note, &versionID, &p.VersionNo, &p.EffectiveFrom, &end, &p.BillingCycle, &p.FixedUnitCostCNY, &p.MonthlyUnitCostCNY, &p.PurchaseQuantity, &p.AccountCount)
 	if err != nil {
 		return nil, err
 	}
@@ -170,16 +172,16 @@ func (r *costManagementRepository) UpdateCostPlan(ctx context.Context, id int64,
 }
 
 func (r *costManagementRepository) insertCostPlanVersion(ctx context.Context, tx *sql.Tx, planID int64, version int, in service.CostPlanInput) error {
-	monthly := in.MonthlyUnitCostCNY
-	if monthly == "" {
-		monthly = "0"
+	cycle, unit, monthly, err := normalizeFixedCost(in.BillingCycle, in.FixedUnitCostCNY, in.MonthlyUnitCostCNY)
+	if err != nil {
+		return err
 	}
 	qty := in.PurchaseQuantity
 	if qty < 1 {
 		qty = 1
 	}
 	var versionID int64
-	if err := tx.QueryRowContext(ctx, `INSERT INTO cost_plan_versions(plan_id,version_no,effective_from,effective_to,monthly_unit_cost_cny,purchase_quantity) VALUES($1,$2,$3,$4,$5::numeric,$6) RETURNING id`, planID, version, in.EffectiveFrom, in.EffectiveTo, monthly, qty).Scan(&versionID); err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO cost_plan_versions(plan_id,version_no,effective_from,effective_to,billing_cycle,fixed_unit_cost_cny,monthly_unit_cost_cny,purchase_quantity) VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8) RETURNING id`, planID, version, in.EffectiveFrom, in.EffectiveTo, cycle, unit, monthly, qty).Scan(&versionID); err != nil {
 		return err
 	}
 	for _, p := range in.Prices {
@@ -198,6 +200,27 @@ func (r *costManagementRepository) insertCostPlanVersion(ctx context.Context, tx
 		}
 	}
 	return nil
+}
+
+func normalizeFixedCost(cycle, unit, legacyMonthly string) (string, string, string, error) {
+	if cycle == "" {
+		cycle = "monthly"
+	}
+	if unit == "" {
+		unit = legacyMonthly
+	}
+	if unit == "" {
+		unit = "0"
+	}
+	amount, err := decimal.NewFromString(unit)
+	if err != nil {
+		return "", "", "", err
+	}
+	monthly := amount
+	if cycle == "yearly" {
+		monthly = monthly.Div(decimal.NewFromInt(12))
+	}
+	return cycle, amount.String(), monthly.String(), nil
 }
 
 func (r *costManagementRepository) DisableCostPlan(ctx context.Context, id int64) error {

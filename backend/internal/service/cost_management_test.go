@@ -29,3 +29,16 @@ func TestValidateCostPlanInputRejectsInvalidPrice(t *testing.T) {
 	})
 	require.EqualError(t, err, "cost values must be nonnegative numbers")
 }
+
+func TestValidateCostPlanInputRejectsInvalidBillingCycle(t *testing.T) {
+	err := validateCostPlanInput(CostPlanInput{
+		Name:             "年度套餐",
+		PlanType:         "fixed",
+		FixedCategory:    "coding_plan",
+		EffectiveFrom:    time.Now(),
+		BillingCycle:     "weekly",
+		FixedUnitCostCNY: "1200",
+		PurchaseQuantity: 1,
+	})
+	require.EqualError(t, err, "invalid billing_cycle")
+}

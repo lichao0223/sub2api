@@ -36,6 +36,8 @@ type CostPlanInput struct {
 	FixedCategory      string           `json:"fixed_category"`
 	EffectiveFrom      time.Time        `json:"effective_from"`
 	EffectiveTo        *time.Time       `json:"effective_to"`
+	BillingCycle       string           `json:"billing_cycle"`
+	FixedUnitCostCNY   string           `json:"fixed_unit_cost_cny"`
 	MonthlyUnitCostCNY string           `json:"monthly_unit_cost_cny"`
 	PurchaseQuantity   int              `json:"purchase_quantity"`
 	Note               string           `json:"note"`
@@ -51,6 +53,8 @@ type CostPlan struct {
 	VersionNo          int              `json:"version_no"`
 	EffectiveFrom      time.Time        `json:"effective_from"`
 	EffectiveTo        *time.Time       `json:"effective_to"`
+	BillingCycle       string           `json:"billing_cycle"`
+	FixedUnitCostCNY   string           `json:"fixed_unit_cost_cny"`
 	MonthlyUnitCostCNY string           `json:"monthly_unit_cost_cny"`
 	PurchaseQuantity   int              `json:"purchase_quantity"`
 	ModelCount         int              `json:"model_count"`
@@ -373,7 +377,14 @@ func validateCostPlanInput(in CostPlanInput) error {
 		(in.FixedCategory != "coding_plan" && in.FixedCategory != "self_hosted" && in.FixedCategory != "other") {
 		return errors.New("invalid fixed cost plan")
 	}
-	return validateNonnegativeCost(in.MonthlyUnitCostCNY)
+	if in.BillingCycle != "" && in.BillingCycle != "monthly" && in.BillingCycle != "yearly" {
+		return errors.New("invalid billing_cycle")
+	}
+	amount := in.FixedUnitCostCNY
+	if amount == "" {
+		amount = in.MonthlyUnitCostCNY
+	}
+	return validateNonnegativeCost(amount)
 }
 
 func validateNonnegativeCost(value string) error {

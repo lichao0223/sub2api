@@ -3,7 +3,8 @@ import type { BasePaginationResponse } from '@/types'
 
 export interface CostPlan {
   id: number; name: string; plan_type: 'metered'|'fixed'; fixed_category?: string; status: string
-  version_no: number; effective_from: string; effective_to?: string; monthly_unit_cost_cny: string
+  version_no: number; effective_from: string; effective_to?: string; billing_cycle: 'monthly'|'yearly'
+  fixed_unit_cost_cny: string; monthly_unit_cost_cny: string
   purchase_quantity: number; model_count: number; account_count: number; note: string; prices?: CostModelPrice[]
 }
 export interface CostModelPrice {
