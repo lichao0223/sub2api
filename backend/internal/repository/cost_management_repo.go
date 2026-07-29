@@ -58,6 +58,8 @@ func (r *costManagementRepository) ListCostPlans(ctx context.Context, page, page
 		if end.Valid {
 			p.EffectiveTo = &end.Time
 		}
+		p.FixedUnitCostCNY = normalizeCostAmount(p.FixedUnitCostCNY)
+		p.MonthlyUnitCostCNY = normalizeCostAmount(p.MonthlyUnitCostCNY)
 		out = append(out, p)
 	}
 	return out, total, rows.Err()
@@ -81,6 +83,8 @@ func (r *costManagementRepository) GetCostPlan(ctx context.Context, id int64) (*
 	if end.Valid {
 		p.EffectiveTo = &end.Time
 	}
+	p.FixedUnitCostCNY = normalizeCostAmount(p.FixedUnitCostCNY)
+	p.MonthlyUnitCostCNY = normalizeCostAmount(p.MonthlyUnitCostCNY)
 	rows, err := r.db.QueryContext(ctx, `SELECT upstream_model,billing_mode,input_price_cny::text,output_price_cny::text,cache_write_price_cny::text,cache_read_price_cny::text,image_input_price_cny::text,image_output_price_cny::text,per_request_price_cny::text FROM cost_model_prices WHERE plan_version_id=$1 ORDER BY upstream_model`, versionID)
 	if err != nil {
 		return nil, err
@@ -91,6 +95,13 @@ func (r *costManagementRepository) GetCostPlan(ctx context.Context, id int64) (*
 		if err := rows.Scan(&price.UpstreamModel, &price.BillingMode, &price.InputPriceCNY, &price.OutputPriceCNY, &price.CacheWritePriceCNY, &price.CacheReadPriceCNY, &price.ImageInputPriceCNY, &price.ImageOutputPriceCNY, &price.PerRequestPriceCNY); err != nil {
 			return nil, err
 		}
+		price.InputPriceCNY = normalizeCostAmount(price.InputPriceCNY)
+		price.OutputPriceCNY = normalizeCostAmount(price.OutputPriceCNY)
+		price.CacheWritePriceCNY = normalizeCostAmount(price.CacheWritePriceCNY)
+		price.CacheReadPriceCNY = normalizeCostAmount(price.CacheReadPriceCNY)
+		price.ImageInputPriceCNY = normalizeCostAmount(price.ImageInputPriceCNY)
+		price.ImageOutputPriceCNY = normalizeCostAmount(price.ImageOutputPriceCNY)
+		price.PerRequestPriceCNY = normalizeCostAmount(price.PerRequestPriceCNY)
 		p.Prices = append(p.Prices, price)
 	}
 	p.ModelCount = len(p.Prices)
@@ -224,6 +235,14 @@ func normalizeFixedCost(cycle, unit, legacyMonthly string) (string, string, stri
 		monthly = monthly.Div(decimal.NewFromInt(12))
 	}
 	return cycle, amount.String(), monthly.String(), nil
+}
+
+func normalizeCostAmount(value string) string {
+	amount, err := decimal.NewFromString(value)
+	if err != nil {
+		return value
+	}
+	return amount.String()
 }
 
 func (r *costManagementRepository) DisableCostPlan(ctx context.Context, id int64) error {
@@ -375,17 +394,26 @@ func (r *costManagementRepository) EndAccountCost(ctx context.Context, accountID
 }
 
 func enqueueCostRecalculationTx(ctx context.Context, tx *sql.Tx, effectiveFrom time.Time) error {
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(9072027)`); err != nil {
+		return err
+	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO cost_jobs(kind,status,start_date,end_date,total_days)
-		SELECT 'recalculation','queued',start_date,(NOW() AT TIME ZONE 'Asia/Shanghai')::date,
-		       ((NOW() AT TIME ZONE 'Asia/Shanghai')::date-start_date)+1
+		SELECT 'recalculation','queued',start_date,(NOW() AT TIME ZONE 'Asia/Shanghai')::date-1,
+		       ((NOW() AT TIME ZONE 'Asia/Shanghai')::date-1-start_date)+1
 		FROM (
 		  SELECT GREATEST(
 		    $1::date,
 		    COALESCE((SELECT MIN((created_at AT TIME ZONE 'Asia/Shanghai')::date) FROM usage_logs),$1::date)
 		  ) start_date
 		) x
-		WHERE $1 < NOW()`, effectiveFrom)
+		WHERE start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date-1
+		  AND NOT EXISTS (
+		    SELECT 1 FROM cost_jobs j
+		    WHERE j.kind='recalculation' AND j.status IN ('queued','running')
+		      AND j.start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date-1
+		      AND j.end_date>=x.start_date
+		  )`, effectiveFrom)
 	return err
 }
 
@@ -582,10 +610,10 @@ func (r *costManagementRepository) ListCostJobs(ctx context.Context, page, pageS
 		pageSize = 100
 	}
 	var total int64
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cost_jobs WHERE kind='recalculation'`).Scan(&total); err != nil {
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cost_jobs`).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT id,kind,status,start_date,end_date,total_days,completed_days,error_message,created_at,finished_at FROM cost_jobs WHERE kind='recalculation' ORDER BY id DESC LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,kind,status,start_date,end_date,total_days,completed_days,error_message,created_at,finished_at FROM cost_jobs ORDER BY updated_at DESC,id DESC LIMIT $1 OFFSET $2`, pageSize, (page-1)*pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -611,10 +639,29 @@ func (r *costManagementRepository) ListCostJobs(ctx context.Context, page, pageS
 	return out, total, rows.Err()
 }
 func (r *costManagementRepository) CreateCostRecalculation(ctx context.Context, start, end time.Time, userID int64) (*service.CostJob, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(9072027)`); err != nil {
+		return nil, err
+	}
+	var active bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(
+		SELECT 1 FROM cost_jobs
+		WHERE kind='recalculation' AND status IN ('queued','running')
+		  AND start_date <= $2::date AND end_date >= $1::date
+	)`, start, end).Scan(&active); err != nil {
+		return nil, err
+	}
+	if active {
+		return nil, errors.New("所选日期范围已有补算任务排队或运行中")
+	}
 	days := int(end.Sub(start).Hours()/24) + 1
 	job := &service.CostJob{}
 	var startDate, endDate sql.NullTime
-	if err := r.db.QueryRowContext(ctx, `
+	if err = tx.QueryRowContext(ctx, `
 		INSERT INTO cost_jobs(kind,status,start_date,end_date,total_days,requested_by)
 		VALUES('recalculation','queued',$1::date,$2::date,$3,NULLIF($4,0))
 		RETURNING id,kind,status,start_date,end_date,total_days,completed_days,error_message,created_at`,
@@ -628,7 +675,28 @@ func (r *costManagementRepository) CreateCostRecalculation(ctx context.Context, 
 	if endDate.Valid {
 		job.EndDate = &endDate.Time
 	}
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
 	return job, nil
+}
+
+func (r *costManagementRepository) CancelCostRecalculation(ctx context.Context, id int64) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE cost_jobs
+		SET status='cancelled',error_message='用户取消',finished_at=NOW(),updated_at=NOW()
+		WHERE id=$1 AND kind='recalculation' AND status IN ('queued','running')`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errors.New("任务不存在或当前状态不可取消")
+	}
+	return nil
 }
 
 func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit int) (processed bool, runErr error) {
@@ -729,6 +797,40 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 			return false, queryErr
 		}
 		_ = rows.Close()
+		rows, queryErr = tx.QueryContext(ctx, `
+			SELECT DISTINCT DATE_TRUNC('month',ul.created_at AT TIME ZONE 'Asia/Shanghai')::date
+			FROM usage_logs ul
+			JOIN LATERAL (
+			  SELECT plan_id FROM account_cost_configs c
+			  WHERE c.account_id=ul.account_id AND c.cost_mode='fixed'
+			    AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
+			  ORDER BY c.effective_from DESC LIMIT 1
+			) c ON TRUE
+			WHERE ul.id>$1 AND ul.id<=$2
+			  AND NOT EXISTS (
+			    SELECT 1 FROM cost_daily_aggregates d
+			    WHERE d.aggregate_scope='fixed_plan_total' AND d.plan_id=c.plan_id
+			      AND d.bucket_date>=DATE_TRUNC('month',ul.created_at AT TIME ZONE 'Asia/Shanghai')::date
+			      AND d.bucket_date<(DATE_TRUNC('month',ul.created_at AT TIME ZONE 'Asia/Shanghai')+INTERVAL '1 month')::date
+			  )`, checkpoint, maxID.Int64)
+		if queryErr != nil {
+			return false, queryErr
+		}
+		for rows.Next() {
+			var monthStart time.Time
+			if queryErr = rows.Scan(&monthStart); queryErr != nil {
+				_ = rows.Close()
+				return false, queryErr
+			}
+			for day := monthStart.In(loc); day.Before(monthStart.AddDate(0, 1, 0)) && !day.After(today); day = day.AddDate(0, 0, 1) {
+				days[day.Format("2006-01-02")] = day
+			}
+		}
+		if queryErr = rows.Err(); queryErr != nil {
+			_ = rows.Close()
+			return false, queryErr
+		}
+		_ = rows.Close()
 	}
 	for _, day := range days {
 		if err = r.rebuildFixedDay(ctx, tx, day); err != nil {
@@ -755,6 +857,18 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		  AND v.effective_from<$2 AND(v.effective_to IS NULL OR v.effective_to>$1)
 		WHERE p.plan_type='fixed'
 		  AND(p.status='active' OR v.effective_from<p.updated_at)
+		  AND EXISTS (
+		    SELECT 1
+		    FROM account_cost_configs c
+		    WHERE c.cost_mode='fixed' AND c.plan_id=p.id
+		      AND EXISTS (
+		        SELECT 1 FROM usage_logs ul
+		        WHERE ul.account_id=c.account_id
+		          AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
+		          AND ul.created_at>=(DATE_TRUNC('month',$1::date)::timestamp AT TIME ZONE 'Asia/Shanghai')
+		          AND ul.created_at<((DATE_TRUNC('month',$1::date)+INTERVAL '1 month')::timestamp AT TIME ZONE 'Asia/Shanghai')
+		      )
+		  )
 		`, bucket, bucket.AddDate(0, 0, 1))
 	if err != nil {
 		return err
@@ -863,34 +977,57 @@ func anchoredMonthDate(year int, month time.Month, day int, loc *time.Location) 
 	return time.Date(year, month, day, 0, 0, 0, 0, loc)
 }
 
-func (r *costManagementRepository) RunNextCostRecalculation(ctx context.Context) (runErr error) {
+func (r *costManagementRepository) RunNextCostRecalculation(ctx context.Context) (processed bool, runErr error) {
+	if _, err := r.db.ExecContext(ctx, `
+		UPDATE cost_jobs duplicate
+		SET status='cancelled',error_message='已由较早创建的相同范围任务覆盖',finished_at=NOW(),updated_at=NOW()
+		WHERE duplicate.kind='recalculation' AND duplicate.status='queued'
+		  AND EXISTS (
+		    SELECT 1 FROM cost_jobs original
+		    WHERE original.kind='recalculation' AND original.status IN ('queued','running')
+		      AND original.id<duplicate.id
+		      AND original.start_date=duplicate.start_date AND original.end_date=duplicate.end_date
+		  )`); err != nil {
+		return false, err
+	}
 	var id int64
 	var start, end time.Time
 	var completed, total int
 	err := r.db.QueryRowContext(ctx, `UPDATE cost_jobs SET status='running',started_at=COALESCE(started_at,NOW()),updated_at=NOW() WHERE id=(SELECT id FROM cost_jobs WHERE kind='recalculation' AND(status='queued' OR(status='running' AND updated_at<NOW()-INTERVAL '10 minutes')) ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id,start_date,end_date,completed_days,total_days`).Scan(&id, &start, &end, &completed, &total)
 	if err == sql.ErrNoRows {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() {
 		if runErr != nil {
-			_, _ = r.db.ExecContext(context.Background(), `UPDATE cost_jobs SET status='failed',error_message=$2,finished_at=NOW(),updated_at=NOW() WHERE id=$1`, id, runErr.Error())
+			status, retry := recalculationFailureStatus(runErr)
+			_, _ = r.db.ExecContext(context.Background(), `
+				UPDATE cost_jobs
+				SET status=$2,error_message=$3,finished_at=CASE WHEN $4 THEN NULL ELSE NOW() END,updated_at=NOW()
+				WHERE id=$1 AND status='running'`, id, status, runErr.Error(), retry)
 		}
 	}()
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
-		return err
+		return true, err
 	}
 	day := start.In(loc).AddDate(0, 0, completed)
 	for range 7 {
 		if day.After(end.In(loc)) {
 			break
 		}
+		var cancelled bool
+		if err = r.db.QueryRowContext(ctx, `SELECT status='cancelled' FROM cost_jobs WHERE id=$1`, id).Scan(&cancelled); err != nil {
+			return true, err
+		}
+		if cancelled {
+			return true, nil
+		}
 		completed++
 		if err = r.rebuildCostDay(ctx, id, day, completed); err != nil {
-			return err
+			return true, err
 		}
 		day = day.AddDate(0, 0, 1)
 	}
@@ -898,10 +1035,17 @@ func (r *costManagementRepository) RunNextCostRecalculation(ctx context.Context)
 	if completed >= total {
 		status = "succeeded"
 	}
-	if _, err = r.db.ExecContext(ctx, `UPDATE cost_jobs SET status=$2,finished_at=CASE WHEN $2='succeeded' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$1`, id, status); err != nil {
-		return err
+	if _, err = r.db.ExecContext(ctx, `UPDATE cost_jobs SET status=$2,finished_at=CASE WHEN $2='succeeded' THEN NOW() ELSE NULL END,updated_at=NOW() WHERE id=$1 AND status='running'`, id, status); err != nil {
+		return true, err
 	}
-	return nil
+	return true, nil
+}
+
+func recalculationFailureStatus(err error) (string, bool) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return "queued", true
+	}
+	return "failed", false
 }
 
 func (r *costManagementRepository) rebuildCostDay(ctx context.Context, jobID int64, day time.Time, completed int) error {

@@ -12,6 +12,9 @@ const api = vi.hoisted(() => ({
   modelOptions: vi.fn(),
   createPlan: vi.fn(),
   updatePlan: vi.fn(),
+  recalculations: vi.fn(),
+  createRecalculation: vi.fn(),
+  cancelRecalculation: vi.fn(),
 }))
 
 vi.mock('@/api/admin/costManagement', () => ({ default: api }))
@@ -36,6 +39,11 @@ const BaseDialogStub = defineComponent({
   emits: ['close'],
   template: '<div v-if="show" data-test="dialog"><h2>{{ title }}</h2><slot /><slot name="footer" /></div>',
 })
+const ConfirmDialogStub = defineComponent({
+  props: ['show', 'title', 'message', 'loading'],
+  emits: ['confirm', 'cancel'],
+  template: '<div v-if="show" data-test="confirm-dialog"><h2>{{ title }}</h2><p>{{ message }}</p><button :disabled="loading" @click="$emit(\'confirm\')">确认创建</button><button @click="$emit(\'cancel\')">取消</button></div>',
+})
 
 const mountView = () => mount(CostManagementView, {
   global: {
@@ -43,6 +51,7 @@ const mountView = () => mount(CostManagementView, {
       AppLayout: { template: '<div><slot /></div>' },
       Select: SelectStub,
       BaseDialog: BaseDialogStub,
+      ConfirmDialog: ConfirmDialogStub,
       DateRangePicker: true,
       Pagination: true,
     },
@@ -68,6 +77,9 @@ describe('CostManagementView', () => {
     api.modelOptions.mockReset().mockResolvedValue({ items: [], total: 0 })
     api.createPlan.mockReset().mockResolvedValue({})
     api.updatePlan.mockReset().mockResolvedValue({})
+    api.recalculations.mockReset().mockResolvedValue({ items: [], total: 0 })
+    api.createRecalculation.mockReset().mockResolvedValue({})
+    api.cancelRecalculation.mockReset().mockResolvedValue({})
   })
 
   it('derives the cost mode from the selected plan', async () => {
@@ -120,5 +132,54 @@ describe('CostManagementView', () => {
       fixed_unit_cost_cny: '4500',
       monthly_unit_cost_cny: '0',
     }))
+  })
+
+  it('uses the app confirmation dialog and closes after queuing a recalculation', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '历史补算')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '开始补算')!.trigger('click')
+
+    expect(wrapper.get('[data-test="confirm-dialog"]').text()).toContain('确认历史成本补算')
+    await wrapper.get('[data-test="confirm-dialog"]').find('button').trigger('click')
+    await flushPromises()
+
+    expect(api.createRecalculation).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAll('[data-test="dialog"]').some(dialog => dialog.text().includes('核算任务'))).toBe(false)
+  })
+
+  it('shows recalculation failures with their stored error details', async () => {
+    api.recalculations.mockResolvedValue({
+      items: [{ id: 9, kind: 'recalculation', status: 'failed', start_date: '2026-07-01', end_date: '2026-07-07', total_days: 7, completed_days: 3, error_message: 'context deadline exceeded', created_at: '2026-07-29' }],
+      total: 1,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '核算任务')!.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('核算任务'))!
+    expect(dialog.text()).toContain('失败')
+    expect(dialog.text()).toContain('context deadline exceeded')
+    expect(dialog.text()).toContain('3/7 天（43%）')
+  })
+
+  it('cancels a queued recalculation after app confirmation', async () => {
+    api.recalculations.mockResolvedValue({
+      items: [{ id: 12, kind: 'recalculation', status: 'queued', start_date: '2026-01-01', end_date: '2026-07-29', total_days: 210, completed_days: 0, error_message: '', created_at: '2026-07-29T10:20:30Z' }],
+      total: 1,
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '核算任务')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '取消')!.trigger('click')
+
+    const confirm = wrapper.findAll('[data-test="confirm-dialog"]').find(dialog => dialog.text().includes('取消核算任务'))!
+    await confirm.find('button').trigger('click')
+    await flushPromises()
+
+    expect(api.cancelRecalculation).toHaveBeenCalledWith(12)
   })
 })

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -51,6 +52,11 @@ func TestNormalizeFixedCostConvertsYearlyToMonthly(t *testing.T) {
 	require.Equal(t, "100", monthly)
 }
 
+func TestNormalizeCostAmountRemovesDatabaseScale(t *testing.T) {
+	require.Equal(t, "4500", normalizeCostAmount("4500.000000000000"))
+	require.Equal(t, "1.25", normalizeCostAmount("1.250000000000"))
+}
+
 func TestInsertFixedCostPlanIgnoresModelPrices(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -74,6 +80,62 @@ func TestInsertFixedCostPlanIgnoresModelPrices(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCreateCostRecalculationRejectsOverlappingActiveJob(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT EXISTS").WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectRollback()
+
+	_, err = (&costManagementRepository{db: db}).CreateCostRecalculation(
+		context.Background(),
+		time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC),
+		1,
+	)
+	require.EqualError(t, err, "所选日期范围已有补算任务排队或运行中")
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCancelCostRecalculation(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectExec("UPDATE cost_jobs").
+		WithArgs(int64(7)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	require.NoError(t, (&costManagementRepository{db: db}).CancelCostRecalculation(context.Background(), 7))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestAutomaticCostRecalculationUsesTheSharedJobLock(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO cost_jobs").WillReturnResult(sqlmock.NewResult(0, 0))
+
+	require.NoError(t, enqueueCostRecalculationTx(context.Background(), tx, time.Now().AddDate(0, -1, 0)))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRecalculationTimeoutIsRetried(t *testing.T) {
+	status, retry := recalculationFailureStatus(context.DeadlineExceeded)
+	require.Equal(t, "queued", status)
+	require.True(t, retry)
+
+	status, retry = recalculationFailureStatus(errors.New("invalid cost data"))
+	require.Equal(t, "failed", status)
+	require.False(t, retry)
 }
 
 func TestCostAnalysisEmptyCollectionsMarshalAsArrays(t *testing.T) {

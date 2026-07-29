@@ -149,6 +149,7 @@ func registerCostManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		costs.DELETE("/plans/:id", h.Admin.CostManagement.DisablePlan)
 		costs.GET("/recalculations", h.Admin.CostManagement.ListRecalculations)
 		costs.POST("/recalculations", h.Admin.CostManagement.CreateRecalculation)
+		costs.DELETE("/recalculations/:id", h.Admin.CostManagement.CancelRecalculation)
 		costs.GET("/user-costs", h.Admin.CostManagement.UserCosts)
 	}
 }

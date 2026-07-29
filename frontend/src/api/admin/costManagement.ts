@@ -30,7 +30,7 @@ export interface AccountCostInput {
   exclude_reason?:string;note?:string
 }
 export interface CostJob {
-  id:number;status:string;start_date?:string;end_date?:string;total_days:number;completed_days:number
+  id:number;kind:'incremental'|'recalculation';status:string;start_date?:string;end_date?:string;total_days:number;completed_days:number
   error_message:string;created_at:string;finished_at?:string
 }
 
@@ -51,5 +51,6 @@ export const costManagementAPI={
   userCosts:async(params:{start_date:string;end_date:string})=>(await apiClient.get<{items:Array<{user_id:number;dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string}>;unallocated_fixed_cost_cny:string;platform_total_cost_cny:string}>(`${base}/user-costs`,{params})).data,
   recalculations:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<CostJob>>(`${base}/recalculations`,{params})).data,
   createRecalculation:async(input:{start_date:string;end_date:string})=>(await apiClient.post(`${base}/recalculations`,input)).data,
+  cancelRecalculation:async(id:number)=>(await apiClient.delete(`${base}/recalculations/${id}`)).data,
 }
 export default costManagementAPI

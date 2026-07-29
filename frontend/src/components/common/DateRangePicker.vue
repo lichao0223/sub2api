@@ -51,7 +51,7 @@
               v-if="!periodMode"
               type="date"
               v-model="localStartDate"
-              :max="localEndDate || tomorrow"
+              :max="localEndDate || maximumDate"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -70,7 +70,7 @@
               type="date"
               v-model="localEndDate"
               :min="localStartDate"
-              :max="tomorrow"
+              :max="maximumDate"
               class="date-picker-input"
               @change="onDateChange"
             />
@@ -108,6 +108,7 @@ interface Props {
   startDate: string
   endDate: string
   periodMode?: boolean
+  maxDate?: string
 }
 
 interface Emits {
@@ -147,6 +148,7 @@ const tomorrow = computed(() => {
   d.setDate(d.getDate() + 1)
   return formatDateToString(d)
 })
+const maximumDate = computed(() => props.maxDate || tomorrow.value)
 
 // Helper function to format date to YYYY-MM-DD using local timezone
 const formatDateToString = (date: Date): string => {
@@ -268,7 +270,7 @@ const periodPresets: DatePreset[] = [
     }
   }
 ]
-const availablePresets = computed(() => props.periodMode ? periodPresets : dayPresets)
+const availablePresets = computed(() => (props.periodMode ? periodPresets : dayPresets).filter(preset => preset.value !== 'today' || maximumDate.value >= today.value))
 const currentMonth = computed(() => today.value.slice(0, 7))
 const yearOptions = computed(() => Array.from({ length: 10 }, (_, index) => String(new Date().getFullYear() - index)))
 const startMonth = computed({
@@ -323,8 +325,8 @@ const isPresetActive = (preset: DatePreset): boolean => {
 
 const selectPreset = (preset: DatePreset) => {
   const range = preset.getRange()
-  localStartDate.value = range.start
-  localEndDate.value = range.end
+  localStartDate.value = range.start > maximumDate.value ? maximumDate.value : range.start
+  localEndDate.value = range.end > maximumDate.value ? maximumDate.value : range.end
   activePreset.value = preset.value
 }
 

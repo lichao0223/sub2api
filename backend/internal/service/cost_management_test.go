@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -61,4 +62,16 @@ func TestCostPlanInputAcceptsNumericCostAmounts(t *testing.T) {
 	require.Equal(t, "1.25", input.Prices[0].InputPriceCNY)
 	require.Equal(t, "2.5", input.Prices[0].OutputPriceCNY)
 	require.Equal(t, "0.1", input.Prices[0].PerRequestPriceCNY)
+}
+
+func TestCreateRecalculationRejectsToday(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	today := time.Now().In(loc)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+
+	_, err = NewCostManagementService(nil, nil).CreateRecalculation(
+		context.Background(), today.AddDate(0, 0, -1), today, 1,
+	)
+	require.EqualError(t, err, "历史补算的结束日期不能晚于昨天")
 }

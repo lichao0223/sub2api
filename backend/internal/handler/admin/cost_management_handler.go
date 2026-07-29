@@ -220,6 +220,17 @@ func (h *CostManagementHandler) CreateRecalculation(c *gin.Context) {
 	}
 	response.Accepted(c, x)
 }
+func (h *CostManagementHandler) CancelRecalculation(c *gin.Context) {
+	id, ok := costID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.CancelRecalculation(c.Request.Context(), id); err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"message": "核算任务已取消"})
+}
 
 func costID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)

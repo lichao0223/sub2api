@@ -236,8 +236,9 @@ type CostManagementRepository interface {
 	GetUserCosts(context.Context, time.Time, time.Time) ([]UserCost, error)
 	ListCostJobs(context.Context, int, int) ([]CostJob, int64, error)
 	CreateCostRecalculation(context.Context, time.Time, time.Time, int64) (*CostJob, error)
+	CancelCostRecalculation(context.Context, int64) error
 	RunCostIncremental(context.Context, int) (bool, error)
-	RunNextCostRecalculation(context.Context) error
+	RunNextCostRecalculation(context.Context) (bool, error)
 }
 
 type CostManagementService struct {
@@ -270,7 +271,6 @@ func (s *CostManagementService) runAggregation() {
 	}
 	defer atomic.StoreInt32(&s.running, 0)
 	ctx, cancel := context.WithTimeout(context.Background(), costAggregationTimeout)
-	defer cancel()
 	for {
 		more, err := s.repo.RunCostIncremental(ctx, 2000)
 		if err != nil {
@@ -283,8 +283,18 @@ func (s *CostManagementService) runAggregation() {
 			break
 		}
 	}
-	if err := s.repo.RunNextCostRecalculation(ctx); err != nil {
-		logger.LegacyPrintf("service.cost_management", "[CostManagement] recalculation failed: %v", err)
+	cancel()
+	recalculationCtx, cancelRecalculation := context.WithTimeout(context.Background(), costAggregationTimeout)
+	defer cancelRecalculation()
+	for {
+		processed, err := s.repo.RunNextCostRecalculation(recalculationCtx)
+		if err != nil {
+			logger.LegacyPrintf("service.cost_management", "[CostManagement] recalculation failed: %v", err)
+			break
+		}
+		if !processed {
+			break
+		}
 	}
 }
 
@@ -405,7 +415,16 @@ func (s *CostManagementService) CreateRecalculation(ctx context.Context, start, 
 	if end.Before(start) || end.Sub(start) > 366*24*time.Hour {
 		return nil, errors.New("recalculation range must be between 1 and 366 days")
 	}
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	today := time.Now().In(loc)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+	if !end.Before(today) {
+		return nil, errors.New("历史补算的结束日期不能晚于昨天")
+	}
 	return s.repo.CreateCostRecalculation(ctx, start, end, userID)
+}
+func (s *CostManagementService) CancelRecalculation(ctx context.Context, id int64) error {
+	return s.repo.CancelCostRecalculation(ctx, id)
 }
 
 func validateCostPlanInput(in CostPlanInput) error {

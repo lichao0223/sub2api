@@ -11,7 +11,7 @@
             <span class="text-sm font-medium">统计范围</span>
             <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" period-mode @change="loadOverview" />
           </div>
-          <span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span>
+          <div class="flex items-center gap-3"><span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span><button class="btn btn-secondary btn-sm" @click="openRecalc">核算任务</button></div>
         </div>
         <div class="grid gap-4 md:grid-cols-4">
           <div v-for="card in overviewCards" :key="card.label" class="card p-5"><div class="text-sm text-gray-500">{{ card.label }}</div><div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ card.value }}</div></div>
@@ -21,7 +21,7 @@
           <span :class="overview.coverage_complete?'text-emerald-600':'text-amber-600'">{{ coverageText }}</span>
         </div>
         <div class="card p-5">
-          <div class="flex items-center justify-between"><div><b>动态成本核算</b><span class="ml-3 text-sm" :class="completion===100?'text-emerald-600':'text-amber-600'">{{ completion===100?'正常':completion+'%' }} · 待核算 {{ overview.pending_count }} 条 · 异常 {{ overview.error_count }} 条</span></div><button class="btn btn-secondary btn-sm" @click="openRecalc">历史补算</button></div>
+          <div class="flex items-center justify-between"><div><b>动态成本核算</b><span class="ml-3 text-sm" :class="completion===100?'text-emerald-600':'text-amber-600'">{{ completion===100?'正常':completion+'%' }} · 待核算 {{ overview.pending_count }} 条 · 异常 {{ overview.error_count }} 条</span><div v-if="latestRecalculation" class="mt-2 text-sm" :class="latestRecalculation.status==='failed'?'text-red-600':'text-gray-500'">最近补算：{{ jobStatusLabel(latestRecalculation) }} · {{ latestRecalculation.completed_days }}/{{ latestRecalculation.total_days }} 天<span v-if="latestRecalculation.error_message"> · {{ latestRecalculation.error_message }}</span></div></div><button class="btn btn-secondary btn-sm" @click="openRecalc">历史补算</button></div>
           <div v-if="completion<100" class="mt-3 h-2 overflow-hidden rounded bg-gray-100"><div class="h-full bg-primary-500" :style="{width:completion+'%'}"></div></div>
         </div>
         <div class="flex justify-end"><div class="inline-flex rounded-lg border border-gray-200 p-1 dark:border-dark-700"><button v-for="p in chartPeriods" :key="p.key" class="rounded px-3 py-1.5 text-sm" :class="chartPeriod===p.key?'bg-primary-50 text-primary-600':''" @click="loadAnalysis(p.key)">{{ p.label }}</button></div></div>
@@ -78,13 +78,15 @@
       <template #footer><button class="btn btn-secondary" @click="planDialog=false">取消</button><button class="btn btn-primary" @click="savePlan">保存</button></template>
     </BaseDialog>
 
-    <BaseDialog :show="recalcDialog" title="历史成本补算" width="wide" @close="recalcDialog=false">
+    <BaseDialog :show="recalcDialog" title="核算任务" width="wide" @close="recalcDialog=false">
       <div class="space-y-5">
-        <div><label class="input-label">补算日期范围</label><DateRangePicker v-model:start-date="recalc.start_date" v-model:end-date="recalc.end_date" /></div>
-        <div><h3 class="mb-2 font-medium">补算任务</h3><div class="overflow-x-auto"><table class="table"><thead><tr><th>范围</th><th>状态</th><th>进度</th><th>创建时间</th></tr></thead><tbody><tr v-for="job in recalcJobs" :key="job.id"><td>{{ date(job.start_date) }} 至 {{ date(job.end_date) }}</td><td>{{ job.status }}</td><td>{{ job.completed_days }}/{{ job.total_days }}</td><td>{{ date(job.created_at) }}</td></tr></tbody></table><div v-if="!recalcJobs.length" class="py-6 text-center text-sm text-gray-400">暂无补算任务</div></div><Pagination :page="recalcPage" :page-size="20" :total="recalcTotal" @update:page="recalcPage=$event;loadRecalculations()" /></div>
+        <div><label class="input-label">新建历史补算</label><DateRangePicker v-model:start-date="recalc.start_date" v-model:end-date="recalc.end_date" :max-date="yesterday" /></div>
+        <div><h3 class="mb-1 font-medium">核算任务列表 <span class="text-xs font-normal text-gray-400">运行中每 5 秒自动刷新</span></h3><p class="mb-2 text-xs text-gray-400">日期进度按补算天数统计；总览中的待核算数量按使用记录条数统计。</p><div class="overflow-x-auto"><table class="table"><thead><tr><th>类型</th><th>范围</th><th>状态</th><th>日期进度</th><th>详情</th><th>创建时间</th><th>操作</th></tr></thead><tbody><tr v-for="job in recalcJobs" :key="job.id"><td>{{ jobTypeLabel(job.kind) }}</td><td>{{ job.kind==='recalculation'?date(job.start_date)+' 至 '+date(job.end_date):'-' }}</td><td :class="job.status==='failed'?'text-red-600':''">{{ jobStatusLabel(job) }}</td><td>{{ jobProgressText(job) }}</td><td class="max-w-64 break-words" :class="job.error_message||job.status==='failed'?'text-red-600':'text-gray-400'">{{ jobDetail(job) }}</td><td class="whitespace-nowrap">{{ dateTime(job.created_at) }}</td><td><button v-if="job.kind==='recalculation'&&['queued','running'].includes(job.status)" class="text-red-600" @click="requestCancelRecalculation(job)">取消</button><span v-else class="text-gray-400">-</span></td></tr></tbody></table><div v-if="!recalcJobs.length" class="py-6 text-center text-sm text-gray-400">暂无核算任务</div></div><Pagination :page="recalcPage" :page-size="20" :total="recalcTotal" @update:page="recalcPage=$event;loadRecalculations()" /></div>
       </div>
-      <template #footer><button class="btn btn-secondary" @click="recalcDialog=false">取消</button><button class="btn btn-primary" @click="submitRecalc">开始补算</button></template>
+      <template #footer><button class="btn btn-secondary" @click="recalcDialog=false">取消</button><button class="btn btn-primary" :disabled="recalcSubmitting||hasOverlappingRecalculation" @click="submitRecalc">{{ hasOverlappingRecalculation?'所选范围已有任务':'开始补算' }}</button></template>
     </BaseDialog>
+    <ConfirmDialog :show="recalcConfirm" title="确认历史成本补算" :message="`确认创建 ${recalc.start_date} 至 ${recalc.end_date} 的补算任务？`" confirm-text="确认创建" :loading="recalcSubmitting" @confirm="confirmRecalc" @cancel="recalcConfirm=false" />
+    <ConfirmDialog :show="!!cancelRecalculationTarget" title="取消核算任务" message="确认取消该补算任务？运行中的任务会在当前日期处理完成后停止。" confirm-text="确认取消" :loading="cancelRecalculationSubmitting" danger @confirm="confirmCancelRecalculation" @cancel="cancelRecalculationTarget=undefined" />
   </AppLayout>
 </template>
 
@@ -93,6 +95,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { Chart } from 'chart.js/auto'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
@@ -100,7 +103,7 @@ import { useAppStore } from '@/stores'
 import costManagementAPI, { type AccountCostInput, type AccountCostRow, type CostAnalysis, type CostJob, type CostOverview, type CostPlan } from '@/api/admin/costManagement'
 
 const app=useAppStore(),tab=ref<'overview'|'accounts'|'plans'>('overview'),tabs=[{key:'overview',label:'成本总览'},{key:'accounts',label:'账号成本'},{key:'plans',label:'成本方案'}] as const
-const today=new Date().toISOString().slice(0,10),month=today.slice(0,7),range=reactive({start:month+'-01',end:today})
+const today=new Date().toISOString().slice(0,10),month=today.slice(0,7),yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10),range=reactive({start:month+'-01',end:today})
 const overview=reactive<CostOverview>({dynamic_cost_cny:'0',fixed_cost_cny:'0',total_cost_cny:'0',pending_count:0,error_count:0,eligible_count:0,calculated_count:0,coverage_complete:true,previous_coverage_complete:true,previous_total_cost_cny:'0'}),analysis=reactive<CostAnalysis>({period:'day',total_cost_cny:'0',trend:[],top:[]})
 const completion=computed(()=>overview.eligible_count?Math.round(overview.calculated_count/overview.eligible_count*1000)/10:100),lastUpdated=computed(()=>overview.last_success_at?new Date(overview.last_success_at).toLocaleString():'尚未聚合')
 const aggregationDelayed=computed(()=>!overview.last_success_at||Date.now()-new Date(overview.last_success_at).getTime()>10*60*1000)
@@ -122,6 +125,7 @@ const allAccountsSelected=computed(()=>accounts.value.length>0&&accounts.value.e
 function toggleAccount(id:number){const s=new Set(selectedAccounts.value);s.has(id)?s.delete(id):s.add(id);selectedAccounts.value=s}
 function toggleAllAccounts(){const s=new Set(selectedAccounts.value);allAccountsSelected.value?accounts.value.forEach(x=>s.delete(x.account_id)):accounts.value.forEach(x=>s.add(x.account_id));selectedAccounts.value=s}
 const modeLabel=(v:string)=>({metered:'按使用量',fixed:'固定成本',excluded:'不纳入核算'}[v]||'未配置'),date=(v?:string)=>v?new Date(v).toLocaleDateString():'-'
+const dateTime=(v?:string)=>v?new Date(v).toLocaleString('zh-CN',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}):'-'
 const accountDialog=ref(false),batchMode=ref(false),editingAccount=ref<number>(),editingAccountConfigured=ref(false),accountForm=reactive<any>({cost_mode:'metered',plan_id:undefined,effective_from:new Date().toISOString().slice(0,16),effective_to:'',exclude_reason:''})
 const planChoices=ref<CostPlan[]>([])
 // ponytail: local search over 100 plans; switch Select to remote search if deployments exceed this.
@@ -159,10 +163,22 @@ const priceCostFields=['input_price_cny','output_price_cny','cache_write_price_c
 function stringifyCostFields(value:any,fields:string[]){const copy={...value};fields.forEach(field=>copy[field]=String(copy[field]??0));return copy}
 async function savePlan(){try{if(planForm.plan_type==='metered'){const models=planForm.prices.map((x:any)=>x.upstream_model.trim());if(models.some((x:string)=>!x)||new Set(models).size!==models.length)throw new Error('上游模型不能为空且不能重复')}const input={...stringifyCostFields(planForm,['fixed_unit_cost_cny','monthly_unit_cost_cny']),prices:planForm.prices.map((price:any)=>stringifyCostFields(price,priceCostFields)),effective_from:new Date(planForm.effective_from).toISOString(),effective_to:planForm.effective_to?new Date(planForm.effective_to).toISOString():undefined};editingPlanId.value?await costManagementAPI.updatePlan(editingPlanId.value,input):await costManagementAPI.createPlan(input);app.showSuccess('成本方案已保存');planDialog.value=false;loadPlans()}catch(e:any){app.showError(e.message||'保存失败')}}
 async function disablePlan(x:CostPlan){if(!confirm(`确认停用“${x.name}”？`))return;await costManagementAPI.disablePlan(x.id);loadPlans()}
-const recalcDialog=ref(false),recalc=reactive({start_date:month+'-01',end_date:today}),recalcJobs=ref<CostJob[]>([]),recalcPage=ref(1),recalcTotal=ref(0)
-async function loadRecalculations(){const r=await costManagementAPI.recalculations({page:recalcPage.value,page_size:20});recalcJobs.value=r.items;recalcTotal.value=r.total}
+const recalcDialog=ref(false),recalcConfirm=ref(false),recalcSubmitting=ref(false),recalc=reactive({start_date:yesterday.slice(0,7)+'-01',end_date:yesterday}),recalcJobs=ref<CostJob[]>([]),recalcPage=ref(1),recalcTotal=ref(0)
+const cancelRecalculationTarget=ref<CostJob>(),cancelRecalculationSubmitting=ref(false)
+const latestRecalculation=computed(()=>recalcJobs.value.find(job=>job.kind==='recalculation'&&['queued','running'].includes(job.status))||recalcJobs.value.find(job=>job.kind==='recalculation'))
+const hasOverlappingRecalculation=computed(()=>recalcJobs.value.some(job=>['queued','running'].includes(job.status)&&!!job.start_date&&!!job.end_date&&job.start_date.slice(0,10)<=recalc.end_date&&job.end_date.slice(0,10)>=recalc.start_date))
+const jobTypeLabel=(kind:CostJob['kind'])=>kind==='incremental'?'增量核算':'历史补算'
+const jobStatusLabel=(job:CostJob)=>job.status==='running'&&job.kind==='incremental'?'核算中':({queued:'排队中',running:'补算中',succeeded:'已完成',failed:'失败',cancelled:'已取消'}[job.status]||'未知状态')
+const jobProgress=(job:CostJob)=>job.total_days?Math.min(100,Math.round(job.completed_days/job.total_days*100)):0
+const jobProgressText=(job:CostJob)=>job.kind==='incremental'?'-':`${job.completed_days}/${job.total_days} 天（${jobProgress(job)}%）`
+const jobDetail=(job:CostJob)=>job.error_message||(job.kind==='incremental'?({running:'正在聚合新使用记录',succeeded:'增量核算正常',failed:'未记录错误详情（旧任务）'}[job.status]||'-'):({queued:'等待调度（每 5 分钟执行一次）',running:'处理中（每批最多 7 天）',succeeded:'补算完成',failed:'未记录错误详情（旧任务）',cancelled:'任务已取消'}[job.status]||'-'))
+let recalculationRefreshTimer:number|undefined
+async function loadRecalculations(){const r=await costManagementAPI.recalculations({page:recalcPage.value,page_size:20});recalcJobs.value=r.items;recalcTotal.value=r.total;if(!recalculationRefreshTimer&&r.items.some(job=>['queued','running'].includes(job.status)))recalculationRefreshTimer=window.setTimeout(()=>{recalculationRefreshTimer=undefined;loadOverview();loadRecalculations()},5000)}
 function openRecalc(){recalcDialog.value=true;loadRecalculations()}
-async function submitRecalc(){if(!confirm(`确认补算 ${recalc.start_date} 至 ${recalc.end_date}？`))return;await costManagementAPI.createRecalculation(recalc);app.showSuccess('补算任务已创建');recalcPage.value=1;loadRecalculations()}
+function submitRecalc(){if(hasOverlappingRecalculation.value){app.showError('所选日期范围已有补算任务排队或运行中');return}recalcConfirm.value=true}
+async function confirmRecalc(){if(recalcSubmitting.value)return;recalcSubmitting.value=true;try{await costManagementAPI.createRecalculation(recalc);app.showSuccess('补算任务已加入队列');recalcConfirm.value=false;recalcDialog.value=false;recalcPage.value=1;await loadRecalculations()}catch(e:any){app.showError(e.message||'创建补算任务失败')}finally{recalcSubmitting.value=false}}
+function requestCancelRecalculation(job:CostJob){cancelRecalculationTarget.value=job}
+async function confirmCancelRecalculation(){if(!cancelRecalculationTarget.value||cancelRecalculationSubmitting.value)return;cancelRecalculationSubmitting.value=true;try{await costManagementAPI.cancelRecalculation(cancelRecalculationTarget.value.id);app.showSuccess('核算任务已取消');cancelRecalculationTarget.value=undefined;await loadRecalculations()}catch(e:any){app.showError(e.message||'取消核算任务失败')}finally{cancelRecalculationSubmitting.value=false}}
 watch(tab,v=>{if(v==='accounts'){loadAccounts();loadPlanChoices()}else if(v==='plans')loadPlans()})
-onMounted(()=>{loadOverview();loadAnalysis();loadPlans();loadModelOptions()});onBeforeUnmount(()=>chart.value?.destroy())
+onMounted(()=>{loadOverview();loadAnalysis();loadPlans();loadModelOptions();loadRecalculations()});onBeforeUnmount(()=>{chart.value?.destroy();if(recalculationRefreshTimer)window.clearTimeout(recalculationRefreshTimer)})
 </script>
