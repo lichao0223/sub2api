@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -30,6 +32,40 @@ type CostModelPrice struct {
 	PerRequestPriceCNY  string `json:"per_request_price_cny"`
 }
 
+func (p *CostModelPrice) UnmarshalJSON(data []byte) error {
+	type alias CostModelPrice
+	raw := struct {
+		*alias
+		InputPriceCNY       json.RawMessage `json:"input_price_cny"`
+		OutputPriceCNY      json.RawMessage `json:"output_price_cny"`
+		CacheWritePriceCNY  json.RawMessage `json:"cache_write_price_cny"`
+		CacheReadPriceCNY   json.RawMessage `json:"cache_read_price_cny"`
+		ImageInputPriceCNY  json.RawMessage `json:"image_input_price_cny"`
+		ImageOutputPriceCNY json.RawMessage `json:"image_output_price_cny"`
+		PerRequestPriceCNY  json.RawMessage `json:"per_request_price_cny"`
+	}{alias: (*alias)(p)}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	for _, field := range []struct {
+		target *string
+		value  json.RawMessage
+	}{
+		{&p.InputPriceCNY, raw.InputPriceCNY},
+		{&p.OutputPriceCNY, raw.OutputPriceCNY},
+		{&p.CacheWritePriceCNY, raw.CacheWritePriceCNY},
+		{&p.CacheReadPriceCNY, raw.CacheReadPriceCNY},
+		{&p.ImageInputPriceCNY, raw.ImageInputPriceCNY},
+		{&p.ImageOutputPriceCNY, raw.ImageOutputPriceCNY},
+		{&p.PerRequestPriceCNY, raw.PerRequestPriceCNY},
+	} {
+		if err := unmarshalCostAmount(field.value, field.target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type CostPlanInput struct {
 	Name               string           `json:"name"`
 	PlanType           string           `json:"plan_type"`
@@ -42,6 +78,37 @@ type CostPlanInput struct {
 	PurchaseQuantity   int              `json:"purchase_quantity"`
 	Note               string           `json:"note"`
 	Prices             []CostModelPrice `json:"prices"`
+}
+
+func (in *CostPlanInput) UnmarshalJSON(data []byte) error {
+	type alias CostPlanInput
+	raw := struct {
+		*alias
+		FixedUnitCostCNY   json.RawMessage `json:"fixed_unit_cost_cny"`
+		MonthlyUnitCostCNY json.RawMessage `json:"monthly_unit_cost_cny"`
+	}{alias: (*alias)(in)}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if err := unmarshalCostAmount(raw.FixedUnitCostCNY, &in.FixedUnitCostCNY); err != nil {
+		return err
+	}
+	return unmarshalCostAmount(raw.MonthlyUnitCostCNY, &in.MonthlyUnitCostCNY)
+}
+
+func unmarshalCostAmount(raw json.RawMessage, target *string) error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	if raw[0] == '"' {
+		return json.Unmarshal(raw, target)
+	}
+	var number json.Number
+	if err := json.Unmarshal(raw, &number); err != nil {
+		return fmt.Errorf("cost amount must be a number or string: %w", err)
+	}
+	*target = number.String()
+	return nil
 }
 
 type CostPlan struct {

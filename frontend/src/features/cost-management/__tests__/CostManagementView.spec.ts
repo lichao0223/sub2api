@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   accounts: vi.fn(),
   plans: vi.fn(),
   modelOptions: vi.fn(),
+  createPlan: vi.fn(),
+  updatePlan: vi.fn(),
 }))
 
 vi.mock('@/api/admin/costManagement', () => ({ default: api }))
@@ -64,6 +66,8 @@ describe('CostManagementView', () => {
       total: 1,
     })
     api.modelOptions.mockReset().mockResolvedValue({ items: [], total: 0 })
+    api.createPlan.mockReset().mockResolvedValue({})
+    api.updatePlan.mockReset().mockResolvedValue({})
   })
 
   it('derives the cost mode from the selected plan', async () => {
@@ -94,5 +98,27 @@ describe('CostManagementView', () => {
     await dialog.findAll('select').at(-1)!.setValue('request')
     expect(dialog.text()).not.toContain('输入 Token')
     expect(dialog.text()).toContain('每次请求')
+  })
+
+  it('serializes numeric fixed costs as strings', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '新建成本方案')!.trigger('click')
+
+    const dialog = wrapper.get('[data-test="dialog"]')
+    await dialog.findAll('select').at(0)!.setValue('fixed')
+    await dialog.findAll('select').at(-1)!.setValue('yearly')
+    const inputs = dialog.findAll('input')
+    await inputs.at(0)!.setValue('GLM MAX 套餐')
+    await inputs.at(3)!.setValue(4500)
+    await dialog.findAll('button').find(button => button.text() === '保存')!.trigger('click')
+    await flushPromises()
+
+    expect(api.createPlan).toHaveBeenCalledWith(expect.objectContaining({
+      fixed_unit_cost_cny: '4500',
+      monthly_unit_cost_cny: '0',
+    }))
   })
 })
