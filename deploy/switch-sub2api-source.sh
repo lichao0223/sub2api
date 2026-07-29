@@ -29,9 +29,9 @@ Interactive menu:
   Run without a command to show a menu.
 
 Commands:
-  fork      Backup data, switch sub2api image to ghcr.io/lichao0223/sub2api:latest, pull, start.
-  official  Backup data, switch sub2api image back to weishaw/sub2api:latest, pull, start.
-  update    Detect current image source, optionally backup data, pull latest configured image once, restart.
+  fork      Pull, backup data, switch sub2api image to ghcr.io/lichao0223/sub2api:latest, start.
+  official  Pull, backup data, switch sub2api image back to weishaw/sub2api:latest, start.
+  update    Pull while online, optionally backup data, then recreate only sub2api when possible.
   auto-update-on     Enable daily update at 02:00 with backup.
   auto-update-off    Disable daily automatic update.
   auto-update-status Show automatic update status.
@@ -509,6 +509,11 @@ stop_services() {
 start_services() {
   info "Starting services..."
   run_compose up -d
+}
+
+recreate_app_service() {
+  info "Recreating sub2api only; PostgreSQL and Redis stay online..."
+  run_compose up -d --no-deps sub2api
 }
 
 backup_local_files() {
@@ -1012,19 +1017,17 @@ switch_image() {
   echo "New image:     $image"
   echo ""
 
-  if ! confirm "This will stop services, backup data, switch image, pull, and restart. Continue?"; then
+  if ! confirm "This will pull while online, then stop services for backup, switch image, and restart. Continue?"; then
     info "Cancelled"
     return
   fi
 
-  backup_data 0
+  info "Pulling target image while current services stay online..."
+  docker image pull "$image"
 
+  backup_data 0
   info "Updating sub2api image in $COMPOSE_FILE"
   set_sub2api_image "$image"
-
-  info "Pulling sub2api image..."
-  run_compose pull sub2api
-
   start_services
   info "Done."
 }
@@ -1074,34 +1077,41 @@ update_current_image() {
   echo "Latest image:  $latest_image"
   echo ""
 
-  if ! confirm "This will stop services, switch to latest image for the current source, pull, and restart. Continue?"; then
+  if ! confirm "This will pull while online, then update the sub2api container. Continue?"; then
     info "Cancelled"
     return
   fi
 
+  info "Updating sub2api image in $COMPOSE_FILE"
+  set_sub2api_image "$latest_image"
+
+  info "Pulling sub2api image while current services stay online..."
+  run_compose pull sub2api
+
+  local stopped_for_backup=0
   case "$UPDATE_BACKUP" in
-    yes) backup_data 0 ;;
+    yes)
+      backup_data 0
+      stopped_for_backup=1
+      ;;
     no)
       warn "Skipping backup before update by user choice."
-      stop_services
       ;;
     *)
       if confirm_default_yes "Create a backup before update?"; then
         backup_data 0
+        stopped_for_backup=1
       else
         warn "Skipping backup before update by user choice."
-        stop_services
       fi
       ;;
   esac
 
-  info "Updating sub2api image in $COMPOSE_FILE"
-  set_sub2api_image "$latest_image"
-
-  info "Pulling sub2api image..."
-  run_compose pull sub2api
-
-  start_services
+  if [ "$stopped_for_backup" = "1" ]; then
+    start_services
+  else
+    recreate_app_service
+  fi
   info "Update completed."
 }
 
