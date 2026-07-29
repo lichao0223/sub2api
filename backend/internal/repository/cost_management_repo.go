@@ -184,6 +184,9 @@ func (r *costManagementRepository) insertCostPlanVersion(ctx context.Context, tx
 	if err := tx.QueryRowContext(ctx, `INSERT INTO cost_plan_versions(plan_id,version_no,effective_from,effective_to,billing_cycle,fixed_unit_cost_cny,monthly_unit_cost_cny,purchase_quantity) VALUES($1,$2,$3,$4,$5,$6::numeric,$7::numeric,$8) RETURNING id`, planID, version, in.EffectiveFrom, in.EffectiveTo, cycle, unit, monthly, qty).Scan(&versionID); err != nil {
 		return err
 	}
+	if in.PlanType != "metered" {
+		return nil
+	}
 	for _, p := range in.Prices {
 		vals := []string{p.InputPriceCNY, p.OutputPriceCNY, p.CacheWritePriceCNY, p.CacheReadPriceCNY, p.ImageInputPriceCNY, p.ImageOutputPriceCNY, p.PerRequestPriceCNY}
 		for i := range vals {

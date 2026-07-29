@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,6 +49,31 @@ func TestNormalizeFixedCostConvertsYearlyToMonthly(t *testing.T) {
 	require.Equal(t, "yearly", cycle)
 	require.Equal(t, "1200", unit)
 	require.Equal(t, "100", monthly)
+}
+
+func TestInsertFixedCostPlanIgnoresModelPrices(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	mock.ExpectQuery("INSERT INTO cost_plan_versions").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+
+	err = (&costManagementRepository{db: db}).insertCostPlanVersion(
+		context.Background(), tx, 1, 1,
+		service.CostPlanInput{
+			PlanType:         "fixed",
+			BillingCycle:     "yearly",
+			FixedUnitCostCNY: "4500",
+			PurchaseQuantity: 1,
+			Prices:           []service.CostModelPrice{{}},
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestCostAnalysisEmptyCollectionsMarshalAsArrays(t *testing.T) {
