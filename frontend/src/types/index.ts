@@ -1866,9 +1866,6 @@ export interface UserTokenRankingItem {
   active_duration_ms?: number
   nonwork_active_ms?: number
   calendar_confirmed?: boolean
-  dynamic_cost_cny?: number
-  fixed_cost_cny?: number
-  total_cost_cny?: number
 }
 
 export interface NonworkMissingDateRange {

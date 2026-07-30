@@ -2,7 +2,7 @@ export default {
 
   tokenRanking: {
     title: 'Token Usage Ranking',
-    description: 'View all non-admin users ranked by requests, tokens, and actual spend in the selected time range, including users with no usage.',
+    description: 'View all non-admin users ranked by requests and tokens in the selected time range, including users with no usage.',
     rankingList: 'Ranking Details',
     rank: 'Rank',
     user: 'User',
@@ -11,7 +11,6 @@ export default {
     nonworkTokens: 'Non-work Time Tokens',
     activeDuration: 'Active Duration',
     nonworkActiveDuration: 'Non-work Active Duration',
-    spend: 'Spend',
     scope: 'Scope',
     scopeAll: 'All',
     scopeNonwork: 'Non-work Time',
@@ -21,7 +20,6 @@ export default {
     rankByRequests: 'Requests',
     rankByActiveDuration: 'Active Duration',
     rankByNonworkActiveDuration: 'Non-work Active Duration',
-    rankBySpend: 'Spend',
     sortOrder: 'Sort',
     sortAsc: 'Ascending',
     sortDesc: 'Descending',
@@ -33,7 +31,6 @@ export default {
     totalTokens: 'Total Tokens',
     totalNonworkTokens: 'Non-work Time Tokens',
     totalRequests: 'Total Requests',
-    totalSpend: 'Total Spend',
     nonworkTokenRatio: 'Non-work Token Share',
     export: 'Export',
     exportRanking: 'Export Ranking',

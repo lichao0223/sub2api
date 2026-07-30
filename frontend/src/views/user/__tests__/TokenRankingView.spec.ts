@@ -5,7 +5,6 @@ import TokenRankingView from '../TokenRankingView.vue'
 
 const push = vi.hoisted(() => vi.fn())
 const getDashboardNonworkTokenRanking = vi.hoisted(() => vi.fn())
-const userCosts = vi.hoisted(() => vi.fn())
 const authStore = vi.hoisted(() => ({ isAdmin: true }))
 
 vi.mock('vue-router', async () => ({
@@ -26,9 +25,6 @@ vi.mock('@/api/usage', () => ({
   usageAPI: { getDashboardNonworkTokenRanking },
 }))
 vi.mock('@/api/admin/usage', () => ({ default: {}, adminUsageAPI: {} }))
-vi.mock('@/api/admin/costManagement', () => ({
-  default: { userCosts },
-}))
 
 const mountView = () => mount(TokenRankingView, {
   global: {
@@ -55,18 +51,13 @@ describe('TokenRankingView user drill-down', () => {
       start_date: '2026-07-01',
       end_date: '2026-07-07',
     })
-    userCosts.mockReset().mockResolvedValue({
-      items: [{ user_id: 7, dynamic_cost_cny: '1.2', fixed_cost_cny: '0.8', total_cost_cny: '2' }],
-      platform_total_cost_cny: '3',
-      unallocated_fixed_cost_cny: '1',
-    })
   })
 
   it('opens admin usage details only for administrators', async () => {
     const adminView = mountView()
     await flushPromises()
-    expect(userCosts).toHaveBeenCalledTimes(1)
-    expect(adminView.text()).toContain('¥3.00')
+    expect(adminView.text()).not.toContain('¥')
+    expect(adminView.text()).not.toContain('$')
 
     const adminRow = adminView.find('tbody tr')
     expect(adminRow.attributes('tabindex')).toBe('0')
@@ -81,8 +72,6 @@ describe('TokenRankingView user drill-down', () => {
     authStore.isAdmin = false
     const userView = mountView()
     await flushPromises()
-    expect(userCosts).toHaveBeenCalledTimes(1)
-
     const userRow = userView.find('tbody tr')
     expect(userRow.attributes('tabindex')).toBeUndefined()
     await userRow.trigger('click')

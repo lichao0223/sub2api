@@ -127,7 +127,7 @@
             </template>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalTokens') }}</div>
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatTokens(totals.totalTokens) }}</div>
@@ -141,23 +141,9 @@
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatNumber(totals.requests) }}</div>
             </div>
             <div class="card p-4">
-              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalSpend') }}</div>
-              <div class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">${{ formatCost(totals.actualCost) }}</div>
-            </div>
-            <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.nonworkTokenRatio') }}</div>
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatPercent(totals.nonworkTokenRatio) }}</div>
             </div>
-            <template v-if="authStore.isAdmin">
-              <div class="card p-4">
-                <div class="text-xs font-medium text-gray-500 dark:text-gray-400">平台真实总成本</div>
-                <div class="mt-2 text-2xl font-bold text-primary-600">¥{{ formatCost(costSummary.platformTotal) }}</div>
-              </div>
-              <div class="card p-4">
-                <div class="text-xs font-medium text-gray-500 dark:text-gray-400">未分摊固定成本</div>
-                <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">¥{{ formatCost(costSummary.unallocatedFixed) }}</div>
-              </div>
-            </template>
           </div>
 
           <div class="card flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -179,7 +165,7 @@
               </div>
             </div>
             <div ref="rankingTableScrollRef" class="token-ranking-table-scroll min-h-0 flex-1 overflow-auto">
-              <table class="w-full min-w-[1120px] table-fixed text-sm">
+              <table class="w-full min-w-[1000px] table-fixed text-sm">
                 <colgroup>
                   <col class="w-20" />
                   <col class="w-40" />
@@ -188,7 +174,6 @@
                   <col class="w-40" />
                   <col class="w-44" />
                   <col class="w-44" />
-                  <col class="w-28" />
                 </colgroup>
                 <thead class="sticky top-0 z-10 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
@@ -199,12 +184,6 @@
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkTokens') }}</th>
                     <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.activeDuration') }}</th>
                     <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.nonworkActiveDuration') }}</th>
-                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
-                    <template v-if="authStore.isAdmin">
-                      <th class="px-4 py-3 text-right">动态成本</th>
-                      <th class="px-4 py-3 text-right">固定成本</th>
-                      <th class="px-4 py-3 text-right">总成本</th>
-                    </template>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,12 +209,6 @@
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
-                    <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
-                    <template v-if="authStore.isAdmin">
-                      <td class="px-4 py-3 text-right">¥{{ formatCost(item.dynamic_cost_cny || 0) }}</td>
-                      <td class="px-4 py-3 text-right">¥{{ formatCost(item.fixed_cost_cny || 0) }}</td>
-                      <td class="px-4 py-3 text-right font-semibold text-primary-600">¥{{ formatCost(item.total_cost_cny || 0) }}</td>
-                    </template>
                   </tr>
                 </tbody>
               </table>
@@ -379,7 +352,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { saveAs } from 'file-saver'
@@ -391,7 +364,6 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { usageAPI } from '@/api/usage'
 import * as adminUsageAPI from '@/api/admin/usage'
-import costManagementAPI from '@/api/admin/costManagement'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -415,11 +387,10 @@ const exportMenuRef = ref<HTMLElement | null>(null)
 const rankingTableScrollRef = ref<HTMLElement | null>(null)
 const error = ref(false)
 const rankingScope = ref<'all' | 'nonwork'>('all')
-const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration' | 'actual_cost' | 'total_cost'>('tokens')
-const costSummary = reactive({ platformTotal: 0, unallocatedFixed: 0 })
+const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration'>('tokens')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const rankingItems = ref<UserTokenRankingItem[]>([])
-const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 })
+const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0 })
 const pagination = ref({
   page: 1,
   page_size: getPersistedPageSize(),
@@ -456,8 +427,6 @@ const rankByOptions = computed<SelectOption[]>(() => [
   { value: 'requests', label: t('tokenRanking.rankByRequests') },
   { value: 'active_duration', label: t('tokenRanking.rankByActiveDuration') },
   { value: 'nonwork_active_duration', label: t('tokenRanking.rankByNonworkActiveDuration') },
-  { value: 'actual_cost', label: t('tokenRanking.rankBySpend') },
-  ...(authStore.isAdmin ? [{ value: 'total_cost', label: '真实总成本' }] : []),
 ])
 
 const sortOrderOptions = computed<SelectOption[]>(() => [
@@ -501,7 +470,6 @@ const importHeaders = [
   '输出Token',
   '缓存创建Token',
   '缓存读取Token',
-  '实际消费',
   '活跃时长毫秒',
   '非工作时间Token',
   '非工作时间活跃时长毫秒',
@@ -546,13 +514,6 @@ function formatTokens(value: number): string {
   return value.toLocaleString()
 }
 
-function formatCost(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
-  if (value >= 1) return value.toFixed(2)
-  if (value >= 0.01) return value.toFixed(3)
-  return value.toFixed(4)
-}
-
 function formatPercent(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0%'
   if (value >= 0.995) return `${(value * 100).toFixed(0)}%`
@@ -578,8 +539,7 @@ function exportRows() {
     tokens: item.tokens,
     nonwork_tokens: item.nonwork_tokens ?? 0,
     active_duration: formatDuration(item.active_duration_ms || 0),
-    nonwork_active_duration: formatDuration(item.nonwork_active_ms || 0),
-    actual_cost: item.actual_cost
+    nonwork_active_duration: formatDuration(item.nonwork_active_ms || 0)
   }))
 }
 
@@ -606,8 +566,7 @@ async function exportRanking(format: ExportFormat) {
       t('tokenRanking.tokens'),
       t('tokenRanking.nonworkTokens'),
       t('tokenRanking.activeDuration'),
-      t('tokenRanking.nonworkActiveDuration'),
-      t('tokenRanking.spend')
+      t('tokenRanking.nonworkActiveDuration')
     ]
     const body = rows.map((row) => [
       row.rank,
@@ -617,8 +576,7 @@ async function exportRanking(format: ExportFormat) {
       row.tokens,
       row.nonwork_tokens,
       row.active_duration,
-      row.nonwork_active_duration,
-      row.actual_cost
+      row.nonwork_active_duration
     ])
 
     if (format === 'xlsx') {
@@ -718,7 +676,6 @@ async function parseImportWorkbook(buffer: ArrayBuffer): Promise<ExternalUsageIm
       output_tokens: parseIntegerCell(raw['输出Token']),
       cache_creation_tokens: parseIntegerCell(raw['缓存创建Token']),
       cache_read_tokens: parseIntegerCell(raw['缓存读取Token']),
-      actual_cost: parseNumberCell(raw['实际消费']),
       active_duration_ms: parseDurationMs(raw['活跃时长毫秒'], raw['活跃时长秒']),
       nonwork_tokens: parseIntegerCell(raw['非工作时间Token']),
       nonwork_active_ms: parseDurationMs(raw['非工作时间活跃时长毫秒'], raw['非工作时间活跃时长秒']),
@@ -759,12 +716,6 @@ function parseIntegerCell(value: unknown): number {
   const parsed = Number(String(value).replace(/,/g, '').trim())
   if (!Number.isFinite(parsed)) return -1
   return Math.trunc(parsed)
-}
-
-function parseNumberCell(value: unknown): number {
-  if (isBlank(value)) return 0
-  const parsed = Number(String(value).replace(/,/g, '').trim())
-  return Number.isFinite(parsed) ? parsed : -1
 }
 
 function parseDurationMs(msValue: unknown, secondsValue: unknown): number {
@@ -808,9 +759,9 @@ async function confirmExternalImport() {
 async function downloadImportTemplate() {
   const XLSX = await import('xlsx')
   const sampleRows = [
-    ['2026-06-21', '张三', 18, 123456, 60000, 60000, 2000, 1456, 1.23, 1800000, 50000, 900000, '周末导入示例'],
-    ['2026-06-21', '张三', 7, 34567, 12000, 20000, 1000, 1567, 0.35, 600000, 12000, 300000, '同日同用户示例，导入时会与上一行叠加'],
-    ['2026-06-22', '李四', 9, 45678, 20000, 25000, 500, 178, 0.46, 600000, 0, 0, '工作日导入示例']
+    ['2026-06-21', '张三', 18, 123456, 60000, 60000, 2000, 1456, 1800000, 50000, 900000, '周末导入示例'],
+    ['2026-06-21', '张三', 7, 34567, 12000, 20000, 1000, 1567, 600000, 12000, 300000, '同日同用户示例，导入时会与上一行叠加'],
+    ['2026-06-22', '李四', 9, 45678, 20000, 25000, 500, 178, 600000, 0, 0, '工作日导入示例']
   ]
   const worksheet = XLSX.utils.aoa_to_sheet([importHeaders, ...sampleRows])
   const workbook = XLSX.utils.book_new()
@@ -844,7 +795,6 @@ async function exportExternalImportData() {
       row.output_tokens || 0,
       row.cache_creation_tokens || 0,
       row.cache_read_tokens || 0,
-      row.actual_cost || 0,
       row.active_duration_ms || 0,
       row.nonwork_tokens || 0,
       row.nonwork_active_ms || 0,
@@ -894,49 +844,20 @@ async function loadRanking() {
   loading.value = true
   error.value = false
   try {
-    const costsPromise = authStore.isAdmin
-      ? costManagementAPI.userCosts({ start_date: startDate.value, end_date: endDate.value }).catch((costError) => {
-          console.warn('Failed to load cost overlay:', costError)
-          return null
-        })
-      : null
     const response = await usageAPI.getDashboardNonworkTokenRanking({
       start_date: startDate.value,
       end_date: endDate.value,
       limit: 10000,
       scope: rankingScope.value,
-      rank_by: rankBy.value === 'total_cost' ? 'tokens' : rankBy.value,
+      rank_by: rankBy.value,
       sort_order: sortOrder.value
     })
     rankingItems.value = response.ranking || []
-    if (costsPromise) {
-      const costs = await costsPromise
-      if (costs) {
-        costSummary.platformTotal = Number(costs.platform_total_cost_cny || 0)
-        costSummary.unallocatedFixed = Number(costs.unallocated_fixed_cost_cny || 0)
-        const byUser = new Map(costs.items.map(item => [item.user_id, item]))
-        rankingItems.value = rankingItems.value.map(item => {
-          const cost = byUser.get(item.user_id)
-          return cost ? { ...item, dynamic_cost_cny: Number(cost.dynamic_cost_cny), fixed_cost_cny: Number(cost.fixed_cost_cny), total_cost_cny: Number(cost.total_cost_cny) } : item
-        })
-      } else {
-        costSummary.platformTotal = 0
-        costSummary.unallocatedFixed = 0
-      }
-    } else {
-      costSummary.platformTotal = 0
-      costSummary.unallocatedFixed = 0
-    }
-    if (rankBy.value === 'total_cost') {
-      const direction = sortOrder.value === 'asc' ? 1 : -1
-      rankingItems.value.sort((a, b) => ((a.total_cost_cny || 0) - (b.total_cost_cny || 0)) * direction)
-    }
     clampPagination()
     totals.value = {
       totalTokens: response.total_tokens || 0,
       nonworkTokens: response.total_nonwork_tokens || 0,
       requests: response.total_requests || 0,
-      actualCost: response.total_actual_cost || 0,
       nonworkTokenRatio: response.nonwork_token_ratio || 0
     }
     calendarConfirmed.value = response.calendar_confirmed ?? null
@@ -946,7 +867,7 @@ async function loadRanking() {
   } catch (err) {
     console.error('Failed to load token ranking:', err)
     rankingItems.value = []
-    totals.value = { totalTokens: 0, nonworkTokens: 0, requests: 0, actualCost: 0, nonworkTokenRatio: 0 }
+    totals.value = { totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0 }
     calendarConfirmed.value = null
     statsCoverage.value = null
     error.value = true

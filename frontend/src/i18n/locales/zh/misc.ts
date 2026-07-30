@@ -2,7 +2,7 @@ export default {
 
   tokenRanking: {
     title: 'Token 使用排名',
-    description: '查看当前时间范围内所有非管理员用户的请求数、Token 数和实际消费排名，包含暂无用量的用户。',
+    description: '查看当前时间范围内所有非管理员用户的请求数和 Token 排名，包含暂无用量的用户。',
     rankingList: '排名明细',
     rank: '排名',
     user: '用户',
@@ -11,7 +11,6 @@ export default {
     nonworkTokens: '非工作时间 Token',
     activeDuration: '活跃时长',
     nonworkActiveDuration: '非工作时间活跃时长',
-    spend: '消费',
     scope: '排名口径',
     scopeAll: '全部',
     scopeNonwork: '非工作时间',
@@ -21,7 +20,6 @@ export default {
     rankByRequests: '请求数',
     rankByActiveDuration: '活跃时长',
     rankByNonworkActiveDuration: '非工作时间活跃时长',
-    rankBySpend: '消费',
     sortOrder: '排序',
     sortAsc: '正序',
     sortDesc: '倒序',
@@ -33,7 +31,6 @@ export default {
     totalTokens: '总 Token',
     totalNonworkTokens: '非工作时间 Token',
     totalRequests: '总请求数',
-    totalSpend: '总消费',
     nonworkTokenRatio: '非工作时间 Token 占比',
     export: '导出',
     exportRanking: '导出排名',

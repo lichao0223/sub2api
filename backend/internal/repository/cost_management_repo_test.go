@@ -329,6 +329,23 @@ func TestListAccountCostsUsesTheOverviewDateRangeForPendingCounts(t *testing.T) 
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCostOverviewPendingCountExcludesDeletedAccounts(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery("SUM\\(pending_count\\) FILTER\\(WHERE calculation_status='pending' AND EXISTS\\(SELECT 1 FROM accounts a WHERE a.id=cost_daily_aggregates.account_id AND a.deleted_at IS NULL\\)\\)").
+		WillReturnRows(sqlmock.NewRows([]string{"dynamic", "fixed", "total", "pending", "errors", "eligible", "calculated"}).AddRow("0", "0", "0", 1445, 0, 3651, 0))
+	mock.ExpectQuery("SELECT last_success_at FROM cost_jobs").WillReturnRows(sqlmock.NewRows([]string{"last_success_at"}).AddRow(nil))
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(amount_cny\\)").WillReturnRows(sqlmock.NewRows([]string{"previous_total"}).AddRow("0"))
+	mock.ExpectQuery("SELECT MIN\\(ul.created_at\\),MAX\\(ul.created_at\\)").WillReturnRows(sqlmock.NewRows([]string{"min", "max", "exists"}).AddRow(nil, nil, false))
+
+	overview, err := (&costManagementRepository{db: db}).GetCostOverview(context.Background(), time.Now().AddDate(0, 0, -1), time.Now())
+	require.NoError(t, err)
+	require.Equal(t, int64(1445), overview.PendingCount)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCreateCostRecalculationRejectsOverlappingActiveJob(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
