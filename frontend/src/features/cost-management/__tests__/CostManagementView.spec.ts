@@ -31,6 +31,7 @@ const api = vi.hoisted(() => ({
   cancelRecalculation: vi.fn(),
 }))
 const app = vi.hoisted(() => ({ showSuccess: vi.fn(), showError: vi.fn() }))
+const chartConfigs = vi.hoisted(() => [] as any[])
 
 vi.mock('@/api/admin/costManagement', () => ({ default: api }))
 vi.mock('@/stores', () => ({
@@ -38,6 +39,9 @@ vi.mock('@/stores', () => ({
 }))
 vi.mock('chart.js/auto', () => ({
   Chart: class {
+    constructor(_canvas: unknown, config: any) {
+      chartConfigs.push(config)
+    }
     destroy() {}
   },
 }))
@@ -75,6 +79,7 @@ const mountView = () => mount(CostManagementView, {
 
 describe('CostManagementView', () => {
   beforeEach(() => {
+    chartConfigs.length = 0
     api.overview.mockReset().mockResolvedValue({
       dynamic_cost_cny: '0', fixed_cost_cny: '0', total_cost_cny: '0',
       pending_count: 0, error_count: 0, eligible_count: 0, calculated_count: 0,
@@ -228,6 +233,17 @@ describe('CostManagementView', () => {
     await flushPromises()
 
     expect(api.analysis).toHaveBeenCalledTimes(2)
+  })
+
+  it('uses distinct colors for monthly bars', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '按月')!.trigger('click')
+    await flushPromises()
+
+    const config = chartConfigs[chartConfigs.length - 1]
+    expect(config.type).toBe('bar')
+    expect(config.data.datasets.map((dataset: any) => dataset.backgroundColor)).toEqual(['#7a5af8', '#0866ed', '#ff7800'])
   })
 
   it('rejects an account cost configuration without a plan before submitting', async () => {
