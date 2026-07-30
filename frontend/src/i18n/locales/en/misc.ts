@@ -11,6 +11,7 @@ export default {
     nonworkTokens: 'Non-work Time Tokens',
     activeDuration: 'Active Duration',
     nonworkActiveDuration: 'Non-work Active Duration',
+    spend: 'Spend',
     scope: 'Scope',
     scopeAll: 'All',
     scopeNonwork: 'Non-work Time',

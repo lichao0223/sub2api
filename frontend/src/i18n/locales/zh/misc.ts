@@ -11,6 +11,7 @@ export default {
     nonworkTokens: '非工作时间 Token',
     activeDuration: '活跃时长',
     nonworkActiveDuration: '非工作时间活跃时长',
+    spend: '消费金额',
     scope: '排名口径',
     scopeAll: '全部',
     scopeNonwork: '非工作时间',

@@ -57,7 +57,8 @@ describe('TokenRankingView user drill-down', () => {
     const adminView = mountView()
     await flushPromises()
     expect(adminView.text()).not.toContain('¥')
-    expect(adminView.text()).not.toContain('$')
+    expect(adminView.text()).toContain('$1.00')
+    expect(adminView.text()).toContain('tokenRanking.spend')
 
     const adminRow = adminView.find('tbody tr')
     expect(adminRow.attributes('tabindex')).toBe('0')

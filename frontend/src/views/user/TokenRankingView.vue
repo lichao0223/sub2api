@@ -165,7 +165,7 @@
               </div>
             </div>
             <div ref="rankingTableScrollRef" class="token-ranking-table-scroll min-h-0 flex-1 overflow-auto">
-              <table class="w-full min-w-[1000px] table-fixed text-sm">
+              <table class="w-full min-w-[1120px] table-fixed text-sm">
                 <colgroup>
                   <col class="w-20" />
                   <col class="w-40" />
@@ -174,6 +174,7 @@
                   <col class="w-40" />
                   <col class="w-44" />
                   <col class="w-44" />
+                  <col class="w-28" />
                 </colgroup>
                 <thead class="sticky top-0 z-10 bg-gray-50 text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
@@ -184,6 +185,7 @@
                     <th class="px-4 py-3 text-right">{{ t('tokenRanking.nonworkTokens') }}</th>
                     <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.activeDuration') }}</th>
                     <th class="px-4 py-3 text-right whitespace-nowrap">{{ t('tokenRanking.nonworkActiveDuration') }}</th>
+                    <th class="px-4 py-3 text-right">{{ t('tokenRanking.spend') }}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -209,6 +211,7 @@
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
+                    <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -512,6 +515,13 @@ function formatTokens(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`
   return value.toLocaleString()
+}
+
+function formatCost(value: number): string {
+  if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
+  if (value >= 1) return value.toFixed(2)
+  if (value >= 0.01) return value.toFixed(3)
+  return value.toFixed(4)
 }
 
 function formatPercent(value: number): string {
