@@ -127,11 +127,6 @@ func (r *costManagementRepository) CreateCostPlan(ctx context.Context, in servic
 	if err = r.insertCostPlanVersion(ctx, tx, id, 1, in); err != nil {
 		return nil, err
 	}
-	if in.PlanType == "fixed" {
-		if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
-			return nil, err
-		}
-	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -194,6 +189,7 @@ func (r *costManagementRepository) ChangeCostPlanPrice(ctx context.Context, plan
 			return err
 		}
 	}
+	recalculate := planType == "metered"
 	if planType == "fixed" {
 		seen := make(map[int64]struct{}, len(in.SubscriptionUnitIDs))
 		for _, unitID := range in.SubscriptionUnitIDs {
@@ -207,10 +203,13 @@ func (r *costManagementRepository) ChangeCostPlanPrice(ctx context.Context, plan
 			if err = appendSubscriptionUnitVersionTx(ctx, tx, planID, unitID, in.EffectiveFrom, in.BillingCycle, in.FixedUnitCostCNY); err != nil {
 				return err
 			}
+			recalculate = true
 		}
 	}
-	if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
-		return err
+	if recalculate {
+		if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -486,9 +485,6 @@ func (r *costManagementRepository) CreateCostSubscriptionUnit(ctx context.Contex
 	if err = insertSubscriptionUnitVersionTx(ctx, tx, id, 1, in.EffectiveFrom, in.BillingCycle, in.FixedUnitCostCNY); err != nil {
 		return nil, err
 	}
-	if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
-		return nil, err
-	}
 	if err = tx.Commit(); err != nil {
 		return nil, err
 	}
@@ -608,11 +604,14 @@ func (r *costManagementRepository) SaveAccountCost(ctx context.Context, in servi
 	if err = prepareSubscriptionUnitTx(ctx, tx, &in); err != nil {
 		return err
 	}
-	if err = saveAccountCostTx(ctx, tx, in); err != nil {
+	changed, err := saveAccountCostTx(ctx, tx, in)
+	if err != nil {
 		return err
 	}
-	if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
-		return err
+	if changed {
+		if err = enqueueCostRecalculationTx(ctx, tx, in.EffectiveFrom); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -637,13 +636,20 @@ func (r *costManagementRepository) SaveAccountCosts(ctx context.Context, inputs 
 			inputs[i].NewSubscriptionUnitName = ""
 		}
 	}
+	changed := false
 	for _, in := range inputs {
-		if err = saveAccountCostTx(ctx, tx, in); err != nil {
-			return err
+		costChanged, saveErr := saveAccountCostTx(ctx, tx, in)
+		if saveErr != nil {
+			return saveErr
+		}
+		if costChanged {
+			changed = true
 		}
 	}
-	if err = enqueueCostRecalculationTx(ctx, tx, inputs[0].EffectiveFrom); err != nil {
-		return err
+	if changed {
+		if err = enqueueCostRecalculationTx(ctx, tx, inputs[0].EffectiveFrom); err != nil {
+			return err
+		}
 	}
 	return tx.Commit()
 }
@@ -724,73 +730,79 @@ func prepareSubscriptionUnitTx(ctx context.Context, tx *sql.Tx, in *service.Acco
 	return insertSubscriptionUnitVersionTx(ctx, tx, id, 1, in.EffectiveFrom, cycle, amount)
 }
 
-func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostInput) error {
-	rows, err := tx.QueryContext(ctx, `SELECT id,effective_from,(SELECT COUNT(*) FROM account_cost_configs WHERE account_id=$1) FROM account_cost_configs WHERE account_id=$1 AND (effective_to IS NULL OR effective_to>$2) ORDER BY effective_from FOR UPDATE`, in.AccountID, in.EffectiveFrom)
+func saveAccountCostTx(ctx context.Context, tx *sql.Tx, in service.AccountCostInput) (bool, error) {
+	rows, err := tx.QueryContext(ctx, `SELECT id,effective_from,(SELECT COUNT(*) FROM account_cost_configs WHERE account_id=$1),cost_mode,plan_id,subscription_unit_id,effective_to FROM account_cost_configs WHERE account_id=$1 AND (effective_to IS NULL OR effective_to>$2) ORDER BY effective_from FOR UPDATE`, in.AccountID, in.EffectiveFrom)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var closeIDs []int64
 	var correctionID int64
+	var correctionChanged bool
 	for rows.Next() {
 		var id int64
 		var from time.Time
 		var configCount int64
-		if err = rows.Scan(&id, &from, &configCount); err != nil {
+		var mode string
+		var planID, unitID sql.NullInt64
+		var effectiveTo sql.NullTime
+		if err = rows.Scan(&id, &from, &configCount, &mode, &planID, &unitID, &effectiveTo); err != nil {
 			_ = rows.Close()
-			return err
+			return false, err
 		}
 		if !from.Before(in.EffectiveFrom) {
 			if configCount == 1 {
 				correctionID = id
+				correctionChanged = mode != in.CostMode ||
+					planID.Valid != (in.PlanID != nil) || planID.Valid && planID.Int64 != *in.PlanID ||
+					unitID.Valid != (in.SubscriptionUnitID != nil) || unitID.Valid && unitID.Int64 != *in.SubscriptionUnitID ||
+					!from.Equal(in.EffectiveFrom) ||
+					effectiveTo.Valid != (in.EffectiveTo != nil) || effectiveTo.Valid && !effectiveTo.Time.Equal(*in.EffectiveTo)
 				continue
 			}
 			_ = rows.Close()
-			return errors.New("存在更晚或重叠的账号成本配置，无法修改生效时间")
+			return false, errors.New("存在更晚或重叠的账号成本配置，无法修改生效时间")
 		}
 		closeIDs = append(closeIDs, id)
 	}
 	if err = rows.Close(); err != nil {
-		return err
+		return false, err
 	}
 	for _, id := range closeIDs {
 		if _, err = tx.ExecContext(ctx, `UPDATE account_cost_configs SET effective_to=$2,updated_at=NOW() WHERE id=$1`, id, in.EffectiveFrom); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if in.PlanID != nil {
 		var kind, status string
 		if err = tx.QueryRowContext(ctx, `SELECT plan_type,status FROM cost_plans WHERE id=$1`, *in.PlanID).Scan(&kind, &status); err != nil {
-			return err
+			return false, err
 		}
 		if kind != in.CostMode || status != "active" {
-			return errors.New("cost plan type or status does not match")
+			return false, errors.New("cost plan type or status does not match")
 		}
 	}
 	if in.CostMode == "fixed" {
 		if in.SubscriptionUnitID == nil {
-			return errors.New("固定成本账号必须选择一个订阅实例")
+			return false, errors.New("固定成本账号必须选择一个订阅实例")
 		}
 		var unitPlanID int64
 		var unitFrom time.Time
 		var unitTo sql.NullTime
 		if err = tx.QueryRowContext(ctx, `SELECT plan_id,effective_from,effective_to FROM cost_subscription_units WHERE id=$1`, *in.SubscriptionUnitID).Scan(&unitPlanID, &unitFrom, &unitTo); err != nil {
-			return err
+			return false, err
 		}
 		if in.PlanID == nil || unitPlanID != *in.PlanID || in.EffectiveFrom.Before(unitFrom) || unitTo.Valid && (in.EffectiveTo == nil || in.EffectiveTo.After(unitTo.Time)) {
-			return errors.New("订阅实例与固定成本方案或生效时间不匹配")
+			return false, errors.New("订阅实例与固定成本方案或生效时间不匹配")
 		}
 	} else if in.SubscriptionUnitID != nil {
-		return errors.New("只有固定成本账号可以选择订阅实例")
+		return false, errors.New("只有固定成本账号可以选择订阅实例")
 	}
 	if correctionID != 0 {
 		_, err = tx.ExecContext(ctx, `UPDATE account_cost_configs SET cost_mode=$2,plan_id=$3,subscription_unit_id=$4,effective_from=$5,effective_to=$6,exclude_reason=$7,note=$8,updated_at=NOW() WHERE id=$1`, correctionID, in.CostMode, in.PlanID, in.SubscriptionUnitID, in.EffectiveFrom, in.EffectiveTo, in.ExcludeReason, in.Note)
-		return err
+		return correctionChanged, err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO account_cost_configs(account_id,cost_mode,plan_id,subscription_unit_id,effective_from,effective_to,exclude_reason,note) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, in.AccountID, in.CostMode, in.PlanID, in.SubscriptionUnitID, in.EffectiveFrom, in.EffectiveTo, in.ExcludeReason, in.Note)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err == nil, err
 }
 
 func (r *costManagementRepository) GetCostOverview(ctx context.Context, start, end time.Time) (*service.CostOverview, error) {

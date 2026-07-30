@@ -144,6 +144,29 @@ func TestMeteredPriceChangeCreatesNewPlanVersion(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestFixedDefaultPriceChangeDoesNotQueueRecalculation(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	current := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	next := current.AddDate(0, 1, 0)
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT plan_type,status FROM cost_plans").WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status"}).AddRow("fixed", "active"))
+	mock.ExpectQuery("SELECT id,version_no,effective_from FROM cost_plan_versions").WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "version_no", "effective_from"}).AddRow(17, 1, current))
+	mock.ExpectExec("UPDATE cost_plan_versions SET effective_to").WithArgs(int64(17), next).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("INSERT INTO cost_plan_versions").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(18))
+	mock.ExpectCommit()
+
+	err = (&costManagementRepository{db: db}).ChangeCostPlanPrice(context.Background(), 3, service.CostPriceChangeInput{
+		EffectiveFrom: next, UpdateDefault: true, BillingCycle: "monthly", FixedUnitCostCNY: "160",
+	})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestInsertFixedCostPlanIgnoresModelPrices(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -238,7 +261,8 @@ func TestSaveAccountCostCorrectsOnlyExistingConfigurationStartTime(t *testing.T)
 	corrected := time.Date(2026, 1, 29, 0, 0, 0, 0, time.UTC)
 
 	mock.ExpectQuery("SELECT id,effective_from").WithArgs(accountID, corrected).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "effective_from", "count"}).AddRow(41, original, 1))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "effective_from", "count", "cost_mode", "plan_id", "subscription_unit_id", "effective_to"}).
+			AddRow(41, original, 1, "fixed", planID, unitID, nil))
 	mock.ExpectQuery("SELECT plan_type,status").WithArgs(planID).
 		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status"}).AddRow("fixed", "active"))
 	mock.ExpectQuery("SELECT plan_id,effective_from,effective_to").WithArgs(unitID).
@@ -247,11 +271,40 @@ func TestSaveAccountCostCorrectsOnlyExistingConfigurationStartTime(t *testing.T)
 		WithArgs(int64(41), "fixed", &planID, &unitID, corrected, nil, "", "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	require.NoError(t, saveAccountCostTx(context.Background(), tx, service.AccountCostInput{
+	changed, err := saveAccountCostTx(context.Background(), tx, service.AccountCostInput{
 		AccountID: accountID, CostMode: "fixed", PlanID: &planID, SubscriptionUnitID: &unitID, EffectiveFrom: corrected,
-	}))
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
 	mock.ExpectRollback()
 	require.NoError(t, tx.Rollback())
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestSaveAccountCostSkipsRecalculationWhenCostConfigIsUnchanged(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	accountID, planID, unitID := int64(7), int64(11), int64(31)
+	effective := time.Date(2026, 1, 29, 0, 0, 0, 0, time.UTC)
+	in := service.AccountCostInput{
+		AccountID: accountID, CostMode: "fixed", PlanID: &planID, SubscriptionUnitID: &unitID, EffectiveFrom: effective,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id,effective_from").WithArgs(accountID, effective).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "effective_from", "count", "cost_mode", "plan_id", "subscription_unit_id", "effective_to"}).
+			AddRow(41, effective, 1, "fixed", planID, unitID, nil))
+	mock.ExpectQuery("SELECT plan_type,status").WithArgs(planID).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_type", "status"}).AddRow("fixed", "active"))
+	mock.ExpectQuery("SELECT plan_id,effective_from,effective_to").WithArgs(unitID).
+		WillReturnRows(sqlmock.NewRows([]string{"plan_id", "effective_from", "effective_to"}).AddRow(planID, effective, nil))
+	mock.ExpectExec("UPDATE account_cost_configs SET cost_mode").
+		WithArgs(int64(41), "fixed", &planID, &unitID, effective, nil, "", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	require.NoError(t, (&costManagementRepository{db: db}).SaveAccountCost(context.Background(), in))
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

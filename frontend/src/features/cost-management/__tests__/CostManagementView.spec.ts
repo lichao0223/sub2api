@@ -135,6 +135,17 @@ describe('CostManagementView', () => {
     expect(wrapper.text()).not.toContain('按量成本核算')
   })
 
+  it('rebuilds the cost chart when returning to the overview tab', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '账号成本')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '成本总览')!.trigger('click')
+    await flushPromises()
+
+    expect(api.analysis).toHaveBeenCalledTimes(2)
+  })
+
   it('rejects an account cost configuration without a plan before submitting', async () => {
     const wrapper = mountView()
     await flushPromises()
