@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { formatDateLocalInput } from '@/utils/format'
 import CostManagementView from '../CostManagementView.vue'
 
 const api = vi.hoisted(() => ({
@@ -160,6 +161,32 @@ describe('CostManagementView', () => {
     expect(dialog.text()).toContain('¥375.00')
   })
 
+  it('groups cost rows by plan and compacts token counts', async () => {
+    const item = {
+      cost_mode: 'metered' as const, plan_name: '阿里云 GLM', subscription_unit_name: '', upstream_model: 'glm-5.2',
+      billing_mode: 'token', input_price_cny: '4', output_price_cny: '14', cache_write_price_cny: '4', cache_read_price_cny: '1', per_request_price_cny: '0',
+      billing_cycle: '', fixed_unit_cost_cny: '0', monthly_unit_cost_cny: '0', cache_write_tokens: 0,
+    }
+    api.breakdown.mockResolvedValue({
+      total_cost_cny: '2379.82',
+      items: [
+        { ...item, account_name: 'GLM Anthropic', request_count: 16895, input_tokens: 157530205, cache_read_tokens: 1097089257, output_tokens: 8729142, amount_cny: '1849.42' },
+        { ...item, account_name: 'GLM OpenAI', request_count: 4105, input_tokens: 33709495, cache_read_tokens: 352375296, output_tokens: 3084749, amount_cny: '530.40' },
+      ],
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text().includes('真实总成本'))!.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.findAll('[data-test="dialog"]').find(node => node.text().includes('真实总成本组成'))!
+    expect(dialog.findAll('td').filter(cell => cell.text() === '阿里云 GLM')).toHaveLength(1)
+    expect(dialog.get('td[rowspan="2"]').text()).toBe('阿里云 GLM')
+    expect(dialog.text()).toContain('157.5m')
+    expect(dialog.text()).toContain('1.1b')
+    expect(dialog.get('td[title="1,097,089,257"]').text()).toBe('1.1b')
+  })
+
   it('shows pending reasons and creates a recalculation for the current range', async () => {
     api.overview.mockResolvedValue({
       dynamic_cost_cny: '0', fixed_cost_cny: '0', total_cost_cny: '0',
@@ -183,7 +210,7 @@ describe('CostManagementView', () => {
     await wrapper.findAll('button').find(button => button.text() === '补算当前统计范围')!.trigger('click')
     await wrapper.get('[data-test="confirm-dialog"]').find('button').trigger('click')
     await flushPromises()
-    expect(api.createRecalculation).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String), end_date: expect.any(String) }))
+    expect(api.createRecalculation).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String), end_date: formatDateLocalInput(new Date()) }))
   })
 
   it('does not render the redundant metered accounting panel', async () => {

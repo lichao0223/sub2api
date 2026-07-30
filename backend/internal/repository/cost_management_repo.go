@@ -681,19 +681,19 @@ func enqueueCostRecalculationTx(ctx context.Context, tx *sql.Tx, effectiveFrom t
 	}
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO cost_jobs(kind,status,start_date,end_date,total_days)
-		SELECT 'recalculation','queued',start_date,(NOW() AT TIME ZONE 'Asia/Shanghai')::date-1,
-		       ((NOW() AT TIME ZONE 'Asia/Shanghai')::date-1-start_date)+1
+		SELECT 'recalculation','queued',start_date,(NOW() AT TIME ZONE 'Asia/Shanghai')::date,
+		       ((NOW() AT TIME ZONE 'Asia/Shanghai')::date-start_date)+1
 		FROM (
 		  SELECT GREATEST(
 		    $1::date,
 		    COALESCE((SELECT MIN((created_at AT TIME ZONE 'Asia/Shanghai')::date) FROM usage_logs),$1::date)
 		  ) start_date
 		) x
-		WHERE start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date-1
+		WHERE start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date
 		  AND NOT EXISTS (
 		    SELECT 1 FROM cost_jobs j
 		    WHERE j.kind='recalculation' AND j.status IN ('queued','running')
-		      AND j.start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date-1
+		      AND j.start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date
 		      AND j.end_date>=x.start_date
 		  )`, effectiveFrom)
 	return err

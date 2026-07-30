@@ -90,14 +90,14 @@ func TestCostPlanInputAcceptsNumericCostAmounts(t *testing.T) {
 	require.Equal(t, "0.1", input.Prices[0].PerRequestPriceCNY)
 }
 
-func TestCreateRecalculationRejectsToday(t *testing.T) {
+func TestCreateRecalculationRejectsFutureDate(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	require.NoError(t, err)
 	today := time.Now().In(loc)
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
 
 	_, err = NewCostManagementService(nil, nil).CreateRecalculation(
-		context.Background(), today.AddDate(0, 0, -1), today, 1,
+		context.Background(), today, today.AddDate(0, 0, 1), 1,
 	)
-	require.EqualError(t, err, "历史补算的结束日期不能晚于昨天")
+	require.EqualError(t, err, "历史补算的结束日期不能晚于今天")
 }

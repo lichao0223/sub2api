@@ -657,8 +657,8 @@ func (s *CostManagementService) CreateRecalculation(ctx context.Context, start, 
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	today := time.Now().In(loc)
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
-	if !end.Before(today) {
-		return nil, errors.New("历史补算的结束日期不能晚于昨天")
+	if end.After(today) {
+		return nil, errors.New("历史补算的结束日期不能晚于今天")
 	}
 	return s.repo.CreateCostRecalculation(ctx, start, end, userID)
 }

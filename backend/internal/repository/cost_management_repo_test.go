@@ -416,7 +416,7 @@ func TestCancelCostRecalculation(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestAutomaticCostRecalculationUsesTheSharedJobLock(t *testing.T) {
+func TestAutomaticCostRecalculationIncludesToday(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -425,7 +425,8 @@ func TestAutomaticCostRecalculationUsesTheSharedJobLock(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = tx.Rollback() })
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("INSERT INTO cost_jobs").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec("SELECT 'recalculation','queued',start_date,\\(NOW\\(\\) AT TIME ZONE 'Asia/Shanghai'\\)::date,").
+		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	require.NoError(t, enqueueCostRecalculationTx(context.Background(), tx, time.Now().AddDate(0, -1, 0)))
 	require.NoError(t, mock.ExpectationsWereMet())
