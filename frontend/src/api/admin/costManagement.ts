@@ -32,6 +32,21 @@ export interface CostOverview {
   eligible_count:number;calculated_count:number;last_success_at?:string;coverage_start?:string;coverage_end?:string
   coverage_complete:boolean;previous_coverage_complete:boolean;previous_total_cost_cny:string
 }
+export interface CostBreakdownItem {
+  cost_mode:'metered'|'fixed';plan_name:string;account_name:string;subscription_unit_name:string;upstream_model:string
+  billing_mode:string;input_price_cny:string;output_price_cny:string;cache_write_price_cny:string;cache_read_price_cny:string;per_request_price_cny:string
+  billing_cycle:string;fixed_unit_cost_cny:string;monthly_unit_cost_cny:string
+  request_count:number;input_tokens:number;output_tokens:number;cache_write_tokens:number;cache_read_tokens:number;amount_cny:string
+}
+export interface CostBreakdown {
+  total_cost_cny:string;items:CostBreakdownItem[]
+}
+export interface PendingCostDetail {
+  account_id:number;account_name:string;start_date:string;end_date:string;issue_code:string;upstream_model:string;pending_count:number
+}
+export interface PendingCostDetails {
+  total_count:number;items:PendingCostDetail[]
+}
 export interface CostAnalysis {
   period:string;total_cost_cny:string;trend:Array<{bucket:string;dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string}>
   top:Array<{plan_id:number;plan_name:string;amount_cny:string}>
@@ -48,6 +63,8 @@ export interface CostJob {
 const base='/admin/cost-management'
 export const costManagementAPI={
   overview:async(params:{start_date:string;end_date:string})=>(await apiClient.get<CostOverview>(`${base}/overview`,{params})).data,
+  breakdown:async(params:{start_date:string;end_date:string;scope:'total'|'metered'|'fixed'})=>(await apiClient.get<CostBreakdown>(`${base}/breakdown`,{params})).data,
+  pendingDetails:async(params:{start_date:string;end_date:string;account_id?:number})=>(await apiClient.get<PendingCostDetails>(`${base}/pending-details`,{params})).data,
   analysis:async(period:string)=>(await apiClient.get<CostAnalysis>(`${base}/analysis`,{params:{period}})).data,
   accounts:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<AccountCostRow>>(`${base}/accounts`,{params})).data,
   modelOptions:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<{model:string}>>(`${base}/model-options`,{params})).data,

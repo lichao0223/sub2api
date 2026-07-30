@@ -6,6 +6,8 @@ import CostManagementView from '../CostManagementView.vue'
 
 const api = vi.hoisted(() => ({
   overview: vi.fn(),
+  breakdown: vi.fn(),
+  pendingDetails: vi.fn(),
   analysis: vi.fn(),
   accounts: vi.fn(),
   plans: vi.fn(),
@@ -78,6 +80,8 @@ describe('CostManagementView', () => {
       coverage_complete: true, previous_total_cost_cny: '0',
     })
     api.analysis.mockReset().mockResolvedValue({ period: 'day', trend: [], top: [] })
+    api.breakdown.mockReset().mockResolvedValue({ total_cost_cny: '375', items: [] })
+    api.pendingDetails.mockReset().mockResolvedValue({ total_count: 0, items: [] })
     api.accounts.mockReset().mockResolvedValue({
       items: [{ account_id: 7, account_name: 'GLM Anthropic', platform: 'anthropic', account_status: 'active', cost_mode: '', plan_name: '', pending_count: 0, exclude_reason: '' }],
       total: 1,
@@ -127,6 +131,59 @@ describe('CostManagementView', () => {
     expect(dialog.text()).not.toContain('排除原因')
     await dialog.get('select').setValue('excluded')
     expect(dialog.text()).toContain('排除原因')
+  })
+
+  it('shows cost composition for the selected overview range', async () => {
+    api.overview.mockResolvedValue({
+      dynamic_cost_cny: '0', fixed_cost_cny: '375', total_cost_cny: '375',
+      pending_count: 0, error_count: 0, eligible_count: 0, calculated_count: 0,
+      coverage_complete: true, previous_total_cost_cny: '0',
+    })
+    api.breakdown.mockResolvedValue({
+      total_cost_cny: '375',
+      items: [{
+        cost_mode: 'fixed', plan_name: 'Kimi 套餐 199', account_name: '', subscription_unit_name: 'Kimi 199', upstream_model: '',
+        billing_mode: '', input_price_cny: '0', output_price_cny: '0', cache_write_price_cny: '0', cache_read_price_cny: '0', per_request_price_cny: '0',
+        billing_cycle: 'monthly', fixed_unit_cost_cny: '375', monthly_unit_cost_cny: '375',
+        request_count: 0, input_tokens: 0, output_tokens: 0, cache_write_tokens: 0, cache_read_tokens: 0, amount_cny: '375',
+      }],
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text().includes('真实总成本'))!.trigger('click')
+    await flushPromises()
+
+    expect(api.breakdown).toHaveBeenCalledWith(expect.objectContaining({ scope: 'total', start_date: expect.any(String), end_date: expect.any(String) }))
+    const dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('真实总成本组成'))!
+    expect(dialog.text()).toContain('Kimi 套餐 199')
+    expect(dialog.text()).toContain('Kimi 199')
+    expect(dialog.text()).toContain('¥375.00')
+  })
+
+  it('shows pending reasons and creates a recalculation for the current range', async () => {
+    api.overview.mockResolvedValue({
+      dynamic_cost_cny: '0', fixed_cost_cny: '0', total_cost_cny: '0',
+      pending_count: 12, error_count: 0, eligible_count: 0, calculated_count: 0,
+      coverage_complete: true, previous_total_cost_cny: '0',
+    })
+    api.pendingDetails.mockResolvedValue({
+      total_count: 12,
+      items: [{
+        account_id: 7, account_name: 'DeepSeek', start_date: '2026-07-01', end_date: '2026-07-03',
+        issue_code: 'missing_model_price', upstream_model: 'deepseek-v4-pro', pending_count: 12,
+      }],
+    })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text().includes('待核算'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('成本方案缺少该上游模型价格')
+    expect(wrapper.text()).toContain('deepseek-v4-pro')
+    await wrapper.findAll('button').find(button => button.text() === '补算当前统计范围')!.trigger('click')
+    await wrapper.get('[data-test="confirm-dialog"]').find('button').trigger('click')
+    await flushPromises()
+    expect(api.createRecalculation).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String), end_date: expect.any(String) }))
   })
 
   it('does not render the redundant metered accounting panel', async () => {

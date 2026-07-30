@@ -136,6 +136,8 @@ func registerCostManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	costs := admin.Group("/cost-management")
 	{
 		costs.GET("/overview", h.Admin.CostManagement.Overview)
+		costs.GET("/breakdown", h.Admin.CostManagement.Breakdown)
+		costs.GET("/pending-details", h.Admin.CostManagement.PendingDetails)
 		costs.GET("/analysis", h.Admin.CostManagement.Analysis)
 		costs.GET("/accounts", h.Admin.CostManagement.ListAccounts)
 		costs.GET("/model-options", h.Admin.CostManagement.ListModelOptions)

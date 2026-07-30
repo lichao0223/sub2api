@@ -253,6 +253,39 @@ func (h *CostManagementHandler) Overview(c *gin.Context) {
 	}
 	response.Success(c, x)
 }
+func (h *CostManagementHandler) Breakdown(c *gin.Context) {
+	start, end, ok := costDateRange(c)
+	if !ok {
+		return
+	}
+	x, err := h.service.Breakdown(c.Request.Context(), start, end, c.DefaultQuery("scope", "total"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, x)
+}
+func (h *CostManagementHandler) PendingDetails(c *gin.Context) {
+	start, end, ok := costDateRange(c)
+	if !ok {
+		return
+	}
+	var accountID int64
+	var err error
+	if raw := c.Query("account_id"); raw != "" {
+		accountID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || accountID <= 0 {
+			response.BadRequest(c, "invalid account_id")
+			return
+		}
+	}
+	x, err := h.service.PendingDetails(c.Request.Context(), start, end, accountID)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, x)
+}
 func (h *CostManagementHandler) Analysis(c *gin.Context) {
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	x, err := h.service.Analysis(c.Request.Context(), c.DefaultQuery("period", "day"), time.Now().In(loc))

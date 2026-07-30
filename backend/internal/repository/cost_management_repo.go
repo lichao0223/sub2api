@@ -847,6 +847,67 @@ func (r *costManagementRepository) GetCostOverview(ctx context.Context, start, e
 	return o, nil
 }
 
+func (r *costManagementRepository) GetCostBreakdown(ctx context.Context, start, end time.Time, scope string) (*service.CostBreakdownResult, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT CASE d.aggregate_scope WHEN 'usage' THEN 'metered' ELSE 'fixed' END,
+		       COALESCE(p.name,''),COALESCE(a.name,''),COALESCE(u.name,''),d.upstream_model,
+		       COALESCE(mp.billing_mode,''),COALESCE(mp.input_price_cny,0)::text,COALESCE(mp.output_price_cny,0)::text,
+		       COALESCE(mp.cache_write_price_cny,0)::text,COALESCE(mp.cache_read_price_cny,0)::text,COALESCE(mp.per_request_price_cny,0)::text,
+		       COALESCE(uv.billing_cycle,''),COALESCE(uv.fixed_unit_cost_cny,0)::text,COALESCE(uv.monthly_unit_cost_cny,0)::text,
+		       SUM(d.request_count),SUM(d.input_tokens),SUM(d.output_tokens),SUM(d.cache_write_tokens),SUM(d.cache_read_tokens),
+		       SUM(d.amount_cny)::text,SUM(SUM(d.amount_cny)) OVER()::text
+		FROM cost_daily_aggregates d
+		LEFT JOIN cost_plans p ON p.id=d.plan_id
+		LEFT JOIN accounts a ON a.id=d.account_id
+		LEFT JOIN cost_subscription_units u ON u.id=d.subscription_unit_id
+		LEFT JOIN cost_model_prices mp ON mp.plan_version_id=d.plan_version_id AND mp.upstream_model=d.upstream_model
+		LEFT JOIN cost_subscription_unit_versions uv ON uv.id=d.subscription_unit_version_id
+		WHERE d.bucket_date >= $1::date AND d.bucket_date < $2::date
+		  AND d.calculation_status='calculated'
+		  AND d.aggregate_scope IN('usage','fixed_plan_total')
+		  AND ($3='total' OR $3='metered' AND d.aggregate_scope='usage' OR $3='fixed' AND d.aggregate_scope='fixed_plan_total')
+		GROUP BY d.aggregate_scope,p.name,a.name,u.name,d.upstream_model,mp.id,uv.id
+		ORDER BY SUM(d.amount_cny) DESC`, start, end, scope)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := &service.CostBreakdownResult{TotalCostCNY: "0", Items: make([]service.CostBreakdownItem, 0)}
+	for rows.Next() {
+		var item service.CostBreakdownItem
+		if err = rows.Scan(&item.CostMode, &item.PlanName, &item.AccountName, &item.SubscriptionUnitName, &item.UpstreamModel, &item.BillingMode, &item.InputPriceCNY, &item.OutputPriceCNY, &item.CacheWritePriceCNY, &item.CacheReadPriceCNY, &item.PerRequestPriceCNY, &item.BillingCycle, &item.FixedUnitCostCNY, &item.MonthlyUnitCostCNY, &item.RequestCount, &item.InputTokens, &item.OutputTokens, &item.CacheWriteTokens, &item.CacheReadTokens, &item.AmountCNY, &out.TotalCostCNY); err != nil {
+			return nil, err
+		}
+		out.Items = append(out.Items, item)
+	}
+	return out, rows.Err()
+}
+
+func (r *costManagementRepository) GetPendingCostDetails(ctx context.Context, start, end time.Time, accountID int64) (*service.PendingCostDetails, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT d.account_id,a.name,MIN(d.bucket_date),MAX(d.bucket_date),d.issue_code,d.upstream_model,
+		       SUM(d.pending_count),SUM(SUM(d.pending_count)) OVER()
+		FROM cost_daily_aggregates d
+		JOIN accounts a ON a.id=d.account_id AND a.deleted_at IS NULL
+		WHERE d.bucket_date >= $1::date AND d.bucket_date < $2::date
+		  AND d.calculation_status='pending' AND ($3=0 OR d.account_id=$3)
+		GROUP BY d.account_id,a.name,d.issue_code,d.upstream_model
+		ORDER BY SUM(d.pending_count) DESC`, start, end, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := &service.PendingCostDetails{Items: make([]service.PendingCostDetail, 0)}
+	for rows.Next() {
+		var item service.PendingCostDetail
+		if err = rows.Scan(&item.AccountID, &item.AccountName, &item.StartDate, &item.EndDate, &item.IssueCode, &item.UpstreamModel, &item.PendingCount, &out.TotalCount); err != nil {
+			return nil, err
+		}
+		out.Items = append(out.Items, item)
+	}
+	return out, rows.Err()
+}
+
 func previousCostRange(start, end time.Time) (time.Time, time.Time) {
 	if start.Day() == 1 && end.Day() == 1 {
 		months := (end.Year()-start.Year())*12 + int(end.Month()-start.Month())

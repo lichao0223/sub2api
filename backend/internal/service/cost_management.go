@@ -249,6 +249,49 @@ type CostOverview struct {
 	PreviousTotalCostCNY     string     `json:"previous_total_cost_cny"`
 }
 
+type CostBreakdownItem struct {
+	CostMode             string `json:"cost_mode"`
+	PlanName             string `json:"plan_name"`
+	AccountName          string `json:"account_name"`
+	SubscriptionUnitName string `json:"subscription_unit_name"`
+	UpstreamModel        string `json:"upstream_model"`
+	BillingMode          string `json:"billing_mode"`
+	InputPriceCNY        string `json:"input_price_cny"`
+	OutputPriceCNY       string `json:"output_price_cny"`
+	CacheWritePriceCNY   string `json:"cache_write_price_cny"`
+	CacheReadPriceCNY    string `json:"cache_read_price_cny"`
+	PerRequestPriceCNY   string `json:"per_request_price_cny"`
+	BillingCycle         string `json:"billing_cycle"`
+	FixedUnitCostCNY     string `json:"fixed_unit_cost_cny"`
+	MonthlyUnitCostCNY   string `json:"monthly_unit_cost_cny"`
+	RequestCount         int64  `json:"request_count"`
+	InputTokens          int64  `json:"input_tokens"`
+	OutputTokens         int64  `json:"output_tokens"`
+	CacheWriteTokens     int64  `json:"cache_write_tokens"`
+	CacheReadTokens      int64  `json:"cache_read_tokens"`
+	AmountCNY            string `json:"amount_cny"`
+}
+
+type CostBreakdownResult struct {
+	TotalCostCNY string              `json:"total_cost_cny"`
+	Items        []CostBreakdownItem `json:"items"`
+}
+
+type PendingCostDetail struct {
+	AccountID     int64     `json:"account_id"`
+	AccountName   string    `json:"account_name"`
+	StartDate     time.Time `json:"start_date"`
+	EndDate       time.Time `json:"end_date"`
+	IssueCode     string    `json:"issue_code"`
+	UpstreamModel string    `json:"upstream_model"`
+	PendingCount  int64     `json:"pending_count"`
+}
+
+type PendingCostDetails struct {
+	TotalCount int64               `json:"total_count"`
+	Items      []PendingCostDetail `json:"items"`
+}
+
 type CostTrendPoint struct {
 	Bucket         string `json:"bucket"`
 	DynamicCostCNY string `json:"dynamic_cost_cny"`
@@ -317,6 +360,8 @@ type CostManagementRepository interface {
 	SaveAccountCosts(context.Context, []AccountCostInput) error
 	EndAccountCost(context.Context, int64, time.Time) error
 	GetCostOverview(context.Context, time.Time, time.Time) (*CostOverview, error)
+	GetCostBreakdown(context.Context, time.Time, time.Time, string) (*CostBreakdownResult, error)
+	GetPendingCostDetails(context.Context, time.Time, time.Time, int64) (*PendingCostDetails, error)
 	GetCostAnalysis(context.Context, string, time.Time) (*CostAnalysis, error)
 	GetUserCosts(context.Context, time.Time, time.Time) ([]UserCost, error)
 	ListCostJobs(context.Context, int, int) ([]CostJob, int64, error)
@@ -550,6 +595,18 @@ func validateSubscriptionUnitName(name string) error {
 }
 func (s *CostManagementService) Overview(ctx context.Context, start, end time.Time) (*CostOverview, error) {
 	return s.repo.GetCostOverview(ctx, start, end)
+}
+func (s *CostManagementService) Breakdown(ctx context.Context, start, end time.Time, scope string) (*CostBreakdownResult, error) {
+	if scope != "total" && scope != "metered" && scope != "fixed" {
+		return nil, errors.New("成本类型无效")
+	}
+	return s.repo.GetCostBreakdown(ctx, start, end, scope)
+}
+func (s *CostManagementService) PendingDetails(ctx context.Context, start, end time.Time, accountID int64) (*PendingCostDetails, error) {
+	if accountID < 0 {
+		return nil, errors.New("账号无效")
+	}
+	return s.repo.GetPendingCostDetails(ctx, start, end, accountID)
 }
 func (s *CostManagementService) Analysis(ctx context.Context, period string, now time.Time) (*CostAnalysis, error) {
 	switch period {

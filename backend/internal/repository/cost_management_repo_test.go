@@ -346,6 +346,45 @@ func TestCostOverviewPendingCountExcludesDeletedAccounts(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestCostBreakdownMatchesSelectedScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("CASE d.aggregate_scope WHEN 'usage' THEN 'metered' ELSE 'fixed' END").
+		WithArgs(start, end, "fixed").
+		WillReturnRows(sqlmock.NewRows([]string{"mode", "plan", "account", "unit", "model", "billing_mode", "input_price", "output_price", "cache_write_price", "cache_read_price", "request_price", "billing_cycle", "fixed_cost", "monthly_cost", "requests", "input", "output", "cache_write", "cache_read", "amount", "total"}).
+			AddRow("fixed", "Kimi 套餐 199", "", "Kimi 199", "", "", "0", "0", "0", "0", "0", "monthly", "375", "375", 0, 0, 0, 0, 0, "375", "375"))
+
+	result, err := (&costManagementRepository{db: db}).GetCostBreakdown(context.Background(), start, end, "fixed")
+	require.NoError(t, err)
+	require.Equal(t, "375", result.TotalCostCNY)
+	require.Equal(t, "Kimi 199", result.Items[0].SubscriptionUnitName)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestPendingCostDetailsExposeReasonAndModel(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SUM\\(SUM\\(d.pending_count\\)\\) OVER").
+		WithArgs(start, end, int64(7)).
+		WillReturnRows(sqlmock.NewRows([]string{"account_id", "account", "start", "end", "issue", "model", "pending", "total"}).
+			AddRow(7, "DeepSeek", start, start.AddDate(0, 0, 2), "missing_model_price", "deepseek-v4-pro", 12, 12))
+
+	result, err := (&costManagementRepository{db: db}).GetPendingCostDetails(context.Background(), start, end, 7)
+	require.NoError(t, err)
+	require.Equal(t, int64(12), result.TotalCount)
+	require.Equal(t, "missing_model_price", result.Items[0].IssueCode)
+	require.Equal(t, "deepseek-v4-pro", result.Items[0].UpstreamModel)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestCreateCostRecalculationRejectsOverlappingActiveJob(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
