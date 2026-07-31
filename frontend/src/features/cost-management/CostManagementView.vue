@@ -43,7 +43,7 @@
         <div class="flex flex-wrap justify-between gap-2 text-sm"><span class="text-gray-500">统计范围：{{ range.start }} 至 {{ range.end }}</span><b>合计：{{ money(costBreakdown.total_cost_cny) }}</b></div>
         <div class="max-h-[60vh] overflow-auto"><table class="table"><thead class="sticky top-0 bg-white dark:bg-dark-900"><tr><th>类型</th><th>成本方案</th><th>账号/订阅实例</th><th>上游模型</th><th>计价依据</th><th>请求数</th><th>输入</th><th>缓存写入</th><th>缓存读取</th><th>输出</th><th>金额</th></tr></thead><tbody><tr v-for="(row,index) in groupedBreakdownItems" :key="index"><td>{{ row.item.cost_mode==='metered'?'按量':'固定' }}</td><td v-if="row.rowspan" :rowspan="row.rowspan" class="align-top font-medium">{{ row.item.plan_name||'未匹配方案' }}</td><td>{{ row.item.account_name||row.item.subscription_unit_name||'-' }}</td><td>{{ row.item.upstream_model||'-' }}</td><td class="min-w-64 text-xs">{{ pricingText(row.item) }}</td><td>{{ row.item.request_count||'-' }}</td><td :title="tokenTitle(row.item.input_tokens)">{{ tokenText(row.item.input_tokens) }}</td><td :title="tokenTitle(row.item.cache_write_tokens)">{{ tokenText(row.item.cache_write_tokens) }}</td><td :title="tokenTitle(row.item.cache_read_tokens)">{{ tokenText(row.item.cache_read_tokens) }}</td><td :title="tokenTitle(row.item.output_tokens)">{{ tokenText(row.item.output_tokens) }}</td><td class="font-medium">{{ money(row.item.amount_cny) }}</td></tr></tbody></table><div v-if="!costBreakdown.items.length" class="py-8 text-center text-sm text-gray-400">当前范围暂无已核算成本</div></div>
       </div>
-      <template #footer><button class="btn btn-secondary" @click="breakdownDialog=false">关闭</button></template>
+      <template #footer><button class="btn btn-secondary" @click="breakdownDialog=false">关闭</button><button class="btn btn-primary" :disabled="!costBreakdown.items.length||breakdownExporting" @click="exportCostBreakdown">{{ breakdownExporting?'导出中...':'导出 Excel' }}</button></template>
     </BaseDialog>
 
     <BaseDialog :show="pendingDialog" :title="pendingTitle" width="extra-wide" @close="pendingDialog=false">
@@ -160,7 +160,7 @@ const money=(v:string|number)=>'¥'+Number(v||0).toLocaleString('zh-CN',{minimum
 const comparisonText=computed(()=>{if(!overview.previous_coverage_complete)return '上一周期数据不完整';const current=Number(overview.total_cost_cny),previous=Number(overview.previous_total_cost_cny);if(!previous)return current?'新增 '+money(current):'持平';const percent=(current-previous)/previous*100;return `${percent>=0?'增加':'减少'} ${Math.abs(percent).toFixed(1)}%`})
 const coverageText=computed(()=>overview.coverage_complete?'数据覆盖完整':`数据不完整 · 当前覆盖 ${date(overview.coverage_start)} 至 ${date(overview.coverage_end)}`)
 const overviewCards=computed(()=>[{key:'total' as const,label:'真实总成本',value:money(overview.total_cost_cny)},{key:'metered' as const,label:'按量成本',value:money(overview.dynamic_cost_cny)},{key:'fixed' as const,label:'固定成本',value:money(overview.fixed_cost_cny)},{key:'pending' as const,label:'待核算',value:overview.pending_count+' 条'}])
-const breakdownDialog=ref(false),breakdownScope=ref<'total'|'metered'|'fixed'>('total'),costBreakdown=reactive<CostBreakdown>({total_cost_cny:'0',items:[]})
+const breakdownDialog=ref(false),breakdownExporting=ref(false),breakdownScope=ref<'total'|'metered'|'fixed'>('total'),costBreakdown=reactive<CostBreakdown>({total_cost_cny:'0',items:[]})
 const breakdownTitle=computed(()=>({total:'真实总成本组成',metered:'按量成本组成',fixed:'固定成本组成'}[breakdownScope.value]))
 const groupedBreakdownItems=computed(()=>{
   const groups=new Map<string,CostBreakdownItem[]>()
@@ -171,6 +171,25 @@ const tokenText=(value:number)=>value?formatCompactNumber(value).toLowerCase():'
 const tokenTitle=(value:number)=>Number(value||0).toLocaleString('zh-CN')
 const pricingText=(item:CostBreakdownItem)=>item.cost_mode==='fixed'?`${item.billing_cycle==='yearly'?'年付':'月付'} ${money(item.fixed_unit_cost_cny)}（月均 ${money(item.monthly_unit_cost_cny)}），按订阅有效时长分摊`:`输入 ${money(item.input_price_cny)}/MTok · 缓存写入 ${money(item.cache_write_price_cny)}/MTok · 缓存读取 ${money(item.cache_read_price_cny)}/MTok · 输出 ${money(item.output_price_cny)}/MTok${Number(item.per_request_price_cny)?` · 请求 ${money(item.per_request_price_cny)}/次`:''}`
 async function openCostBreakdown(scope:'total'|'metered'|'fixed'){breakdownScope.value=scope;breakdownDialog.value=true;try{Object.assign(costBreakdown,await costManagementAPI.breakdown({start_date:range.start,end_date:range.end,scope}))}catch(e:any){app.showError(e.message||'加载成本组成失败')}}
+async function exportCostBreakdown(){
+  if(!costBreakdown.items.length||breakdownExporting.value)return
+  breakdownExporting.value=true
+  try{
+    const XLSX=await import('xlsx')
+    const rows=[
+      ['统计范围',`${range.start} 至 ${range.end}`],
+      ['成本组成',breakdownTitle.value],
+      ['合计（CNY）',Number(costBreakdown.total_cost_cny)],
+      [],
+      ['类型','成本方案','账号/订阅实例','上游模型','计价依据','请求数','输入 Token','缓存写入 Token','缓存读取 Token','输出 Token','金额（CNY）'],
+      ...groupedBreakdownItems.value.map(({item})=>[item.cost_mode==='metered'?'按量':'固定',item.plan_name||'未匹配方案',item.account_name||item.subscription_unit_name||'',item.upstream_model||'',pricingText(item),item.request_count,item.input_tokens,item.cache_write_tokens,item.cache_read_tokens,item.output_tokens,Number(item.amount_cny)])
+    ]
+    const workbook=XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet(rows),'成本组成')
+    XLSX.writeFile(workbook,`成本组成_${breakdownScope.value}_${range.start}_to_${range.end}.xlsx`)
+    app.showSuccess('成本组成已导出')
+  }catch(e:any){app.showError(e.message||'导出成本组成失败')}finally{breakdownExporting.value=false}
+}
 const pendingDialog=ref(false),pendingAccountName=ref(''),pendingDetails=reactive<PendingCostDetails>({total_count:0,items:[]})
 const pendingTitle=computed(()=>pendingAccountName.value?`${pendingAccountName.value} · 待核算明细`:'待核算明细')
 const pendingReason=(code:string)=>({missing_account_config:'该时间点没有账号成本配置',missing_upstream_model:'使用记录缺少上游模型',missing_plan_version:'该时间点没有生效的价格版本',missing_model_price:'成本方案缺少该上游模型价格'}[code]||code||'未知原因')

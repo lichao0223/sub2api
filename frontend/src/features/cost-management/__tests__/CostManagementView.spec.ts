@@ -32,6 +32,12 @@ const api = vi.hoisted(() => ({
 }))
 const app = vi.hoisted(() => ({ showSuccess: vi.fn(), showError: vi.fn() }))
 const chartConfigs = vi.hoisted(() => [] as any[])
+const xlsx = vi.hoisted(() => ({
+  aoaToSheet: vi.fn(() => ({})),
+  bookNew: vi.fn(() => ({})),
+  bookAppendSheet: vi.fn(),
+  writeFile: vi.fn(),
+}))
 
 vi.mock('@/api/admin/costManagement', () => ({ default: api }))
 vi.mock('@/stores', () => ({
@@ -44,6 +50,14 @@ vi.mock('chart.js/auto', () => ({
     }
     destroy() {}
   },
+}))
+vi.mock('xlsx', () => ({
+  utils: {
+    aoa_to_sheet: xlsx.aoaToSheet,
+    book_new: xlsx.bookNew,
+    book_append_sheet: xlsx.bookAppendSheet,
+  },
+  writeFile: xlsx.writeFile,
 }))
 
 const SelectStub = defineComponent({
@@ -80,6 +94,7 @@ const mountView = () => mount(CostManagementView, {
 describe('CostManagementView', () => {
   beforeEach(() => {
     chartConfigs.length = 0
+    Object.values(xlsx).forEach(mock => mock.mockClear())
     api.overview.mockReset().mockResolvedValue({
       dynamic_cost_cny: '0', fixed_cost_cny: '0', total_cost_cny: '0',
       pending_count: 0, error_count: 0, eligible_count: 0, calculated_count: 0,
@@ -164,6 +179,12 @@ describe('CostManagementView', () => {
     expect(dialog.text()).toContain('Kimi 套餐 199')
     expect(dialog.text()).toContain('Kimi 199')
     expect(dialog.text()).toContain('¥375.00')
+    await dialog.findAll('button').find(button => button.text() === '导出 Excel')!.trigger('click')
+    await flushPromises()
+    expect(xlsx.aoaToSheet.mock.calls[0][0][4]).toEqual(['类型','成本方案','账号/订阅实例','上游模型','计价依据','请求数','输入 Token','缓存写入 Token','缓存读取 Token','输出 Token','金额（CNY）'])
+    expect(xlsx.aoaToSheet.mock.calls[0][0][5]).toEqual(expect.arrayContaining(['固定','Kimi 套餐 199','Kimi 199',375]))
+    expect(xlsx.writeFile).toHaveBeenCalledWith(expect.anything(),expect.stringMatching(/^成本组成_total_.+\.xlsx$/))
+    expect(app.showSuccess).toHaveBeenCalledWith('成本组成已导出')
   })
 
   it('groups cost rows by plan and compacts token counts', async () => {
