@@ -143,7 +143,7 @@ func TestUsageNonworkAggregationServiceSyncCalendarUsesPredictionForEmptyHoliday
 			},
 		},
 	})
-	svc.httpClient = &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	svc.httpClient = &http.Client{Transport: nonworkRoundTripFunc(func(req *http.Request) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusOK,
 			Body:       io.NopCloser(strings.NewReader(`{"year":2027,"papers":[],"days":[]}`)),
@@ -191,8 +191,8 @@ func mustLoadLocation(t *testing.T, name string) *time.Location {
 	return loc
 }
 
-type roundTripFunc func(*http.Request) (*http.Response, error)
+type nonworkRoundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+func (f nonworkRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
