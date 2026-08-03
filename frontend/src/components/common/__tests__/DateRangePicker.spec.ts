@@ -18,6 +18,7 @@ const messages: Record<string, string> = {
   'dates.lastYear': 'Last Year',
   'dates.startDate': 'Start Date',
   'dates.endDate': 'End Date',
+  'dates.selectByDay': 'Select by Day',
   'dates.selectByMonth': 'Select by Month',
   'dates.selectByYear': 'Select by Year',
   'dates.startMonth': 'Start Month',
@@ -128,7 +129,7 @@ describe('DateRangePicker', () => {
     rect.mockRestore()
   })
 
-  it('offers month and year selection in period mode', async () => {
+  it('offers day, month and year selection in period mode', async () => {
     const now = new Date()
     const wrapper = mount(DateRangePicker, {
       props: {
@@ -145,7 +146,11 @@ describe('DateRangePicker', () => {
     expect(wrapper.text()).toContain('This Year')
     expect(wrapper.text()).toContain('Last Year')
     expect(wrapper.text()).toContain('Start Month')
-    await wrapper.findAll('.date-picker-period-tab').at(1)!.trigger('click')
+    await wrapper.findAll('.date-picker-period-tab').at(0)!.trigger('click')
+    expect(wrapper.text()).toContain('Start Date')
+    expect(wrapper.text()).toContain('End Date')
+    expect(wrapper.findAll('input[type="date"]')).toHaveLength(2)
+    await wrapper.findAll('.date-picker-period-tab').at(2)!.trigger('click')
     expect(wrapper.text()).toContain('Start Year')
     expect(wrapper.text()).toContain('End Year')
   })

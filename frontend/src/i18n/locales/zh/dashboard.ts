@@ -917,6 +917,7 @@ export default {
     custom: '自定义',
     startDate: '开始日期',
     endDate: '结束日期',
+    selectByDay: '按日选择',
     selectByMonth: '按月选择',
     selectByYear: '按年选择',
     startMonth: '开始月份',

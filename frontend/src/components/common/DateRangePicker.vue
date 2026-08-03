@@ -39,6 +39,7 @@
         <div class="date-picker-divider"></div>
 
         <div v-if="periodMode" class="date-picker-period-tabs">
+          <button :class="['date-picker-period-tab', periodGranularity==='day' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('day')">{{ t('dates.selectByDay') }}</button>
           <button :class="['date-picker-period-tab', periodGranularity==='month' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('month')">{{ t('dates.selectByMonth') }}</button>
           <button :class="['date-picker-period-tab', periodGranularity==='year' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('year')">{{ t('dates.selectByYear') }}</button>
         </div>
@@ -46,9 +47,9 @@
         <!-- Custom date range inputs -->
         <div class="date-picker-custom">
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t(periodMode ? (periodGranularity==='month' ? 'dates.startMonth' : 'dates.startYear') : 'dates.startDate') }}</label>
+            <label class="date-picker-label">{{ t(periodMode && periodGranularity!=='day' ? (periodGranularity==='month' ? 'dates.startMonth' : 'dates.startYear') : 'dates.startDate') }}</label>
             <input
-              v-if="!periodMode"
+              v-if="!periodMode || periodGranularity==='day'"
               type="date"
               v-model="localStartDate"
               :max="localEndDate || maximumDate"
@@ -64,9 +65,9 @@
             <Icon name="arrowRight" size="sm" class="text-gray-400" />
           </div>
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t(periodMode ? (periodGranularity==='month' ? 'dates.endMonth' : 'dates.endYear') : 'dates.endDate') }}</label>
+            <label class="date-picker-label">{{ t(periodMode && periodGranularity!=='day' ? (periodGranularity==='month' ? 'dates.endMonth' : 'dates.endYear') : 'dates.endDate') }}</label>
             <input
-              v-if="!periodMode"
+              v-if="!periodMode || periodGranularity==='day'"
               type="date"
               v-model="localEndDate"
               :min="localStartDate"
@@ -130,7 +131,7 @@ const dropdownStyle = ref<Record<string, string>>({})
 const localStartDate = ref(props.startDate)
 const localEndDate = ref(props.endDate)
 const activePreset = ref<string | null>(props.periodMode ? 'thisMonth' : 'last24Hours')
-const periodGranularity = ref<'month' | 'year'>('month')
+const periodGranularity = ref<'day' | 'month' | 'year'>('month')
 
 const today = computed(() => {
   // Use local timezone to avoid UTC timezone issues
@@ -342,7 +343,7 @@ const onDateChange = () => {
   }
 }
 
-const setPeriodGranularity = (value: 'month' | 'year') => {
+const setPeriodGranularity = (value: 'day' | 'month' | 'year') => {
   periodGranularity.value = value
   activePreset.value = null
 }
@@ -500,7 +501,7 @@ onUnmounted(() => {
 }
 
 .date-picker-period-tabs {
-  @apply grid grid-cols-2 gap-2 p-3 pb-0;
+  @apply grid grid-cols-3 gap-2 p-3 pb-0;
 }
 
 .date-picker-period-tab {

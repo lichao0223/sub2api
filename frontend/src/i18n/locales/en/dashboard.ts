@@ -912,6 +912,7 @@ export default {
     custom: 'Custom',
     startDate: 'Start Date',
     endDate: 'End Date',
+    selectByDay: 'Select by Day',
     selectByMonth: 'Select by Month',
     selectByYear: 'Select by Year',
     startMonth: 'Start Month',
