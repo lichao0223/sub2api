@@ -319,6 +319,7 @@
               :today-stats-loading="todayStatsLoading"
               :manual-refresh-token="usageManualRefreshToken"
               @subscription-updated="applyGLMSubscription(row, $event)"
+              @account-updated="handleAccountUpdated"
             />
           </template>
           <template #cell-proxy="{ row }">
