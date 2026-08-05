@@ -114,7 +114,7 @@ func setRequestedReasoningEffort(c *gin.Context, result *service.OpenAIForwardRe
 	if c == nil || result == nil {
 		return
 	}
-	value, ok := c.Get(requestedReasoningEffortContextKey)
+	value, _ := c.Get(requestedReasoningEffortContextKey)
 	effort, ok := value.(string)
 	if !ok || strings.TrimSpace(effort) == "" {
 		return
