@@ -593,7 +593,11 @@ const exportToExcel = async () => {
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total }
       const rows = (res.items || []).map((log: AdminUsageLog) => [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
-        log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
+        log.upstream_model || '',
+        log.requested_reasoning_effort && log.reasoning_effort && log.requested_reasoning_effort !== log.reasoning_effort
+          ? `${formatReasoningEffort(log.requested_reasoning_effort)} → ${formatReasoningEffort(log.reasoning_effort)}`
+          : formatReasoningEffort(log.reasoning_effort || log.requested_reasoning_effort),
+        log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',

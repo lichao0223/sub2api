@@ -49,47 +49,63 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name       string
-		model      string
-		mapped     string
-		effortJSON string
-		wantEffort string
-		maxPolicy  string
+		name                string
+		model               string
+		mapped              string
+		effortJSON          string
+		wantEffort          string
+		wantRequestedEffort string
+		maxPolicy           string
+		mappings            []ReasoningEffortMapping
 	}{
 		{
-			name:       "policy caps converted effort",
-			model:      "gpt-5.6-luna",
-			mapped:     "gpt-5.6-luna",
-			effortJSON: `,"output_config":{"effort":"max"}`,
-			wantEffort: "medium",
-			maxPolicy:  "medium",
+			name:                "policy caps converted effort",
+			model:               "gpt-5.6-luna",
+			mapped:              "gpt-5.6-luna",
+			effortJSON:          `,"output_config":{"effort":"max"}`,
+			wantEffort:          "medium",
+			wantRequestedEffort: "max",
+			maxPolicy:           "medium",
 		},
 		{
-			name:       "GPT56 max",
-			model:      "luna",
-			mapped:     "gpt-5.6-luna",
-			effortJSON: `,"output_config":{"effort":"max"}`,
-			wantEffort: "max",
+			name:                "policy maps converted effort",
+			model:               "gpt-5.6-luna",
+			mapped:              "gpt-5.6-luna",
+			effortJSON:          `,"output_config":{"effort":"high"}`,
+			wantEffort:          "medium",
+			wantRequestedEffort: "high",
+			mappings:            []ReasoningEffortMapping{{From: "high", To: "medium"}},
 		},
 		{
-			name:       "old model max",
-			model:      "gpt-5.5",
-			mapped:     "gpt-5.5",
-			effortJSON: `,"output_config":{"effort":"max"}`,
-			wantEffort: "xhigh",
+			name:                "GPT56 max",
+			model:               "luna",
+			mapped:              "gpt-5.6-luna",
+			effortJSON:          `,"output_config":{"effort":"max"}`,
+			wantEffort:          "max",
+			wantRequestedEffort: "max",
 		},
 		{
-			name:       "high remains high",
-			model:      "gpt-5.6-luna",
-			mapped:     "gpt-5.6-luna",
-			effortJSON: `,"output_config":{"effort":"high"}`,
-			wantEffort: "high",
+			name:                "old model max",
+			model:               "gpt-5.5",
+			mapped:              "gpt-5.5",
+			effortJSON:          `,"output_config":{"effort":"max"}`,
+			wantEffort:          "xhigh",
+			wantRequestedEffort: "xhigh",
 		},
 		{
-			name:       "omitted defaults medium",
-			model:      "gpt-5.6-luna",
-			mapped:     "gpt-5.6-luna",
-			wantEffort: "medium",
+			name:                "high remains high",
+			model:               "gpt-5.6-luna",
+			mapped:              "gpt-5.6-luna",
+			effortJSON:          `,"output_config":{"effort":"high"}`,
+			wantEffort:          "high",
+			wantRequestedEffort: "high",
+		},
+		{
+			name:                "omitted defaults medium",
+			model:               "gpt-5.6-luna",
+			mapped:              "gpt-5.6-luna",
+			wantEffort:          "medium",
+			wantRequestedEffort: "medium",
 		},
 	}
 
@@ -113,8 +129,8 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 			ctx := context.Background()
-			if tt.maxPolicy != "" {
-				ctx = WithOpenAIReasoningEffortPolicy(ctx, tt.maxPolicy, nil)
+			if tt.maxPolicy != "" || len(tt.mappings) > 0 {
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, tt.maxPolicy, tt.mappings)
 			}
 			result, err := svc.ForwardAsAnthropic(ctx, c, account, []byte(body), "", "")
 			require.NoError(t, err)
@@ -123,6 +139,8 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
 			require.NotNil(t, result.ReasoningEffort)
 			require.Equal(t, tt.wantEffort, *result.ReasoningEffort)
+			require.NotNil(t, result.RequestedReasoningEffort)
+			require.Equal(t, tt.wantRequestedEffort, *result.RequestedReasoningEffort)
 		})
 	}
 }

@@ -134,10 +134,11 @@ func openAIWSPassthroughPolicyModelFromSessionFrame(account *Account, payload []
 }
 
 type openAIWSPassthroughUsageMeta struct {
-	serviceTier     atomic.Pointer[string]
-	reasoningEffort atomic.Pointer[string]
-	requestModel    atomic.Pointer[string]
-	upstreamModel   atomic.Pointer[string]
+	serviceTier              atomic.Pointer[string]
+	reasoningEffort          atomic.Pointer[string]
+	requestedReasoningEffort atomic.Pointer[string]
+	requestModel             atomic.Pointer[string]
+	upstreamModel            atomic.Pointer[string]
 
 	// 仅在 client->upstream filter goroutine 中读写；Load 侧通过上方原子指针同步。
 	sessionRequestModel string
@@ -159,7 +160,14 @@ func (m *openAIWSPassthroughUsageMeta) initFromFirstFrame(policyOutput []byte, m
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
 	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, mappedModel, m.sessionRequestModel))
+	m.requestedReasoningEffort.Store(m.reasoningEffort.Load())
 	m.storeTurnModels(m.sessionRequestModel, policyOutput)
+}
+
+func (m *openAIWSPassthroughUsageMeta) storeRequestedReasoningEffort(payload []byte, modelCandidates ...string) {
+	if m != nil {
+		m.requestedReasoningEffort.Store(ExtractOpenAIReasoningEffortFromBody(payload, modelCandidates...))
+	}
 }
 
 func (m *openAIWSPassthroughUsageMeta) updateSessionRequestModel(payload []byte) {
@@ -187,6 +195,7 @@ func (m *openAIWSPassthroughUsageMeta) updateFromResponseCreate(policyOutput []b
 	}
 	m.serviceTier.Store(extractOpenAIServiceTierFromBody(policyOutput))
 	m.reasoningEffort.Store(extractOpenAIReasoningEffortFromBody(policyOutput, mappedModel, requestModelForFrame))
+	m.requestedReasoningEffort.Store(m.reasoningEffort.Load())
 	m.storeTurnModels(requestModelForFrame, policyOutput)
 }
 
@@ -681,6 +690,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		firstClientMessage = liteFirstMessage
 	}
+	requestedFirstClientMessage := firstClientMessage
 	if hooks != nil && (hooks.MaxReasoningEffort != "" || len(hooks.ReasoningEffortMappings) > 0) {
 		if capped, changed := ApplyOpenAIReasoningEffortPolicy(firstClientMessage, hooks.MaxReasoningEffort, hooks.ReasoningEffortMappings); changed {
 			firstClientMessage = capped
@@ -767,6 +777,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	// goroutine）和 OnTurnComplete / final result（runUpstreamToClient
 	// goroutine）之间同步当前 turn 的 usage metadata。
 	usageMeta.initFromFirstFrame(firstClientMessage, capturedSessionModel)
+	usageMeta.storeRequestedReasoningEffort(requestedFirstClientMessage, capturedSessionModel, initialRequestModel)
 	promptCacheKey := strings.TrimSpace(gjson.GetBytes(firstClientMessage, "prompt_cache_key").String())
 
 	wsURL, err := s.buildOpenAIResponsesWSURL(account)
@@ -929,6 +940,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
+			requestedPayload := payload
 			acceptedTurn := false
 			if isResponseCreate {
 				if !turnLifecycle.beginResponseCreate(clientFrameConn.markTurnStarted) {
@@ -1023,6 +1035,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
+				usageMeta.storeRequestedReasoningEffort(requestedPayload, model, requestModelForThisFrame)
 				acceptedTurn = true
 			}
 			return out, blocked, policyErr
@@ -1103,16 +1116,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 						CacheReadInputTokens:     turn.Usage.CacheReadInputTokens,
 						ImageOutputTokens:        turn.Usage.ImageOutputTokens,
 					},
-					Model:                 turnRequestModel,
-					UpstreamModel:         openAIWSDifferentModel(turnRequestModel, turnUpstreamModel),
-					ServiceTier:           usageMeta.serviceTier.Load(),
-					ReasoningEffort:       usageMeta.reasoningEffort.Load(),
-					Stream:                true,
-					OpenAIWSMode:          true,
-					UpstreamTerminalEvent: normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
-					ResponseHeaders:       cloneHeader(handshakeHeaders),
-					Duration:              turn.Duration,
-					FirstTokenMs:          turn.FirstTokenMs,
+					Model:                    turnRequestModel,
+					UpstreamModel:            openAIWSDifferentModel(turnRequestModel, turnUpstreamModel),
+					ServiceTier:              usageMeta.serviceTier.Load(),
+					ReasoningEffort:          usageMeta.reasoningEffort.Load(),
+					RequestedReasoningEffort: usageMeta.requestedReasoningEffort.Load(),
+					Stream:                   true,
+					OpenAIWSMode:             true,
+					UpstreamTerminalEvent:    normalizeOpenAIWSTerminalEvent(turn.TerminalEventType),
+					ResponseHeaders:          cloneHeader(handshakeHeaders),
+					Duration:                 turn.Duration,
+					FirstTokenMs:             turn.FirstTokenMs,
 				}
 				logOpenAIWSV2Passthrough(
 					"relay_turn_completed account_id=%d turn=%d request_id=%s terminal_event=%s turn_requested_model=%s turn_upstream_model=%s duration_ms=%d first_token_ms=%d input_tokens=%d output_tokens=%d cache_read_tokens=%d",
@@ -1222,16 +1236,17 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			CacheReadInputTokens:     relayResult.Usage.CacheReadInputTokens,
 			ImageOutputTokens:        relayResult.Usage.ImageOutputTokens,
 		},
-		Model:                 resultRequestModel,
-		UpstreamModel:         openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),
-		ServiceTier:           usageMeta.serviceTier.Load(),
-		ReasoningEffort:       usageMeta.reasoningEffort.Load(),
-		Stream:                true,
-		OpenAIWSMode:          true,
-		UpstreamTerminalEvent: normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),
-		ResponseHeaders:       cloneHeader(handshakeHeaders),
-		Duration:              relayResult.Duration,
-		FirstTokenMs:          relayResult.FirstTokenMs,
+		Model:                    resultRequestModel,
+		UpstreamModel:            openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),
+		ServiceTier:              usageMeta.serviceTier.Load(),
+		ReasoningEffort:          usageMeta.reasoningEffort.Load(),
+		RequestedReasoningEffort: usageMeta.requestedReasoningEffort.Load(),
+		Stream:                   true,
+		OpenAIWSMode:             true,
+		UpstreamTerminalEvent:    normalizeOpenAIWSTerminalEvent(relayResult.TerminalEventType),
+		ResponseHeaders:          cloneHeader(handshakeHeaders),
+		Duration:                 relayResult.Duration,
+		FirstTokenMs:             relayResult.FirstTokenMs,
 	}
 
 	turnCount := int(completedTurns.Load())

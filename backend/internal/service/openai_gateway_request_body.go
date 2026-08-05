@@ -829,6 +829,19 @@ func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string
 	return &value
 }
 
+// ExtractOpenAIReasoningEffortFromBody returns the effort carried by the body,
+// falling back to a reasoning model suffix.
+func ExtractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string) *string {
+	raw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
+	if raw == "" {
+		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
+	}
+	if normalized := NormalizeMaxReasoningEffort(raw); normalized != "" {
+		return &normalized
+	}
+	return extractOpenAIReasoningEffortFromBody(body, modelCandidates...)
+}
+
 func extractOpenAIServiceTier(reqBody map[string]any) *string {
 	if reqBody == nil {
 		return nil

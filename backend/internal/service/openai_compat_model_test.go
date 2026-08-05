@@ -245,6 +245,8 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 		effort        string
 		wantModel     string
 		wantEffort    string
+		wantRequested string
+		mappings      []ReasoningEffortMapping
 	}{
 		{
 			name:          "API Key mapping wins and keeps Luna max",
@@ -254,6 +256,7 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 			effort:        "max",
 			wantModel:     "gpt-5.6-luna",
 			wantEffort:    "max",
+			wantRequested: "max",
 		},
 		{
 			name:          "OAuth mapping wins and keeps Sol max",
@@ -263,21 +266,34 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 			effort:        "max",
 			wantModel:     "gpt-5.6-sol",
 			wantEffort:    "max",
+			wantRequested: "max",
 		},
 		{
-			name:       "old model still maps max to xhigh",
-			account:    rawGPT56ResponsesAPIKeyAccount("gpt-5.5", "gpt-5.5"),
-			model:      "gpt-5.5",
-			effort:     "max",
-			wantModel:  "gpt-5.5",
-			wantEffort: "xhigh",
+			name:          "old model still maps max to xhigh",
+			account:       rawGPT56ResponsesAPIKeyAccount("gpt-5.5", "gpt-5.5"),
+			model:         "gpt-5.5",
+			effort:        "max",
+			wantModel:     "gpt-5.5",
+			wantEffort:    "xhigh",
+			wantRequested: "xhigh",
 		},
 		{
-			name:       "GPT56 default remains medium",
-			account:    rawGPT56ResponsesAPIKeyAccount("gpt-5.6-sol", "gpt-5.6-sol"),
-			model:      "gpt-5.6-sol",
-			wantModel:  "gpt-5.6-sol",
-			wantEffort: "medium",
+			name:          "group policy maps high to medium",
+			account:       rawGPT56ResponsesAPIKeyAccount("gpt-5.6-sol", "gpt-5.6-sol"),
+			model:         "gpt-5.6-sol",
+			effort:        "high",
+			wantModel:     "gpt-5.6-sol",
+			wantEffort:    "medium",
+			wantRequested: "high",
+			mappings:      []ReasoningEffortMapping{{From: "high", To: "medium"}},
+		},
+		{
+			name:          "GPT56 default remains medium",
+			account:       rawGPT56ResponsesAPIKeyAccount("gpt-5.6-sol", "gpt-5.6-sol"),
+			model:         "gpt-5.6-sol",
+			wantModel:     "gpt-5.6-sol",
+			wantEffort:    "medium",
+			wantRequested: "medium",
 		},
 	}
 
@@ -300,7 +316,11 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
 			}
 
-			result, err := svc.ForwardAsAnthropic(context.Background(), c, tt.account, []byte(body), "", tt.defaultMapped)
+			ctx := context.Background()
+			if len(tt.mappings) > 0 {
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, "", tt.mappings)
+			}
+			result, err := svc.ForwardAsAnthropic(ctx, c, tt.account, []byte(body), "", tt.defaultMapped)
 			require.NoError(t, err)
 			require.NotNil(t, result)
 			require.Equal(t, tt.wantModel, result.UpstreamModel)
@@ -308,6 +328,8 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 			require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 			require.NotNil(t, result.ReasoningEffort)
 			require.Equal(t, tt.wantEffort, *result.ReasoningEffort)
+			require.NotNil(t, result.RequestedReasoningEffort)
+			require.Equal(t, tt.wantRequested, *result.RequestedReasoningEffort)
 		})
 	}
 }

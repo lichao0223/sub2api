@@ -566,6 +566,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				},
 			)
 		}()
+		setRequestedReasoningEffort(c, result)
 		cyberBlockKeyHTTP := ""
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyHTTP = service.CyberSessionBlockKey(apiKey.ID, c, sessionHashBody)
@@ -1127,6 +1128,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				},
 			)
 		}()
+		setRequestedReasoningEffort(c, result)
 		cyberBlockKeyMsg := ""
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyMsg = service.CyberSessionBlockKey(apiKey.ID, c, body)

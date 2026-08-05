@@ -40,3 +40,16 @@ func TestWSPassthroughUsageMeta_UpdateFromResponseCreate_MappedModelCandidate(t 
 	require.NotNil(t, got)
 	require.Equal(t, "max", *got, "mapped model should preserve max on multi-turn update")
 }
+
+func TestWSPassthroughUsageMeta_PreservesRequestedEffortBeforePolicy(t *testing.T) {
+	requested := []byte(`{"type":"response.create","model":"gpt-5.6-sol","reasoning":{"effort":"high"}}`)
+	effective, changed := ApplyOpenAIReasoningEffortPolicy(requested, "", []ReasoningEffortMapping{{From: "high", To: "medium"}})
+	require.True(t, changed)
+
+	meta := newOpenAIWSPassthroughUsageMeta("gpt-5.6-sol", requested)
+	meta.initFromFirstFrame(effective, "gpt-5.6-sol")
+	meta.storeRequestedReasoningEffort(requested, "gpt-5.6-sol")
+
+	require.Equal(t, "high", *meta.requestedReasoningEffort.Load())
+	require.Equal(t, "medium", *meta.reasoningEffort.Load())
+}

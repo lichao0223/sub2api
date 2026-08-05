@@ -480,9 +480,11 @@ type UsageLog struct {
 	Model     string `json:"model"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
-	// ReasoningEffort is the request's reasoning effort level.
+	// ReasoningEffort is the effective upstream reasoning effort level.
 	// OpenAI: "low"/"medium"/"high"/"xhigh"; Claude: "low"/"medium"/"high"/"max".
 	ReasoningEffort *string `json:"reasoning_effort,omitempty"`
+	// RequestedReasoningEffort is the value before group mapping/capping.
+	RequestedReasoningEffort *string `json:"requested_reasoning_effort,omitempty"`
 	// InboundEndpoint is the client-facing API endpoint path, e.g. /v1/chat/completions.
 	InboundEndpoint *string `json:"inbound_endpoint,omitempty"`
 	// UpstreamEndpoint is the normalized upstream endpoint path, e.g. /v1/responses.

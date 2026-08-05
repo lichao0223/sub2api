@@ -74,8 +74,19 @@
         </template>
 
         <template #cell-reasoning_effort="{ row }">
-          <span class="text-sm text-gray-900 dark:text-white">
-            {{ formatReasoningEffort(row.reasoning_effort) }}
+          <div
+            v-if="row.requested_reasoning_effort && row.reasoning_effort && row.requested_reasoning_effort !== row.reasoning_effort"
+            class="space-y-0.5 text-xs"
+          >
+            <div class="font-medium text-gray-900 dark:text-white">
+              {{ formatReasoningEffort(row.requested_reasoning_effort) }}
+            </div>
+            <div class="text-gray-500 dark:text-gray-400">
+              <span class="mr-0.5">↳</span>{{ formatReasoningEffort(row.reasoning_effort) }}
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-900 dark:text-white">
+            {{ formatReasoningEffort(row.reasoning_effort || row.requested_reasoning_effort) }}
           </span>
         </template>
 

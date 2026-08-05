@@ -245,6 +245,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				},
 			)
 		}()
+		setRequestedReasoningEffort(c, result)
 		cyberBlockKeyChat := ""
 		if service.GetOpsCyberPolicy(c) != nil {
 			cyberBlockKeyChat = service.CyberSessionBlockKey(apiKey.ID, c, body)

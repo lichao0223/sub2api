@@ -661,7 +661,9 @@ const exportToCSV = async () => {
       log.created_at,
       log.api_key?.name || '',
       log.model,
-      formatReasoningEffort(log.reasoning_effort),
+      log.requested_reasoning_effort && log.reasoning_effort && log.requested_reasoning_effort !== log.reasoning_effort
+        ? `${formatReasoningEffort(log.requested_reasoning_effort)} → ${formatReasoningEffort(log.reasoning_effort)}`
+        : formatReasoningEffort(log.reasoning_effort || log.requested_reasoning_effort),
       log.inbound_endpoint || '',
       log.ip_address || '',
       getRequestTypeExportText(log),

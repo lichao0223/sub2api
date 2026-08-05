@@ -253,6 +253,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			}
 		}
 	}
+	requestedReasoningEffort := ExtractOpenAIReasoningEffortFromBody(responsesBody, upstreamModel)
 	if account.Platform == PlatformOpenAI {
 		if policyBody, changed := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, responsesBody); changed {
 			responsesBody = policyBody
@@ -478,6 +479,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 
 	// Propagate ServiceTier and ReasoningEffort to result for billing
 	if handleErr == nil && result != nil {
+		result.RequestedReasoningEffort = requestedReasoningEffort
 		if compatContinuationEnabled && promptCacheKey != "" && result.ResponseID != "" {
 			s.bindOpenAICompatSessionResponseID(ctx, c, account, promptCacheKey, result.ResponseID)
 		}
