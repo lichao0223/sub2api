@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 )
 
@@ -343,6 +345,45 @@ func TestCostOverviewPendingCountExcludesDeletedAccounts(t *testing.T) {
 	overview, err := (&costManagementRepository{db: db}).GetCostOverview(context.Background(), time.Now().AddDate(0, 0, -1), time.Now())
 	require.NoError(t, err)
 	require.Equal(t, int64(1445), overview.PendingCount)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestFixedDailyCostProjectsEffectivePartOfMonth(t *testing.T) {
+	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
+	monthStart := time.Date(2026, time.August, 1, 0, 0, 0, 0, loc)
+	effectiveFrom := time.Date(2026, time.August, 16, 0, 0, 0, 0, loc)
+	total := decimal.Zero
+	for day := monthStart; day.Before(monthStart.AddDate(0, 1, 0)); day = day.AddDate(0, 0, 1) {
+		total = total.Add(fixedDailyCost(day, decimal.NewFromInt(310), monthStart, sql.NullTime{}, effectiveFrom, sql.NullTime{}))
+	}
+	require.True(t, total.Equal(decimal.NewFromInt(160)), total.String())
+}
+
+func TestCostOverviewEstimatesFullCurrentMonthFixedCost(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	today := time.Now().In(loc)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+	monthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, loc)
+	monthEnd := monthStart.AddDate(0, 1, 0)
+
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(amount_cny\\)").
+		WithArgs(monthStart, today.AddDate(0, 0, 1)).
+		WillReturnRows(sqlmock.NewRows([]string{"dynamic", "fixed", "total", "pending", "errors", "eligible", "calculated"}).AddRow("100", "10", "110", 0, 0, 1, 1))
+	mock.ExpectQuery("SELECT last_success_at FROM cost_jobs").WillReturnRows(sqlmock.NewRows([]string{"last_success_at"}).AddRow(nil))
+	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(amount_cny\\)").WillReturnRows(sqlmock.NewRows([]string{"previous_total"}).AddRow("0"))
+	mock.ExpectQuery("SELECT MIN\\(ul.created_at\\),MAX\\(ul.created_at\\)").WillReturnRows(sqlmock.NewRows([]string{"min", "max", "exists"}).AddRow(nil, nil, false))
+	mock.ExpectQuery("SELECT v.monthly_unit_cost_cny").
+		WithArgs(monthStart, monthEnd).
+		WillReturnRows(sqlmock.NewRows([]string{"monthly", "unit_from", "unit_to", "version_from", "version_to"}).AddRow("310", monthStart, nil, monthStart, nil))
+
+	overview, err := (&costManagementRepository{db: db}).GetCostOverview(context.Background(), monthStart, today.AddDate(0, 0, 1))
+	require.NoError(t, err)
+	require.NotNil(t, overview.EstimatedTotalCostCNY)
+	require.Equal(t, "410", *overview.EstimatedTotalCostCNY)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

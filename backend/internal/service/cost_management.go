@@ -237,6 +237,7 @@ type CostOverview struct {
 	DynamicCostCNY           string     `json:"dynamic_cost_cny"`
 	FixedCostCNY             string     `json:"fixed_cost_cny"`
 	TotalCostCNY             string     `json:"total_cost_cny"`
+	EstimatedTotalCostCNY    *string    `json:"estimated_total_cost_cny,omitempty"`
 	PendingCount             int64      `json:"pending_count"`
 	ErrorCount               int64      `json:"error_count"`
 	EligibleCount            int64      `json:"eligible_count"`

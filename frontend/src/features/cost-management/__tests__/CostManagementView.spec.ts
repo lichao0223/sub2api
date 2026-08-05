@@ -187,6 +187,20 @@ describe('CostManagementView', () => {
     expect(app.showSuccess).toHaveBeenCalledWith('成本组成已导出')
   })
 
+  it('shows the full-month estimate for the current month', async () => {
+    api.overview.mockResolvedValue({
+      dynamic_cost_cny: '2683.22', fixed_cost_cny: '1370.33', total_cost_cny: '4053.55',
+      estimated_total_cost_cny: '7033.22', pending_count: 0, error_count: 0, eligible_count: 0, calculated_count: 0,
+      coverage_complete: true, previous_total_cost_cny: '0',
+    })
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('本月预估成本')
+    expect(wrapper.text()).toContain('¥7,033.22')
+    expect(wrapper.text()).toContain('整月固定成本 + 当前按量成本')
+  })
+
   it('groups cost rows by plan and compacts token counts', async () => {
     const item = {
       cost_mode: 'metered' as const, plan_name: '阿里云 GLM', subscription_unit_name: '', upstream_model: 'glm-5.2',

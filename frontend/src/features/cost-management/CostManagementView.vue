@@ -13,8 +13,8 @@
           </div>
           <div class="flex items-center gap-3"><span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span><button class="btn btn-secondary btn-sm" @click="openRecalc">核算任务</button></div>
         </div>
-        <div class="grid gap-4 md:grid-cols-4">
-          <button v-for="card in overviewCards" :key="card.label" type="button" class="card p-5 text-left transition hover:-translate-y-0.5 hover:shadow-md" @click="card.key==='pending'?openPendingDetails():openCostBreakdown(card.key)"><div class="text-sm text-gray-500">{{ card.label }}</div><div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ card.value }}</div><div class="mt-2 text-xs text-primary-600">查看明细</div></button>
+        <div class="grid gap-4 md:grid-cols-4" :class="isCurrentMonth?'xl:grid-cols-5':''">
+          <button v-for="card in overviewCards" :key="card.label" type="button" class="card p-5 text-left transition" :class="card.key==='estimated'?'cursor-default':'hover:-translate-y-0.5 hover:shadow-md'" :disabled="card.key==='estimated'" @click="card.key==='pending'?openPendingDetails():card.key!=='estimated'&&openCostBreakdown(card.key)"><div class="text-sm text-gray-500">{{ card.label }}</div><div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ card.value }}</div><div class="mt-2 text-xs" :class="card.key==='estimated'?'text-gray-400':'text-primary-600'">{{ card.key==='estimated'?'整月固定成本 + 当前按量成本':'查看明细' }}</div></button>
         </div>
         <div class="flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500">
           <span>较上一等长周期：{{ comparisonText }}</span>
@@ -159,7 +159,14 @@ const aggregationDelayed=computed(()=>!overview.last_success_at||Date.now()-new 
 const money=(v:string|number)=>'¥'+Number(v||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
 const comparisonText=computed(()=>{if(!overview.previous_coverage_complete)return '上一周期数据不完整';const current=Number(overview.total_cost_cny),previous=Number(overview.previous_total_cost_cny);if(!previous)return current?'新增 '+money(current):'持平';const percent=(current-previous)/previous*100;return `${percent>=0?'增加':'减少'} ${Math.abs(percent).toFixed(1)}%`})
 const coverageText=computed(()=>overview.coverage_complete?'数据覆盖完整':`数据不完整 · 当前覆盖 ${date(overview.coverage_start)} 至 ${date(overview.coverage_end)}`)
-const overviewCards=computed(()=>[{key:'total' as const,label:'真实总成本',value:money(overview.total_cost_cny)},{key:'metered' as const,label:'按量成本',value:money(overview.dynamic_cost_cny)},{key:'fixed' as const,label:'固定成本',value:money(overview.fixed_cost_cny)},{key:'pending' as const,label:'待核算',value:overview.pending_count+' 条'}])
+const isCurrentMonth=computed(()=>range.start===month+'-01'&&range.end===today)
+const overviewCards=computed(()=>[
+  {key:'total' as const,label:'真实总成本',value:money(overview.total_cost_cny)},
+  {key:'metered' as const,label:'按量成本',value:money(overview.dynamic_cost_cny)},
+  {key:'fixed' as const,label:'固定成本',value:money(overview.fixed_cost_cny)},
+  ...(isCurrentMonth.value&&overview.estimated_total_cost_cny!==undefined?[{key:'estimated' as const,label:'本月预估成本',value:money(overview.estimated_total_cost_cny)}]:[]),
+  {key:'pending' as const,label:'待核算',value:overview.pending_count+' 条'},
+])
 const breakdownDialog=ref(false),breakdownExporting=ref(false),breakdownScope=ref<'total'|'metered'|'fixed'>('total'),costBreakdown=reactive<CostBreakdown>({total_cost_cny:'0',items:[]})
 const breakdownTitle=computed(()=>({total:'真实总成本组成',metered:'按量成本组成',fixed:'固定成本组成'}[breakdownScope.value]))
 const groupedBreakdownItems=computed(()=>{

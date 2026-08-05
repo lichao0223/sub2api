@@ -831,6 +831,21 @@ func (r *costManagementRepository) GetCostOverview(ctx context.Context, start, e
 	if err != nil {
 		return nil, err
 	}
+	today := time.Now().In(loc)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+	monthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, loc)
+	if start.Equal(monthStart) && end.Equal(today.AddDate(0, 0, 1)) {
+		projectedFixed, projectionErr := r.projectFixedMonth(ctx, monthStart, monthStart.AddDate(0, 1, 0))
+		if projectionErr != nil {
+			return nil, projectionErr
+		}
+		dynamic, parseErr := decimal.NewFromString(o.DynamicCostCNY)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		estimated := dynamic.Add(projectedFixed).String()
+		o.EstimatedTotalCostCNY = &estimated
+	}
 	var firstDay, lastDay time.Time
 	if coverageStart.Valid {
 		o.CoverageStart = &coverageStart.Time
@@ -845,6 +860,53 @@ func (r *costManagementRepository) GetCostOverview(ctx context.Context, start, e
 	o.CoverageComplete = !hasUsage || coverageStart.Valid && !start.Before(firstDay) && !end.After(lastDay)
 	o.PreviousCoverageComplete = !hasUsage || coverageStart.Valid && !previousStart.Before(firstDay) && !previousEnd.After(lastDay)
 	return o, nil
+}
+
+type fixedCostProjectionUnit struct {
+	monthly                 decimal.Decimal
+	unitFrom, effectiveFrom time.Time
+	unitTo, effectiveTo     sql.NullTime
+}
+
+func (r *costManagementRepository) projectFixedMonth(ctx context.Context, monthStart, monthEnd time.Time) (decimal.Decimal, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT v.monthly_unit_cost_cny::text,u.effective_from,u.effective_to,v.effective_from,v.effective_to
+		FROM cost_subscription_units u
+		JOIN cost_subscription_unit_versions v ON v.subscription_unit_id=u.id
+		  AND v.effective_from<$2 AND(v.effective_to IS NULL OR v.effective_to>$1)
+		WHERE u.effective_from<$2 AND(u.effective_to IS NULL OR u.effective_to>$1)
+		  AND EXISTS (
+		    SELECT 1 FROM cost_daily_aggregates d
+		    WHERE d.aggregate_scope='fixed_plan_total' AND d.subscription_unit_id=u.id
+		      AND d.bucket_date>=$1::date AND d.bucket_date<$2::date
+		  )`, monthStart, monthEnd)
+	if err != nil {
+		return decimal.Zero, err
+	}
+	defer func() { _ = rows.Close() }()
+	units := make([]fixedCostProjectionUnit, 0)
+	for rows.Next() {
+		var unit fixedCostProjectionUnit
+		var monthly string
+		if err = rows.Scan(&monthly, &unit.unitFrom, &unit.unitTo, &unit.effectiveFrom, &unit.effectiveTo); err != nil {
+			return decimal.Zero, err
+		}
+		unit.monthly, err = decimal.NewFromString(monthly)
+		if err != nil {
+			return decimal.Zero, err
+		}
+		units = append(units, unit)
+	}
+	if err = rows.Err(); err != nil {
+		return decimal.Zero, err
+	}
+	total := decimal.Zero
+	for day := monthStart; day.Before(monthEnd); day = day.AddDate(0, 0, 1) {
+		for _, unit := range units {
+			total = total.Add(fixedDailyCost(day, unit.monthly, unit.unitFrom, unit.unitTo, unit.effectiveFrom, unit.effectiveTo))
+		}
+	}
+	return total, nil
 }
 
 func (r *costManagementRepository) GetCostBreakdown(ctx context.Context, start, end time.Time, scope string) (*service.CostBreakdownResult, error) {
@@ -1292,29 +1354,14 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		return err
 	}
 	for _, unit := range units {
-		start, end := fixedBillingPeriod(bucket, unit.unitFrom)
-		daily, err := decimal.NewFromString(unit.monthly)
+		monthly, err := decimal.NewFromString(unit.monthly)
 		if err != nil {
 			return err
 		}
-		activeStart, activeEnd := bucket, bucket.AddDate(0, 0, 1)
-		if unit.unitFrom.After(activeStart) {
-			activeStart = unit.unitFrom
-		}
-		if unit.unitTo.Valid && unit.unitTo.Time.Before(activeEnd) {
-			activeEnd = unit.unitTo.Time
-		}
-		if unit.effectiveFrom.After(activeStart) {
-			activeStart = unit.effectiveFrom
-		}
-		if unit.effectiveTo.Valid && unit.effectiveTo.Time.Before(activeEnd) {
-			activeEnd = unit.effectiveTo.Time
-		}
-		if !activeEnd.After(activeStart) {
+		daily := fixedDailyCost(bucket, monthly, unit.unitFrom, unit.unitTo, unit.effectiveFrom, unit.effectiveTo)
+		if daily.IsZero() {
 			continue
 		}
-		daily = daily.Mul(decimal.NewFromInt(activeEnd.Unix() - activeStart.Unix())).
-			Div(decimal.NewFromInt(end.Unix() - start.Unix()))
 		if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,subscription_unit_id,subscription_unit_version_id,amount_cny) VALUES($1,'fixed_plan_total',$2,$3,$4,$5::numeric)`, bucket, unit.planID, unit.unitID, unit.versionID, daily.String()); err != nil {
 			return err
 		}
@@ -1359,6 +1406,28 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		}
 	}
 	return nil
+}
+
+func fixedDailyCost(bucket time.Time, monthly decimal.Decimal, unitFrom time.Time, unitTo sql.NullTime, effectiveFrom time.Time, effectiveTo sql.NullTime) decimal.Decimal {
+	periodStart, periodEnd := fixedBillingPeriod(bucket, unitFrom)
+	activeStart, activeEnd := bucket, bucket.AddDate(0, 0, 1)
+	if unitFrom.After(activeStart) {
+		activeStart = unitFrom
+	}
+	if unitTo.Valid && unitTo.Time.Before(activeEnd) {
+		activeEnd = unitTo.Time
+	}
+	if effectiveFrom.After(activeStart) {
+		activeStart = effectiveFrom
+	}
+	if effectiveTo.Valid && effectiveTo.Time.Before(activeEnd) {
+		activeEnd = effectiveTo.Time
+	}
+	if !activeEnd.After(activeStart) {
+		return decimal.Zero
+	}
+	return monthly.Mul(decimal.NewFromInt(activeEnd.Unix() - activeStart.Unix())).
+		Div(decimal.NewFromInt(periodEnd.Unix() - periodStart.Unix()))
 }
 
 func fixedBillingPeriod(day, anchor time.Time) (time.Time, time.Time) {
