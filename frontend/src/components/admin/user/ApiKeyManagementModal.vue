@@ -1,45 +1,64 @@
 <template>
   <BaseDialog :show="show" :title="t('admin.users.apiKeyManagement.title')" width="extra-wide" @close="emit('close')">
-    <div class="space-y-4">
-      <div>
-        <label class="input-label" for="api-key-group-filter">{{ t('admin.users.apiKeyManagement.group') }}</label>
-        <Select
-          id="api-key-group-filter"
-          v-model="groupId"
-          :options="groupOptions"
-          :placeholder="t('admin.users.apiKeyManagement.selectGroup')"
-          searchable
-        />
+    <div class="space-y-3">
+      <div class="grid items-end gap-3 md:grid-cols-[minmax(18rem,1fr)_auto]">
+        <div>
+          <label class="input-label" for="api-key-group-filter">{{ t('admin.users.apiKeyManagement.group') }}</label>
+          <Select
+            id="api-key-group-filter"
+            v-model="groupId"
+            :options="groupOptions"
+            :placeholder="t('admin.users.apiKeyManagement.selectGroup')"
+            searchable
+          />
+        </div>
+        <div v-if="groupId && pagination.total > 0" class="flex flex-wrap items-center justify-end gap-2">
+          <span class="mr-1 text-sm text-gray-500 dark:text-gray-400">
+            {{ t('admin.users.apiKeyManagement.total', { count: pagination.total }) }}
+          </span>
+          <button
+            v-if="!allInGroupSelected"
+            type="button"
+            class="btn btn-primary"
+            data-test="select-all-in-group"
+            @click="selectAllInGroup"
+          >
+            <Icon name="checkCircle" size="sm" />
+            {{ t('admin.users.apiKeyManagement.selectAll', { count: pagination.total }) }}
+          </button>
+          <button v-else type="button" class="btn btn-secondary" @click="clearSelection">
+            <Icon name="x" size="sm" />
+            {{ t('admin.users.apiKeyManagement.clearSelection') }}
+          </button>
+        </div>
       </div>
 
       <div v-if="!groupId" class="py-12 text-center text-sm text-gray-500">
         {{ t('admin.users.apiKeyManagement.selectGroupHint') }}
       </div>
       <template v-else>
-        <div
-          v-if="selectedCount > 0 || allInGroupSelected"
-          class="flex flex-wrap items-center gap-2 rounded-lg bg-primary-50 p-3 text-sm text-primary-900 dark:bg-primary-900/20 dark:text-primary-100"
-        >
-          <span class="font-medium">
-            {{ allInGroupSelected
-              ? t('admin.users.apiKeyManagement.selectedAll', { count: pagination.total })
-              : t('admin.users.apiKeyManagement.selected', { count: selectedCount }) }}
-          </span>
+        <div class="flex min-h-10 flex-wrap items-center justify-between gap-2 border-y border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900/40">
+          <div class="flex items-center gap-2">
+            <Icon :name="allInGroupSelected ? 'checkCircle' : 'infoCircle'" size="sm" :class="allInGroupSelected || selectedCount > 0 ? 'text-primary-600' : 'text-gray-400'" />
+            <span :class="allInGroupSelected || selectedCount > 0 ? 'font-medium text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400'">
+              {{ allInGroupSelected
+                ? t('admin.users.apiKeyManagement.selectedAll', { count: pagination.total })
+                : selectedCount > 0
+                  ? t('admin.users.apiKeyManagement.selected', { count: selectedCount })
+                  : t('admin.users.apiKeyManagement.noneSelected') }}
+            </span>
+          </div>
           <button
-            v-if="!allInGroupSelected && pagination.total > selectedCount"
+            v-if="selectedCount > 0 && !allInGroupSelected"
             type="button"
-            class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300"
-            @click="selectAllInGroup"
+            class="text-sm font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+            @click="clearSelection"
           >
-            {{ t('admin.users.apiKeyManagement.selectAll', { count: pagination.total }) }}
-          </button>
-          <span>•</span>
-          <button type="button" class="text-xs font-medium text-primary-700 hover:text-primary-800 dark:text-primary-300" @click="clearSelection">
-            {{ t('common.clear') }}
+            {{ t('admin.users.apiKeyManagement.clearSelection') }}
           </button>
         </div>
 
-        <div class="min-h-72 overflow-hidden rounded-lg border border-gray-200 dark:border-dark-700">
+        <div class="h-[min(42vh,26rem)] min-h-64 overflow-hidden border border-gray-200 dark:border-dark-700">
           <DataTable
             :columns="columns"
             :data="keys"
@@ -76,33 +95,36 @@
           @update:page-size="changePageSize"
         />
 
-        <div class="grid gap-4 border-t border-gray-200 pt-4 dark:border-dark-700 md:grid-cols-3">
-          <div class="space-y-3">
-            <div class="flex items-center justify-between gap-3">
-              <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.rateLimits') }}</label>
-              <Toggle v-model="editRates" :aria-label="t('admin.users.apiKeyManagement.rateLimits')" />
+        <section class="border-t border-gray-200 pt-3 dark:border-dark-700">
+          <h4 class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.users.apiKeyManagement.changes') }}</h4>
+          <div class="grid divide-y divide-gray-200 border-y border-gray-200 dark:divide-dark-700 dark:border-dark-700 md:grid-cols-3 md:divide-x md:divide-y-0">
+            <div class="space-y-3 py-3 md:pr-4">
+              <div class="flex items-center gap-3">
+                <Toggle v-model="editRates" :aria-label="t('admin.users.apiKeyManagement.rateLimits')" />
+                <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.rateLimits') }}</label>
+              </div>
+              <div v-if="editRates" class="grid grid-cols-3 gap-2">
+                <label class="text-xs text-gray-500">5h<input v-model="rate5h" type="number" min="0" step="0.01" class="input mt-1" /></label>
+                <label class="text-xs text-gray-500">1d<input v-model="rate1d" type="number" min="0" step="0.01" class="input mt-1" /></label>
+                <label class="text-xs text-gray-500">7d<input v-model="rate7d" type="number" min="0" step="0.01" class="input mt-1" /></label>
+              </div>
             </div>
-            <div v-if="editRates" class="grid grid-cols-3 gap-2">
-              <label class="text-xs text-gray-500">5h<input v-model="rate5h" type="number" min="0" step="0.01" class="input mt-1" /></label>
-              <label class="text-xs text-gray-500">1d<input v-model="rate1d" type="number" min="0" step="0.01" class="input mt-1" /></label>
-              <label class="text-xs text-gray-500">7d<input v-model="rate7d" type="number" min="0" step="0.01" class="input mt-1" /></label>
+            <div class="space-y-3 py-3 md:px-4">
+              <div class="flex items-center gap-3">
+                <Toggle v-model="editConcurrency" :aria-label="t('admin.users.apiKeyManagement.concurrency')" />
+                <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.concurrency') }}</label>
+              </div>
+              <input v-if="editConcurrency" v-model="concurrency" type="number" min="0" step="1" class="input" />
+            </div>
+            <div class="space-y-3 py-3 md:pl-4">
+              <div class="flex items-center gap-3">
+                <Toggle v-model="editStatus" :aria-label="t('common.status')" />
+                <label class="input-label mb-0">{{ t('common.status') }}</label>
+              </div>
+              <Select v-if="editStatus" v-model="status" :options="statusOptions" />
             </div>
           </div>
-          <div class="space-y-3">
-            <div class="flex items-center justify-between gap-3">
-              <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.concurrency') }}</label>
-              <Toggle v-model="editConcurrency" :aria-label="t('admin.users.apiKeyManagement.concurrency')" />
-            </div>
-            <input v-if="editConcurrency" v-model="concurrency" type="number" min="0" step="1" class="input" />
-          </div>
-          <div class="space-y-3">
-            <div class="flex items-center justify-between gap-3">
-              <label class="input-label mb-0">{{ t('common.status') }}</label>
-              <Toggle v-model="editStatus" :aria-label="t('common.status')" />
-            </div>
-            <Select v-if="editStatus" v-model="status" :options="statusOptions" />
-          </div>
-        </div>
+        </section>
         <p v-if="invalidValues" class="text-sm text-red-600 dark:text-red-400">{{ t('admin.users.apiKeyManagement.invalidValues') }}</p>
         <p v-if="selectedCount > 500 && !allInGroupSelected" class="text-sm text-red-600 dark:text-red-400">
           {{ t('admin.users.apiKeyManagement.selectionLimit') }}
@@ -135,6 +157,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ close: [] }>()

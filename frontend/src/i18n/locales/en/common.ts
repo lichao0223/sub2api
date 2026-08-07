@@ -1,5 +1,6 @@
 export default {
   common: {
+    clear: 'Clear',
     loading: 'Loading...',
     submitting: 'Submitting...',
     justNow: 'just now',
