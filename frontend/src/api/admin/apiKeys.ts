@@ -13,6 +13,22 @@ export interface UpdateApiKeyGroupResult {
   granted_group_name?: string
 }
 
+export interface BatchUpdateApiKeysRequest {
+  group_id: number
+  api_key_ids?: number[]
+  all: boolean
+  rate_limit_5h?: number
+  rate_limit_1d?: number
+  rate_limit_7d?: number
+  concurrency_limit?: number
+  status?: 'active' | 'inactive'
+}
+
+export async function batchUpdate(request: BatchUpdateApiKeysRequest): Promise<{ affected: number }> {
+  const { data } = await apiClient.post<{ affected: number }>('/admin/api-keys/batch-update', request)
+  return data
+}
+
 /**
  * Update an API key's group binding
  * @param id - API Key ID
@@ -49,6 +65,7 @@ export async function rotateForUser(userId: number): Promise<ApiKey[]> {
 }
 
 export const apiKeysAPI = {
+  batchUpdate,
   updateApiKeyGroup,
   createForUser,
   update,

@@ -11,6 +11,7 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/ent/predicate"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -681,6 +682,47 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 	}
 
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
+}
+
+func (r *apiKeyRepository) BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields service.APIKeyBatchUpdateFields) (int, []string, error) {
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	predicates := []predicate.APIKey{apikey.GroupIDEQ(groupID), apikey.DeletedAtIsNil()}
+	if !all {
+		predicates = append(predicates, apikey.IDIn(ids...))
+	}
+	keys, err := tx.APIKey.Query().Where(predicates...).Select(apikey.FieldKey).Strings(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	update := tx.APIKey.Update().Where(predicates...).SetUpdatedAt(time.Now())
+	if fields.RateLimit5h != nil {
+		update.SetRateLimit5h(*fields.RateLimit5h)
+	}
+	if fields.RateLimit1d != nil {
+		update.SetRateLimit1d(*fields.RateLimit1d)
+	}
+	if fields.RateLimit7d != nil {
+		update.SetRateLimit7d(*fields.RateLimit7d)
+	}
+	if fields.ConcurrencyLimit != nil {
+		update.SetConcurrencyLimit(*fields.ConcurrencyLimit)
+	}
+	if fields.Status != nil {
+		update.SetStatus(*fields.Status)
+	}
+	affected, err := update.Save(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, nil, err
+	}
+	return affected, keys, nil
 }
 
 func apiKeyListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {

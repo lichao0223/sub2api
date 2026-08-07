@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"math"
 	"strconv"
 	"time"
 
@@ -56,6 +57,61 @@ type AdminUpdateAPIKeyRequest struct {
 	RateLimit7d         *float64 `json:"rate_limit_7d"`
 	ResetRateLimitUsage *bool    `json:"reset_rate_limit_usage"`
 	ConcurrencyLimit    *int     `json:"concurrency_limit" binding:"omitempty,gte=0"`
+}
+
+type AdminBatchUpdateAPIKeysRequest struct {
+	GroupID          int64    `json:"group_id"`
+	APIKeyIDs        []int64  `json:"api_key_ids"`
+	All              bool     `json:"all"`
+	RateLimit5h      *float64 `json:"rate_limit_5h"`
+	RateLimit1d      *float64 `json:"rate_limit_1d"`
+	RateLimit7d      *float64 `json:"rate_limit_7d"`
+	ConcurrencyLimit *int     `json:"concurrency_limit"`
+	Status           *string  `json:"status"`
+}
+
+// BatchUpdate updates API keys selected from one group.
+// POST /api/v1/admin/api-keys/batch-update
+func (h *AdminAPIKeyHandler) BatchUpdate(c *gin.Context) {
+	if h.apiKeyService == nil {
+		response.InternalError(c, "API key service unavailable")
+		return
+	}
+	var req AdminBatchUpdateAPIKeysRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.GroupID <= 0 || (!req.All && len(req.APIKeyIDs) == 0) || len(req.APIKeyIDs) > 500 {
+		response.BadRequest(c, "Invalid API key selection")
+		return
+	}
+	for _, value := range []*float64{req.RateLimit5h, req.RateLimit1d, req.RateLimit7d} {
+		if value != nil && (*value < 0 || math.IsNaN(*value) || math.IsInf(*value, 0)) {
+			response.BadRequest(c, "Rate limits must be non-negative finite numbers")
+			return
+		}
+	}
+	if req.ConcurrencyLimit != nil && *req.ConcurrencyLimit < 0 {
+		response.BadRequest(c, "Concurrency limit must be a non-negative integer")
+		return
+	}
+	if req.Status != nil && *req.Status != "active" && *req.Status != "inactive" {
+		response.BadRequest(c, "Status must be active or inactive")
+		return
+	}
+	fields := service.APIKeyBatchUpdateFields{
+		RateLimit5h: req.RateLimit5h, RateLimit1d: req.RateLimit1d, RateLimit7d: req.RateLimit7d,
+		ConcurrencyLimit: req.ConcurrencyLimit, Status: req.Status,
+	}
+	affected, err := h.apiKeyService.AdminBatchUpdate(c.Request.Context(), service.AdminBatchUpdateAPIKeysRequest{
+		GroupID: req.GroupID, IDs: req.APIKeyIDs, All: req.All, Fields: fields,
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"affected": affected})
 }
 
 // Create handles creating an API key for a user.

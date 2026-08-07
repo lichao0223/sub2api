@@ -13,6 +13,7 @@ import type {
   CompositeRouteDecision,
   CreateGroupRequest,
   UpdateGroupRequest,
+  ApiKey,
   PaginatedResponse
 } from '@/types'
 
@@ -271,8 +272,8 @@ export async function getGroupApiKeys(
   id: number,
   page: number = 1,
   pageSize: number = 20
-): Promise<PaginatedResponse<any>> {
-  const { data } = await apiClient.get<PaginatedResponse<any>>(`/admin/groups/${id}/api-keys`, {
+): Promise<PaginatedResponse<ApiKey>> {
+  const { data } = await apiClient.get<PaginatedResponse<ApiKey>>(`/admin/groups/${id}/api-keys`, {
     params: { page, page_size: pageSize }
   })
   return data

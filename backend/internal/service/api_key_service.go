@@ -131,6 +131,25 @@ type apiKeyAllByUserIDLister interface {
 	ListAllByUserID(ctx context.Context, userID int64, filters APIKeyListFilters) ([]APIKey, error)
 }
 
+type apiKeyAdminBatchUpdater interface {
+	BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields APIKeyBatchUpdateFields) (int, []string, error)
+}
+
+type APIKeyBatchUpdateFields struct {
+	RateLimit5h      *float64
+	RateLimit1d      *float64
+	RateLimit7d      *float64
+	ConcurrencyLimit *int
+	Status           *string
+}
+
+type AdminBatchUpdateAPIKeysRequest struct {
+	GroupID int64
+	IDs     []int64
+	All     bool
+	Fields  APIKeyBatchUpdateFields
+}
+
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
 type APIKeyRateLimitData struct {
 	Usage5h       float64
@@ -399,6 +418,45 @@ func (s *APIKeyService) RotateUserKeys(ctx context.Context, userID int64) ([]API
 	}
 	s.deleteAuthCacheByKeys(ctx, oldKeys)
 	return keys, nil
+}
+
+// AdminBatchUpdate updates selected keys, or every key in one group, in one repository operation.
+func (s *APIKeyService) AdminBatchUpdate(ctx context.Context, req AdminBatchUpdateAPIKeysRequest) (int, error) {
+	if req.GroupID <= 0 {
+		return 0, infraerrors.BadRequest("INVALID_GROUP_ID", "group_id must be positive")
+	}
+	if !req.All && len(req.IDs) == 0 {
+		return 0, infraerrors.BadRequest("API_KEY_IDS_REQUIRED", "api_key_ids is required")
+	}
+	if len(req.IDs) > 500 {
+		return 0, infraerrors.BadRequest("TOO_MANY_API_KEYS", "at most 500 api keys can be updated")
+	}
+	if req.Fields.RateLimit5h == nil && req.Fields.RateLimit1d == nil && req.Fields.RateLimit7d == nil &&
+		req.Fields.ConcurrencyLimit == nil && req.Fields.Status == nil {
+		return 0, infraerrors.BadRequest("NO_UPDATES", "at least one field is required")
+	}
+
+	seen := make(map[int64]struct{}, len(req.IDs))
+	ids := make([]int64, 0, len(req.IDs))
+	for _, id := range req.IDs {
+		if id <= 0 {
+			return 0, infraerrors.BadRequest("INVALID_API_KEY_ID", "api key IDs must be positive")
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	updater, ok := s.apiKeyRepo.(apiKeyAdminBatchUpdater)
+	if !ok {
+		return 0, errors.New("api key batch update unavailable")
+	}
+	affected, keys, err := updater.BatchUpdateByGroup(ctx, req.GroupID, ids, req.All, req.Fields)
+	if err != nil {
+		return 0, fmt.Errorf("batch update api keys: %w", err)
+	}
+	s.deleteAuthCacheByKeys(ctx, keys)
+	return affected, nil
 }
 
 // ValidateCustomKey 验证自定义API Key格式

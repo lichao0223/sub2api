@@ -701,6 +701,7 @@ export interface ApiKey {
   concurrency_limit: number // Maximum concurrent requests (0 = unlimited)
   current_concurrency: number
   group?: Group
+  user?: User
   rate_limit_5h: number
   rate_limit_1d: number
   rate_limit_7d: number

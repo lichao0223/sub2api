@@ -148,6 +148,7 @@ var auditActionOverrides = map[string]string{
 	"DELETE /api/v1/integrations/users/:external_user_id":               "integrations.users.delete",
 	"POST /api/v1/integrations/users/:external_user_id/api-keys/rotate": "integrations.users.api_keys.rotate",
 	"POST /api/v1/admin/users/:id/api-keys/rotate":                      "admin.users.api_keys.rotate",
+	"POST /api/v1/admin/api-keys/batch-update":                          "admin.api_keys.batch_update",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。

@@ -257,13 +257,9 @@
               <Icon name="plus" size="md" class="mr-2" />
               {{ t('admin.users.createUser') }}
             </button>
-            <button
-              @click="showDeleteExternalUsersDialog = true"
-              class="btn btn-danger flex-1 md:flex-initial"
-              :disabled="deletingExternalUsers"
-            >
-              <Icon name="trash" size="md" class="mr-2" />
-              {{ deletingExternalUsers ? t('admin.users.deletingExternalUsers') : t('admin.users.deleteExternalUsers') }}
+            <button @click="showApiKeyManagementModal = true" class="btn btn-secondary flex-1 md:flex-initial">
+              <Icon name="key" size="md" class="mr-2" />
+              {{ t('admin.users.apiKeyManagement.action') }}
             </button>
           </div>
         </div>
@@ -762,16 +758,6 @@
       @confirm="confirmDelete"
       @cancel="closeDeleteDialog"
     />
-    <ConfirmDialog
-      :show="showDeleteExternalUsersDialog"
-      :title="t('admin.users.deleteExternalUsers')"
-      :message="t('admin.users.deleteExternalUsersConfirm')"
-      :confirm-text="t('admin.users.confirmDeleteExternalUsers')"
-      :danger="true"
-      :loading="deletingExternalUsers"
-      @confirm="confirmDeleteExternalUsers"
-      @cancel="showDeleteExternalUsersDialog = false"
-    />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -787,6 +773,7 @@
       @success="loadUsers"
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
+    <ApiKeyManagementModal :show="showApiKeyManagementModal" @close="showApiKeyManagementModal = false" />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
     <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
     <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
@@ -815,7 +802,6 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
 import Select from '@/components/common/Select.vue'
@@ -830,6 +816,7 @@ import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
 import UserPlatformQuotaModal from '@/components/admin/user/UserPlatformQuotaModal.vue'
 import UserApiKeysModal from '@/components/admin/user/UserApiKeysModal.vue'
+import ApiKeyManagementModal from '@/components/admin/user/ApiKeyManagementModal.vue'
 import UserAllowedGroupsModal from '@/components/admin/user/UserAllowedGroupsModal.vue'
 import UserBalanceModal from '@/components/admin/user/UserBalanceModal.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
@@ -1348,9 +1335,8 @@ const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
 const showDeleteDialog = ref(false)
 const deletingUserLoading = ref(false)
-const showDeleteExternalUsersDialog = ref(false)
-const deletingExternalUsers = ref(false)
 const showApiKeysModal = ref(false)
+const showApiKeyManagementModal = ref(false)
 const showAttributesModal = ref(false)
 const showPlatformQuotaModal = ref(false)
 const editingUser = ref<AdminUser | null>(null)
@@ -1819,25 +1805,6 @@ const confirmDelete = async (migrateUsageToUserID?: number) => {
     console.error('Error deleting user:', error)
   } finally {
     deletingUserLoading.value = false
-  }
-}
-
-const confirmDeleteExternalUsers = async () => {
-  if (deletingExternalUsers.value) return
-  deletingExternalUsers.value = true
-  try {
-    const result = await adminAPI.users.deleteExternalUsers()
-    showDeleteExternalUsersDialog.value = false
-    appStore.showSuccess(t('admin.users.externalUsersDeletedSuccess', {
-      deleted: result.summary.deleted,
-      failed: result.summary.failed
-    }))
-    await loadUsers()
-  } catch (error: any) {
-    appStore.showError(error.response?.data?.detail || t('admin.users.failedToDeleteExternalUsers'))
-    console.error('Error deleting external users:', error)
-  } finally {
-    deletingExternalUsers.value = false
   }
 }
 
