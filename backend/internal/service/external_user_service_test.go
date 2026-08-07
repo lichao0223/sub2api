@@ -464,6 +464,10 @@ func (s *externalUserAPIKeyStub) List(_ context.Context, userID int64, _ paginat
 	return out, &pagination.PaginationResult{Total: int64(len(out))}, nil
 }
 
+func (s *externalUserAPIKeyStub) RotateUserKeys(context.Context, int64) ([]APIKey, error) {
+	panic("unexpected RotateUserKeys call")
+}
+
 type externalUserMappingStub struct {
 	byExternal map[string]*ExternalUserMapping
 	nextID     int64
