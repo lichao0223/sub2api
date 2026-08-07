@@ -208,6 +208,30 @@ func (h *AdminAPIKeyHandler) Delete(c *gin.Context) {
 	response.Success(c, gin.H{"message": "API key deleted successfully"})
 }
 
+// RotateUserKeys replaces all API keys owned by a user.
+// POST /api/v1/admin/users/:id/api-keys/rotate
+func (h *AdminAPIKeyHandler) RotateUserKeys(c *gin.Context) {
+	if h.apiKeyService == nil {
+		response.InternalError(c, "API key service unavailable")
+		return
+	}
+	userID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid user ID")
+		return
+	}
+	keys, err := h.apiKeyService.RotateUserKeys(c.Request.Context(), userID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.APIKey, len(keys))
+	for i := range keys {
+		out[i] = *dto.APIKeyFromService(&keys[i])
+	}
+	response.Success(c, gin.H{"api_keys": out})
+}
+
 func (h *AdminAPIKeyHandler) updateGroupAndRateLimit(c *gin.Context, keyID int64, req AdminUpdateAPIKeyRequest) {
 	var err error
 	var resetKey *service.APIKey

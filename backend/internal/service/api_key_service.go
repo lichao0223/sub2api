@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"sort"
@@ -120,6 +121,10 @@ type APIKeyRepository interface {
 	IncrementRateLimitUsage(ctx context.Context, id int64, cost float64) error
 	ResetRateLimitWindows(ctx context.Context, id int64) error
 	GetRateLimitData(ctx context.Context, id int64) (*APIKeyRateLimitData, error)
+}
+
+type apiKeyUserRotator interface {
+	RotateByUserID(ctx context.Context, userID int64, newKeys []string) ([]APIKey, error)
 }
 
 type apiKeyAllByUserIDLister interface {
@@ -366,6 +371,34 @@ func (s *APIKeyService) GenerateKey() (string, error) {
 
 	key := prefix + hex.EncodeToString(bytes)
 	return key, nil
+}
+
+// RotateUserKeys atomically replaces every API key owned by a user.
+func (s *APIKeyService) RotateUserKeys(ctx context.Context, userID int64) ([]APIKey, error) {
+	if _, err := s.userRepo.GetByID(ctx, userID); err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	oldKeys, err := s.apiKeyRepo.ListKeysByUserID(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list api keys: %w", err)
+	}
+	newKeys := make([]string, len(oldKeys))
+	for i := range newKeys {
+		newKeys[i], err = s.GenerateKey()
+		if err != nil {
+			return nil, err
+		}
+	}
+	rotator, ok := s.apiKeyRepo.(apiKeyUserRotator)
+	if !ok {
+		return nil, errors.New("api key rotation unavailable")
+	}
+	keys, err := rotator.RotateByUserID(ctx, userID, newKeys)
+	if err != nil {
+		return nil, fmt.Errorf("rotate api keys: %w", err)
+	}
+	s.deleteAuthCacheByKeys(ctx, oldKeys)
+	return keys, nil
 }
 
 // ValidateCustomKey 验证自定义API Key格式

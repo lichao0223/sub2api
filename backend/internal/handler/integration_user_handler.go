@@ -27,6 +27,7 @@ type externalUserServicePort interface {
 	DeleteByExternalID(c context.Context, externalUserID string) (*service.ExternalUserDeleteResult, error)
 	DeleteAll(c context.Context) (*service.ExternalUserDeleteAllResult, error)
 	Sync(c context.Context, input service.ExternalUserSyncInput) (*service.ExternalUserSyncResult, error)
+	RotateAPIKeysByExternalID(c context.Context, externalUserID string) (*service.ExternalUserRotateAPIKeysResult, error)
 }
 
 type IntegrationUserHandler struct {
@@ -102,6 +103,20 @@ func (h *IntegrationUserHandler) DeleteByExternalID(c *gin.Context) {
 
 func (h *IntegrationUserHandler) DeleteAll(c *gin.Context) {
 	result, err := h.externalUserService.DeleteAll(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func (h *IntegrationUserHandler) RotateAPIKeys(c *gin.Context) {
+	externalUserID := strings.TrimSpace(c.Param("external_user_id"))
+	if externalUserID == "" || len(externalUserID) > externalUserIDMaxLen {
+		response.ErrorFrom(c, invalidExternalUserArgument("external_user_id", "invalid external_user_id"))
+		return
+	}
+	result, err := h.externalUserService.RotateAPIKeysByExternalID(c.Request.Context(), externalUserID)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

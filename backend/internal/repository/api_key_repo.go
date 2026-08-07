@@ -335,6 +335,50 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	return nil
 }
 
+func (r *apiKeyRepository) RotateByUserID(ctx context.Context, userID int64, newKeys []string) ([]service.APIKey, error) {
+	if existingTx := dbent.TxFromContext(ctx); existingTx != nil {
+		return r.rotateByUserID(ctx, existingTx.Client(), userID, newKeys)
+	}
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	keys, err := r.rotateByUserID(ctx, tx.Client(), userID, newKeys)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func (r *apiKeyRepository) rotateByUserID(ctx context.Context, client *dbent.Client, userID int64, newKeys []string) ([]service.APIKey, error) {
+	entities, err := client.APIKey.Query().
+		Where(apikey.UserIDEQ(userID), apikey.DeletedAtIsNil()).
+		Order(dbent.Asc(apikey.FieldID)).
+		All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(entities) != len(newKeys) {
+		return nil, fmt.Errorf("api key set changed during rotation")
+	}
+	rotated := make([]service.APIKey, len(entities))
+	for i, entity := range entities {
+		updated, err := client.APIKey.UpdateOneID(entity.ID).
+			SetKey(newKeys[i]).
+			SetUpdatedAt(time.Now()).
+			Save(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rotated[i] = *apiKeyEntityToService(updated)
+	}
+	return rotated, nil
+}
+
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	// 存在唯一键约束 生成tombstone key 用来释放原key，长度远小于 128，满足 schema 限制
 	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())

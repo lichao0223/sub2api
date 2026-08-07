@@ -26,10 +26,19 @@
             {{ user.username }}
           </p>
         </div>
-        <button class="btn btn-primary" @click="openCreateForm">
-          <Icon name="plus" size="sm" class="mr-2" />
-          {{ t('common.create') }}
-        </button>
+        <div class="flex gap-2">
+          <button
+            class="btn btn-secondary"
+            :disabled="rotating || apiKeys.length === 0"
+            @click="rotateKeys"
+          >
+            {{ rotating ? t('admin.users.rotatingApiKeys') : t('admin.users.rotateApiKeys') }}
+          </button>
+          <button class="btn btn-primary" @click="openCreateForm">
+            <Icon name="plus" size="sm" class="mr-2" />
+            {{ t('common.create') }}
+          </button>
+        </div>
       </div>
 
       <form
@@ -566,6 +575,7 @@ const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
 const loading = ref(false)
 const submitting = ref(false)
+const rotating = ref(false)
 const showForm = ref(false)
 const editingKey = ref<ApiKey | null>(null)
 
@@ -849,6 +859,21 @@ const deleteKey = async (key: ApiKey) => {
     await load()
   } catch (error: any) {
     appStore.showError(error?.message || t('keys.failedToDelete'))
+  }
+}
+
+const rotateKeys = async () => {
+  if (!props.user || rotating.value) return
+  if (!window.confirm(t('admin.users.rotateApiKeysConfirm'))) return
+  rotating.value = true
+  try {
+    await adminAPI.apiKeys.rotateForUser(props.user.id)
+    await load()
+    appStore.showSuccess(t('admin.users.rotateApiKeysSuccess'))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.users.rotateApiKeysFailed'))
+  } finally {
+    rotating.value = false
   }
 }
 

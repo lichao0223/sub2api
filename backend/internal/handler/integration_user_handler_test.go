@@ -236,6 +236,17 @@ func TestIntegrationUserHandler_SyncSuccess(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), `"api_key":`)
 }
 
+func TestIntegrationUserHandler_RotateAPIKeys(t *testing.T) {
+	svc := &integrationUserServiceStub{}
+	router, _ := newIntegrationUserTestRouter(svc)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/integrations/users/u-1/api-keys/rotate", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "u-1", svc.rotateExternalUserID)
+}
+
 func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine, *IntegrationUserHandler) {
 	gin.SetMode(gin.TestMode)
 	h := NewIntegrationUserHandler(svc)
@@ -243,6 +254,7 @@ func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine,
 	router.POST("/integrations/users", h.Create)
 	router.DELETE("/integrations/users", h.DeleteAll)
 	router.DELETE("/integrations/users/:external_user_id", h.DeleteByExternalID)
+	router.POST("/integrations/users/:external_user_id/api-keys/rotate", h.RotateAPIKeys)
 	router.POST("/integrations/users/sync", h.Sync)
 	return router, h
 }
@@ -275,6 +287,8 @@ type integrationUserServiceStub struct {
 	syncResult *service.ExternalUserSyncResult
 	syncErr    error
 	syncInput  service.ExternalUserSyncInput
+
+	rotateExternalUserID string
 }
 
 func (s *integrationUserServiceStub) Create(_ context.Context, input service.ExternalUserInput) (*service.ExternalUserResult, error) {
@@ -307,4 +321,9 @@ func (s *integrationUserServiceStub) Sync(_ context.Context, input service.Exter
 		return nil, s.syncErr
 	}
 	return s.syncResult, nil
+}
+
+func (s *integrationUserServiceStub) RotateAPIKeysByExternalID(_ context.Context, externalUserID string) (*service.ExternalUserRotateAPIKeysResult, error) {
+	s.rotateExternalUserID = externalUserID
+	return &service.ExternalUserRotateAPIKeysResult{ExternalUserID: externalUserID}, nil
 }

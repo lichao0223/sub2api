@@ -69,6 +69,7 @@ type externalUserAPIKeyPort interface {
 	Create(ctx context.Context, userID int64, req CreateAPIKeyRequest) (*APIKey, error)
 	GetByID(ctx context.Context, id int64) (*APIKey, error)
 	List(ctx context.Context, userID int64, params pagination.PaginationParams, filters APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error)
+	RotateUserKeys(ctx context.Context, userID int64) ([]APIKey, error)
 }
 
 type ExternalUserService struct {
@@ -129,6 +130,12 @@ type ExternalUserDeleteResult struct {
 	Status         string `json:"status"`
 	ExternalUserID string `json:"external_user_id"`
 	UserID         int64  `json:"user_id"`
+}
+
+type ExternalUserRotateAPIKeysResult struct {
+	ExternalUserID string                   `json:"external_user_id"`
+	UserID         int64                    `json:"user_id"`
+	APIKeys        []ExternalUserAPIKeyInfo `json:"api_keys"`
 }
 
 type ExternalUserDeleteAllResult struct {
@@ -253,6 +260,26 @@ func (s *ExternalUserService) DeleteByExternalID(ctx context.Context, externalUs
 		Status:         ExternalUserStatusDeleted,
 		ExternalUserID: externalUserID,
 		UserID:         mapping.UserID,
+	}, nil
+}
+
+func (s *ExternalUserService) RotateAPIKeysByExternalID(ctx context.Context, externalUserID string) (*ExternalUserRotateAPIKeysResult, error) {
+	mapping, err := s.mappingRepo.GetByExternalUserID(ctx, externalUserID)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := s.apiKeyService.RotateUserKeys(ctx, mapping.UserID)
+	if err != nil {
+		return nil, ErrExternalUserInternal.WithCause(err)
+	}
+	keyPointers := make([]*APIKey, len(keys))
+	for i := range keys {
+		keyPointers[i] = &keys[i]
+	}
+	return &ExternalUserRotateAPIKeysResult{
+		ExternalUserID: externalUserID,
+		UserID:         mapping.UserID,
+		APIKeys:        externalAPIKeyInfosFromService(keyPointers),
 	}, nil
 }
 

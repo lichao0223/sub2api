@@ -92,3 +92,7 @@ func (s *integrationRoutesUserServiceStub) Sync(_ context.Context, input service
 		},
 	}, nil
 }
+
+func (s *integrationRoutesUserServiceStub) RotateAPIKeysByExternalID(_ context.Context, externalUserID string) (*service.ExternalUserRotateAPIKeysResult, error) {
+	return &service.ExternalUserRotateAPIKeysResult{ExternalUserID: externalUserID}, nil
+}

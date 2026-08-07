@@ -41,10 +41,18 @@ export async function deleteKey(id: number): Promise<{ message: string }> {
   return data
 }
 
+export async function rotateForUser(userId: number): Promise<ApiKey[]> {
+  const { data } = await apiClient.post<{ api_keys: ApiKey[] }>(
+    `/admin/users/${userId}/api-keys/rotate`
+  )
+  return data.api_keys
+}
+
 export const apiKeysAPI = {
   updateApiKeyGroup,
   createForUser,
   update,
+  rotateForUser,
   delete: deleteKey
 }
 
