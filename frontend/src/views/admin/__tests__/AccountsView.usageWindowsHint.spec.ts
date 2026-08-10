@@ -77,6 +77,7 @@ const DataTableStub = {
       </template>
       <div v-for="row in data" :key="row.id" data-test="account-rate">
         <slot name="cell-rate_multiplier" :row="row" />
+        <slot name="cell-usage" :row="row" />
       </div>
     </div>
   `
@@ -86,6 +87,12 @@ const DataTableStub = {
 const HelpTooltipStub = {
   props: ['content', 'widthClass'],
   template: '<span data-test="usage-windows-hint">{{ content }}</span>'
+}
+
+const AccountUsageCellStub = {
+  name: 'AccountUsageCell',
+  props: ['account', 'requestBatchedUsage'],
+  template: '<div data-test="account-usage-cell" />'
 }
 
 function mountView() {
@@ -121,7 +128,7 @@ function mountView() {
         AccountStatusIndicator: true,
         AccountTodayStatsCell: true,
         AccountGroupsCell: true,
-        AccountUsageCell: true,
+        AccountUsageCell: AccountUsageCellStub,
         Icon: true
       }
     }
@@ -167,6 +174,45 @@ describe('admin AccountsView usage windows hint', () => {
     const hint = wrapper.find('[data-test="usage-windows-hint"]')
     expect(hint.exists()).toBe(true)
     expect(hint.text()).toBe('admin.accounts.usageWindowsHint')
+  })
+
+  it('keeps unsupported GLM API keys on the single-account usage loader', async () => {
+    listAccounts.mockResolvedValueOnce({
+      items: [
+        {
+          id: 1,
+          name: 'glm',
+          platform: 'anthropic',
+          type: 'apikey',
+          status: 'active',
+          schedulable: true,
+          extra: { model_provider: 'glm' },
+          created_at: '2026-08-01T00:00:00Z',
+          updated_at: '2026-08-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          name: 'openai-oauth',
+          platform: 'openai',
+          type: 'oauth',
+          status: 'active',
+          schedulable: true,
+          created_at: '2026-08-01T00:00:00Z',
+          updated_at: '2026-08-01T00:00:00Z'
+        }
+      ],
+      total: 2,
+      page: 1,
+      page_size: 20,
+      pages: 1
+    })
+
+    const wrapper = mountView()
+    await flushPromises()
+
+    const cells = wrapper.findAllComponents(AccountUsageCellStub)
+    expect(cells[0].props('requestBatchedUsage')).toBeNull()
+    expect(cells[1].props('requestBatchedUsage')).toBeTypeOf('function')
   })
 
   it('keeps Ollama Cloud in the single usage column and ignores legacy column preferences', async () => {
