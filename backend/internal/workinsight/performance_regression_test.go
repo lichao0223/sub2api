@@ -64,6 +64,25 @@ func TestListSamplesReturnsPageAndTotal(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestListBatchesTreatsAdminStoppedAsPending(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectQuery(`(?s)SELECT COUNT\(\*\).*status='queued'.*admin_stopped`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`(?s)FROM ai_work_insight_batches WHERE.*status='queued'.*admin_stopped.*ORDER BY id DESC`).
+		WithArgs(20, 0).WillReturnRows(sqlmock.NewRows([]string{
+		"id", "user_id", "username_snapshot", "local_date", "active_session_id", "sample_count", "trigger_reason", "status",
+		"attempts", "error_code", "analyzer_model", "analyzer_input_tokens", "analyzer_output_tokens", "analyzed_at", "created_at", "updated_at",
+	}))
+
+	items, total, err := NewRepository(db).ListBatches(context.Background(), 1, 20, "pending")
+	require.NoError(t, err)
+	require.Empty(t, items)
+	require.Equal(t, int64(1), total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestClaimBatchClearsPreviousRetryError(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -88,8 +107,8 @@ func TestClearTerminalLogsKeepsActiveWork(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	mock.ExpectBegin()
-	mock.ExpectExec(`DELETE FROM ai_work_insight_samples WHERE status IN`).WillReturnResult(sqlmock.NewResult(0, 9))
-	mock.ExpectExec(`DELETE FROM ai_work_insight_batches WHERE status IN`).WillReturnResult(sqlmock.NewResult(0, 4))
+	mock.ExpectExec(`(?s)DELETE FROM ai_work_insight_samples WHERE status IN.*admin_stopped`).WillReturnResult(sqlmock.NewResult(0, 9))
+	mock.ExpectExec(`(?s)DELETE FROM ai_work_insight_batches WHERE status IN.*admin_stopped`).WillReturnResult(sqlmock.NewResult(0, 4))
 	mock.ExpectCommit()
 
 	result, err := NewRepository(db).ClearTerminalLogs(context.Background())

@@ -174,10 +174,17 @@ type BatchSummary struct {
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
-func (r *Repository) ListBatches(ctx context.Context, page, size int, errorsOnly bool) ([]BatchSummary, int64, error) {
-	where := `status NOT IN ('retry','failed','dropped')`
-	if errorsOnly {
-		where = `status IN ('retry','failed','dropped')`
+func (r *Repository) ListBatches(ctx context.Context, page, size int, kind string) ([]BatchSummary, int64, error) {
+	where := `status='done'`
+	switch kind {
+	case "pending":
+		where = `(status='queued' OR (status='dropped' AND error_code='admin_stopped'))`
+	case "processing":
+		where = `status='processing'`
+	case "errors":
+		where = `status IN ('retry','failed','dropped') AND NOT (status='dropped' AND error_code='admin_stopped')`
+	case "normal":
+		where = `status NOT IN ('retry','failed','dropped')`
 	}
 	var total int64
 	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ai_work_insight_batches WHERE `+where).Scan(&total); err != nil {
@@ -310,7 +317,8 @@ type RetryBatchCandidate struct {
 func (r *Repository) ListRetryBatchCandidates(ctx context.Context) ([]RetryBatchCandidate, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT b.id,ARRAY_AGG(s.id ORDER BY s.id)
 		FROM ai_work_insight_batches b JOIN ai_work_insight_samples s ON s.batch_id=b.id
-		WHERE b.status IN ('retry','failed','dropped') AND s.status IN ('batched','failed','dropped')
+		WHERE b.status IN ('retry','failed','dropped') AND NOT (b.status='dropped' AND b.error_code='admin_stopped')
+		AND s.status IN ('batched','failed','dropped')
 		GROUP BY b.id ORDER BY b.id`)
 	if err != nil {
 		return nil, err

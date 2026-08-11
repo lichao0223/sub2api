@@ -36,7 +36,7 @@ describe('work insight api', () => {
     expect(client.get).toHaveBeenNthCalledWith(2, '/admin/ai-work-insights/runtime')
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/analyze-now')
     expect(client.get).toHaveBeenNthCalledWith(3, '/admin/ai-work-insights/samples', { params: { page: 1, page_size: 20 } })
-    expect(client.get).toHaveBeenNthCalledWith(4, '/admin/ai-work-insights/batches', { params: { page: 1, page_size: 20, kind: 'normal' } })
+    expect(client.get).toHaveBeenNthCalledWith(4, '/admin/ai-work-insights/batches', { params: { page: 1, page_size: 20, kind: 'done' } })
     expect(client.get).toHaveBeenNthCalledWith(5, '/admin/ai-work-insights/batches', { params: { page: 2, page_size: 50, kind: 'errors' } })
     expect(client.get).toHaveBeenNthCalledWith(6, '/admin/ai-work-insights/analyzer-accounts')
     expect(client.delete).toHaveBeenCalledWith('/admin/ai-work-insights/logs')

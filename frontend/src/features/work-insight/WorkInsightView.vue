@@ -167,7 +167,7 @@
       <p v-else class="py-8 text-center text-sm text-gray-500">正在加载详情…</p>
     </BaseDialog>
 
-    <BaseDialog :show="logsOpen" title="采样与分析日志" width="wide" close-on-click-outside @close="logsOpen = false">
+    <BaseDialog :show="logsOpen" title="采样与分析日志" width="wide" close-on-click-outside @close="closeLogs">
       <div class="space-y-6">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <p class="text-xs text-gray-500">展示数据库中保留的全部历史元数据并分页，不展示原始提示词、模型输出或 Redis 临时文本。</p>
@@ -180,25 +180,47 @@
           <div class="log-stat"><span>分析失败</span><strong>{{ runtime?.failed_batches ?? 0 }}</strong></div>
         </div>
 
-        <section class="overflow-hidden rounded-xl border border-red-200 dark:border-red-900/60">
-          <div class="flex flex-wrap items-center justify-between gap-3 bg-red-50 px-4 py-3 dark:bg-red-950/20">
-            <div><h3 class="font-semibold text-red-800 dark:text-red-300">错误日志</h3><p class="mt-1 text-xs text-red-600 dark:text-red-400">共 {{ errorLogPage.total }} 条，可逐条或全部重新分析。</p></div>
-            <button type="button" class="btn btn-primary btn-sm" data-test="retry-all-errors" :disabled="retryingAll || !errorLogPage.total" @click="retryAllBatches">{{ retryingAll ? '正在重新排队…' : '全部重新分析' }}</button>
+        <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+          <div class="bg-gray-50 px-4 py-3 dark:bg-dark-800"><h3 class="section-title">分析任务</h3><p class="mt-1 text-xs text-gray-500">停止正在执行的任务后会回到待分析，可按需重新开始。</p></div>
+          <div role="tablist" aria-label="分析任务状态" class="tabs m-3 inline-flex">
+            <button type="button" role="tab" class="tab" :class="{ 'tab-active': batchLogTab === 'pending' }" :aria-selected="batchLogTab === 'pending'" @click="batchLogTab = 'pending'">待分析 {{ pendingLogPage.total }}</button>
+            <button type="button" role="tab" class="tab" :class="{ 'tab-active': batchLogTab === 'processing' }" :aria-selected="batchLogTab === 'processing'" @click="batchLogTab = 'processing'">正在分析 {{ processingLogPage.total }}</button>
+            <button type="button" role="tab" class="tab" :class="{ 'tab-active': batchLogTab === 'errors' }" :aria-selected="batchLogTab === 'errors'" @click="batchLogTab = 'errors'">错误 {{ errorLogPage.total }}</button>
           </div>
-          <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b border-red-100 dark:border-red-900/50"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">错误原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
-            <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400">{{ errorLabel(item.error_code) }}</td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-danger btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '停止中…' : '停止' }}</button></div></td></tr>
-            <tr v-if="!logsLoading && !errorLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无错误记录</td></tr>
-          </tbody></table></div>
-          <Pagination :total="errorLogPage.total" :page="errorLogPage.page" :page-size="errorLogPage.page_size" @update:page="value => changeLogPage(errorLogPage, value, loadErrorLogs)" @update:page-size="value => changeLogPageSize(errorLogPage, value, loadErrorLogs)" />
+
+          <div v-show="batchLogTab === 'pending'" role="tabpanel">
+            <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">触发原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
+              <tr v-for="item in pendingLogPage.items" :key="item.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-3">{{ item.error_code === 'admin_stopped' ? '已暂停，待重新分析' : statusLabel(item.status) }}</td><td class="p-3 text-right"><button v-if="item.error_code === 'admin_stopped'" type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '开始中…' : '开始分析' }}</button><button v-else type="button" class="btn btn-secondary btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '暂停中…' : '暂停排队' }}</button></td></tr>
+              <tr v-if="!logsLoading && !pendingLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无待分析任务</td></tr>
+            </tbody></table></div>
+            <Pagination :total="pendingLogPage.total" :page="pendingLogPage.page" :page-size="pendingLogPage.page_size" @update:page="value => changeLogPage(pendingLogPage, value, loadPendingLogs)" @update:page-size="value => changeLogPageSize(pendingLogPage, value, loadPendingLogs)" />
+          </div>
+
+          <div v-show="batchLogTab === 'processing'" role="tabpanel">
+            <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">触发原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
+              <tr v-for="item in processingLogPage.items" :key="item.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-3">正在分析</td><td class="p-3 text-right"><button type="button" class="btn btn-danger btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '停止中…' : '停止' }}</button></td></tr>
+              <tr v-if="!logsLoading && !processingLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">当前没有正在分析的任务</td></tr>
+            </tbody></table></div>
+            <Pagination :total="processingLogPage.total" :page="processingLogPage.page" :page-size="processingLogPage.page_size" @update:page="value => changeLogPage(processingLogPage, value, loadProcessingLogs)" @update:page-size="value => changeLogPageSize(processingLogPage, value, loadProcessingLogs)" />
+          </div>
+
+          <div v-show="batchLogTab === 'errors'" role="tabpanel">
+            <div class="flex items-center justify-between border-y border-red-100 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/20"><p class="text-xs text-red-600 dark:text-red-400">失败任务可逐条或全部重新分析。</p><button type="button" class="btn btn-primary btn-sm" data-test="retry-all-errors" :disabled="retryingAll || !errorLogPage.total" @click="retryAllBatches">{{ retryingAll ? '正在重新排队…' : '全部重新分析' }}</button></div>
+            <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b border-red-100 dark:border-red-900/50"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">错误原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
+              <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400">{{ errorLabel(item.error_code) }}</td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-secondary btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '暂停中…' : '暂停重试' }}</button></div></td></tr>
+              <tr v-if="!logsLoading && !errorLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无错误任务</td></tr>
+            </tbody></table></div>
+            <Pagination :total="errorLogPage.total" :page="errorLogPage.page" :page-size="errorLogPage.page_size" @update:page="value => changeLogPage(errorLogPage, value, loadErrorLogs)" @update:page-size="value => changeLogPageSize(errorLogPage, value, loadErrorLogs)" />
+          </div>
         </section>
 
         <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
-          <div class="bg-gray-50 px-4 py-3 dark:bg-dark-800"><h3 class="section-title">分析日志</h3><p class="mt-1 text-xs text-gray-500">共 {{ batchLogPage.total }} 条正常任务；排队及正在分析的任务可以停止。</p></div>
-          <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">触发原因</th><th class="p-3">模型</th><th class="p-3">分析 Token</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
-            <tr v-for="item in batchLogPage.items" :key="item.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-3">{{ item.analyzer_model || '—' }}</td><td class="p-3"><template v-if="item.status === 'done'">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</template><span v-else class="text-gray-400">{{ item.status === 'processing' ? '完成后统计' : '—' }}</span></td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3 text-right"><button v-if="item.status === 'queued' || item.status === 'processing'" type="button" class="btn btn-danger btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '停止中…' : '停止' }}</button><span v-else class="text-gray-300">—</span></td></tr>
-            <tr v-if="!logsLoading && !batchLogPage.items.length"><td colspan="8" class="p-8 text-center text-gray-400">暂无分析记录</td></tr>
+          <div class="bg-gray-50 px-4 py-3 dark:bg-dark-800"><h3 class="section-title">已完成记录</h3><p class="mt-1 text-xs text-gray-500">共 {{ completedLogPage.total }} 条历史记录。</p></div>
+          <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">触发原因</th><th class="p-3">模型</th><th class="p-3">分析 Token</th><th class="p-3">状态</th></tr></thead><tbody>
+            <tr v-for="item in completedLogPage.items" :key="item.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-3">{{ item.analyzer_model || '—' }}</td><td class="p-3">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</td><td class="p-3">分析完成</td></tr>
+            <tr v-if="!logsLoading && !completedLogPage.items.length"><td colspan="7" class="p-8 text-center text-gray-400">暂无已完成记录</td></tr>
           </tbody></table></div>
-          <Pagination :total="batchLogPage.total" :page="batchLogPage.page" :page-size="batchLogPage.page_size" @update:page="value => changeLogPage(batchLogPage, value, loadBatchLogs)" @update:page-size="value => changeLogPageSize(batchLogPage, value, loadBatchLogs)" />
+          <Pagination :total="completedLogPage.total" :page="completedLogPage.page" :page-size="completedLogPage.page_size" @update:page="value => changeLogPage(completedLogPage, value, loadCompletedLogs)" @update:page-size="value => changeLogPageSize(completedLogPage, value, loadCompletedLogs)" />
         </section>
 
         <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
@@ -212,12 +234,12 @@
         <p v-if="logsLoading" class="py-4 text-center text-sm text-gray-500">正在加载日志…</p>
       </div>
     </BaseDialog>
-    <ConfirmDialog :show="clearLogsConfirm" title="清空历史日志" message="确认清空已完成和已停止的采样、分析日志？每日洞察结果和仍在处理的任务会保留，此操作不可恢复。" confirm-text="确认清空" :loading="clearingLogs" danger @confirm="clearLogs" @cancel="clearLogsConfirm = false" />
+    <ConfirmDialog :show="clearLogsConfirm" title="清空历史日志" message="确认清空已完成和失败的采样、分析日志？待分析、正在分析和每日洞察结果会保留，此操作不可恢复。" confirm-text="确认清空" :loading="clearingLogs" danger @confirm="clearLogs" @cancel="clearLogsConfirm = false" />
   </AppLayout>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
+import { computed, defineComponent, h, onMounted, onUnmounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -258,9 +280,13 @@ const detailOpen = ref(false)
 const detail = ref<DailyInsightDetail | null>(null)
 const showAllSamples = ref(false)
 const logsOpen = ref(false)
+const batchLogTab = ref<'pending' | 'processing' | 'errors'>('pending')
 const sampleLogPage = reactive<LogPage<SampleSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
-const batchLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const pendingLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const processingLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const completedLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
 const errorLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+let logRefreshTimer: ReturnType<typeof setTimeout> | undefined
 const columns: Column[] = [
   { key: 'rank', label: '排名' }, { key: 'user', label: '用户' }, { key: 'usage', label: 'Token 用量' },
   { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'days', label: '洞察天数' },
@@ -361,13 +387,28 @@ async function analyzeNow() {
   finally { analyzing.value = false }
 }
 async function loadSampleLogs() { Object.assign(sampleLogPage, await api.listSamples(sampleLogPage.page, sampleLogPage.page_size)) }
-async function loadBatchLogs() { Object.assign(batchLogPage, await api.listBatches(batchLogPage.page, batchLogPage.page_size, 'normal')) }
+async function loadPendingLogs() { Object.assign(pendingLogPage, await api.listBatches(pendingLogPage.page, pendingLogPage.page_size, 'pending')) }
+async function loadProcessingLogs() { Object.assign(processingLogPage, await api.listBatches(processingLogPage.page, processingLogPage.page_size, 'processing')) }
+async function loadCompletedLogs() { Object.assign(completedLogPage, await api.listBatches(completedLogPage.page, completedLogPage.page_size, 'done')) }
 async function loadErrorLogs() { Object.assign(errorLogPage, await api.listBatches(errorLogPage.page, errorLogPage.page_size, 'errors')) }
-async function loadLogs() { await Promise.all([loadSampleLogs(), loadBatchLogs(), loadErrorLogs()]) }
+async function loadBatchLogs() { await Promise.all([loadPendingLogs(), loadProcessingLogs(), loadCompletedLogs(), loadErrorLogs()]) }
+async function loadLogs() { await Promise.all([loadSampleLogs(), loadBatchLogs()]) }
+function stopLogRefresh() { if (logRefreshTimer) clearTimeout(logRefreshTimer); logRefreshTimer = undefined }
+function scheduleLogRefresh() {
+  stopLogRefresh()
+  if (!logsOpen.value || !runtime.value || !(runtime.value.queued_batches + runtime.value.processing_batches + runtime.value.retry_batches)) return
+  logRefreshTimer = setTimeout(async () => {
+    if (!logsOpen.value) return
+    try { await Promise.all([loadBatchLogs(), loadRuntime()]) }
+    catch { stopLogRefresh(); return }
+    scheduleLogRefresh()
+  }, 2500)
+}
+function closeLogs() { logsOpen.value = false; stopLogRefresh() }
 async function openLogs() {
   logsOpen.value = true
   logsLoading.value = true
-  try { await loadLogs() }
+  try { await Promise.all([loadLogs(), loadRuntime()]); scheduleLogRefresh() }
   catch { showMessage('采样与分析日志加载失败', true) }
   finally { logsLoading.value = false }
 }
@@ -392,7 +433,7 @@ async function clearLogs() {
   try {
     const result = await api.clearLogs()
     clearLogsConfirm.value = false
-    sampleLogPage.page = batchLogPage.page = errorLogPage.page = 1
+    sampleLogPage.page = pendingLogPage.page = processingLogPage.page = completedLogPage.page = errorLogPage.page = 1
     await Promise.all([openLogs(), loadRuntime()])
     showMessage(`已清空 ${result.samples} 条采样日志和 ${result.batches} 条分析日志`)
   } catch (error) { showMessage(error instanceof Error ? error.message : '清空日志失败', true) }
@@ -403,8 +444,10 @@ async function retryBatch(item: BatchSummary) {
   retryingBatchID.value = item.id
   try {
     await api.retryBatch(item.id)
-    await Promise.all([loadBatchLogs(), loadErrorLogs(), loadRuntime()])
-    showMessage('失败批次已重新进入分析队列')
+    await Promise.all([loadBatchLogs(), loadRuntime()])
+    batchLogTab.value = 'pending'
+    scheduleLogRefresh()
+    showMessage('任务已进入异步队列，通常数秒内开始分析')
   } catch (error) { showMessage(error instanceof Error ? error.message : '重新分析失败', true) }
   finally { retryingBatchID.value = null }
 }
@@ -414,7 +457,9 @@ async function retryAllBatches() {
   try {
     const result = await api.retryAllBatches()
     errorLogPage.page = 1
-    await Promise.all([loadBatchLogs(), loadErrorLogs(), loadRuntime()])
+    await Promise.all([loadBatchLogs(), loadRuntime()])
+    batchLogTab.value = 'pending'
+    scheduleLogRefresh()
     showMessage(`已重新排队 ${result.retried} 条错误任务${result.skipped ? `，另有 ${result.skipped} 条因临时文本已过期而跳过` : ''}`)
   } catch (error) { showMessage(error instanceof Error ? error.message : '批量重新分析失败', true) }
   finally { retryingAll.value = false }
@@ -424,13 +469,15 @@ async function stopBatch(item: BatchSummary) {
   stoppingBatchID.value = item.id
   try {
     await api.stopBatch(item.id)
-    await Promise.all([loadBatchLogs(), loadErrorLogs(), loadRuntime()])
-    showMessage('分析任务已停止，可在错误日志中重新分析')
+    await Promise.all([loadBatchLogs(), loadRuntime()])
+    batchLogTab.value = 'pending'
+    showMessage('分析任务已暂停并移至待分析')
   } catch (error) { showMessage(error instanceof Error ? error.message : '停止分析失败', true) }
   finally { stoppingBatchID.value = null }
 }
 
 onMounted(refresh)
+onUnmounted(stopLogRefresh)
 </script>
 
 <style scoped>

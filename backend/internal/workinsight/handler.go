@@ -90,7 +90,7 @@ func (h *AdminHandler) StopBatch(c *gin.Context) {
 
 func (h *AdminHandler) ListBatches(c *gin.Context) {
 	page, size := response.ParsePagination(c)
-	items, total, err := h.service.repo.ListBatches(c.Request.Context(), page, size, c.Query("kind") == "errors")
+	items, total, err := h.service.repo.ListBatches(c.Request.Context(), page, size, c.DefaultQuery("kind", "done"))
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

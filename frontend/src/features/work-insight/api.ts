@@ -41,7 +41,7 @@ export async function listSamples(page = 1, pageSize = 20): Promise<LogPage<Samp
   return data
 }
 
-export async function listBatches(page = 1, pageSize = 20, kind: 'normal' | 'errors' = 'normal'): Promise<LogPage<BatchSummary>> {
+export async function listBatches(page = 1, pageSize = 20, kind: 'pending' | 'processing' | 'done' | 'errors' = 'done'): Promise<LogPage<BatchSummary>> {
   const { data } = await apiClient.get<LogPage<BatchSummary>>(`${basePath}/batches`, { params: { page, page_size: pageSize, kind } })
   return data
 }

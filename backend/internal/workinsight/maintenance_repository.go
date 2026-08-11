@@ -19,12 +19,14 @@ func (r *Repository) ClearTerminalLogs(ctx context.Context) (ClearLogsResult, er
 		return result, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	deleted, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_samples WHERE status IN ('analyzed','failed','dropped')`)
+	deleted, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_samples WHERE status IN ('analyzed','failed','dropped')
+		AND NOT (status='dropped' AND error_code='admin_stopped')`)
 	if err != nil {
 		return result, err
 	}
 	result.Samples, _ = deleted.RowsAffected()
-	deleted, err = tx.ExecContext(ctx, `DELETE FROM ai_work_insight_batches WHERE status IN ('done','failed','dropped')`)
+	deleted, err = tx.ExecContext(ctx, `DELETE FROM ai_work_insight_batches WHERE status IN ('done','failed','dropped')
+		AND NOT (status='dropped' AND error_code='admin_stopped')`)
 	if err != nil {
 		return result, err
 	}
@@ -37,7 +39,7 @@ func (r *Repository) RuntimeStats(ctx context.Context, date time.Time) (Runtime,
 	err := r.db.QueryRowContext(ctx, `SELECT
 		(SELECT COUNT(*) FROM ai_work_insight_samples WHERE status='pending_batch'),
 		COUNT(*) FILTER (WHERE status='queued'),COUNT(*) FILTER (WHERE status='processing'),COUNT(*) FILTER (WHERE status='retry'),
-		COUNT(*) FILTER (WHERE status='done'),COUNT(*) FILTER (WHERE status IN ('failed','dropped')),
+		COUNT(*) FILTER (WHERE status='done'),COUNT(*) FILTER (WHERE status IN ('failed','dropped') AND error_code<>'admin_stopped'),
 		COALESCE(SUM(analyzer_input_tokens),0),COALESCE(SUM(analyzer_output_tokens),0),COALESCE(SUM(chunk_count),0),
 		(SELECT COUNT(*) FROM ai_user_daily_work_insights WHERE insight_date=$1 AND business_request_count>0),
 		(SELECT COALESCE(SUM(eligible_active_session_count),0) FROM ai_user_daily_work_insights WHERE insight_date=$1),

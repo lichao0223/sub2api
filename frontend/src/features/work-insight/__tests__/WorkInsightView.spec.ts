@@ -49,9 +49,13 @@ describe('WorkInsightView', () => {
     api.retryAllBatches.mockResolvedValue({ retried: 1, skipped: 0 })
     api.stopBatch.mockResolvedValue({ batch_id: 13 })
     api.listSamples.mockResolvedValue({ items: [{ id: 11, user_id: 9, username: '测试用户', provider: 'openai', requested_model: 'model-canary', sample_reason: 'compact', estimated_tokens: 4082, prompt_chars: 12651, analyzed_chars: 12246, truncated: false, status: 'pending_batch', error_code: '', created_at: '2026-08-11T02:00:00Z' }], total: 61, page: 1, page_size: 20, pages: 4 })
-    api.listBatches.mockImplementation((_page: number, _size: number, kind: string) => Promise.resolve(kind === 'errors'
-      ? { items: [{ id: 12, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'failed', attempts: 3, error_code: 'summary_write_conflict', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:01:00Z' }], total: 21, page: 1, page_size: 20, pages: 2 }
-      : { items: [{ id: 13, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'processing', attempts: 2, error_code: '', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:02:00Z' }], total: 31, page: 1, page_size: 20, pages: 2 }))
+    api.listBatches.mockImplementation((_page: number, _size: number, kind: string) => {
+      const common = { user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', attempts: 1, analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:02:00Z' }
+      if (kind === 'pending') return Promise.resolve({ items: [{ ...common, id: 11, status: 'dropped', error_code: 'admin_stopped', analyzer_model: '' }], total: 1, page: 1, page_size: 20, pages: 1 })
+      if (kind === 'processing') return Promise.resolve({ items: [{ ...common, id: 13, status: 'processing', error_code: '', analyzer_model: '' }], total: 1, page: 1, page_size: 20, pages: 1 })
+      if (kind === 'errors') return Promise.resolve({ items: [{ ...common, id: 12, status: 'failed', attempts: 3, error_code: 'summary_write_conflict', analyzer_model: '' }], total: 21, page: 1, page_size: 20, pages: 2 })
+      return Promise.resolve({ items: [{ ...common, id: 10, status: 'done', error_code: '', analyzer_model: 'model-canary', analyzer_input_tokens: 100, analyzer_output_tokens: 20 }], total: 31, page: 1, page_size: 20, pages: 2 })
+    })
     api.listAnalyzerAccounts.mockResolvedValue([{ id: 1, name: '分析账号', platform: 'openai', models: ['model-canary'] }])
     api.probe.mockResolvedValue({ ok: true, status: 'ok', message: '连接正常', latency_ms: 12, checked_at: '' })
     api.listRanking.mockResolvedValue({ items: [rankingRow], total: 1, page: 1, page_size: 20, pages: 1 })
@@ -122,10 +126,12 @@ describe('WorkInsightView', () => {
     expect(wrapper.get('[role="dialog"]').text()).not.toContain('已截断')
     expect(wrapper.get('[role="dialog"]').text()).toContain('管理员手动触发')
     expect(wrapper.get('[role="dialog"]').text()).toContain('分析失败')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('错误日志')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('共 21 条')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('待分析 1')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('正在分析 1')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('错误 21')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('已暂停，待重新分析')
     expect(wrapper.get('[role="dialog"]').text()).toContain('共 61 条')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('完成后统计')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('已完成记录')
     expect(wrapper.get('[role="dialog"]').text()).toContain('摘要写入版本冲突')
     const retry = wrapper.findAll('button').find(button => button.text() === '重新分析')
     expect(retry).toBeDefined()
@@ -152,5 +158,26 @@ describe('WorkInsightView', () => {
     expect(api.analyzeNow).toHaveBeenCalled()
     expect(wrapper.text()).toContain('已创建 2 个分析批次')
     wrapper.unmount()
+  })
+
+  it('refreshes logs while an analysis task is active', async () => {
+    vi.useFakeTimers()
+    try {
+      const wrapper = mountView()
+      await flushPromises()
+      await wrapper.get('[data-test="open-logs"]').trigger('click')
+      await flushPromises()
+      api.listBatches.mockClear()
+
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(api.listBatches).toHaveBeenCalledTimes(4)
+
+      wrapper.unmount()
+      api.listBatches.mockClear()
+      await vi.advanceTimersByTimeAsync(2500)
+      expect(api.listBatches).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
