@@ -202,21 +202,23 @@ func buildAnalysisChunks(samples []analysisInput, budget int) [][]analysisInput 
 			continue
 		}
 		seen[normalized] = struct{}{}
-		sample := samples[i]
-		maxRunes := budget * 3
-		if utf8.RuneCountInString(sample.Text) > maxRunes {
-			sample.Text = string([]rune(sample.Text)[:maxRunes])
-		}
-		sample.EstimatedTokens = max(1, (utf8.RuneCountInString(sample.Text)+2)/3)
-		deduped = append(deduped, sample)
+		deduped = append(deduped, samples[i])
 	}
 	slices.Reverse(deduped)
 	var chunks [][]analysisInput
 	for _, sample := range deduped {
-		if len(chunks) == 0 || chunkTokens(chunks[len(chunks)-1])+sample.EstimatedTokens > budget {
-			chunks = append(chunks, []analysisInput{sample})
-		} else {
-			chunks[len(chunks)-1] = append(chunks[len(chunks)-1], sample)
+		text := []rune(sample.Text)
+		maxRunes := max(1, budget*3)
+		for start := 0; start < len(text); start += maxRunes {
+			end := min(start+maxRunes, len(text))
+			part := sample
+			part.Text = string(text[start:end])
+			part.EstimatedTokens = max(1, (end-start+2)/3)
+			if len(chunks) == 0 || chunkTokens(chunks[len(chunks)-1])+part.EstimatedTokens > budget {
+				chunks = append(chunks, []analysisInput{part})
+			} else {
+				chunks[len(chunks)-1] = append(chunks[len(chunks)-1], part)
+			}
 		}
 	}
 	return chunks

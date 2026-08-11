@@ -152,7 +152,7 @@
 
     <BaseDialog :show="detailOpen" :title="detail ? `${detail.insight.username} 的 AI 工作洞察` : 'AI 工作洞察'" width="wide" close-on-click-outside @close="detailOpen = false">
       <div v-if="detail" class="space-y-5">
-        <p class="text-xs text-gray-500">{{ formatDate(detail.insight.insight_date) }} · 基于抽样，可能不完整或误判</p>
+        <p class="text-xs text-gray-500">{{ formatDate(detail.insight.insight_date) }} · 最后分析 {{ formatDateTime(detail.insight.last_analyzed_at || '') }} · 基于抽样，可能不完整或误判</p>
         <section class="rounded-xl bg-primary-50 p-4 dark:bg-primary-950/30"><h3 class="text-xs font-semibold text-primary-700 dark:text-primary-300">AI 生成的工作摘要</h3><p class="mt-2 text-sm text-gray-800 dark:text-dark-100">{{ detail.insight.daily_summary || '暂无摘要' }}</p></section>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4"><article class="mini-stat"><span>成功请求</span><strong>{{ formatNumber(detail.insight.business_request_count) }}</strong></article><article class="mini-stat"><span>请求成功率</span><strong>{{ successRate(detail.insight) }}</strong></article><article class="mini-stat"><span>平均耗时</span><strong>{{ formatDuration(detail.insight.average_duration_ms) }}</strong></article><article class="mini-stat"><span>P95 耗时</span><strong>{{ formatDuration(detail.insight.p95_duration_ms) }}</strong></article></div>
         <section><h3 class="section-title">Token 构成</h3><div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4"><article class="mini-stat"><span>输入</span><strong>{{ formatNumber(detail.insight.business_input_tokens) }}</strong></article><article class="mini-stat"><span>输出</span><strong>{{ formatNumber(detail.insight.business_output_tokens) }}</strong></article><article class="mini-stat"><span>缓存写入</span><strong>{{ formatNumber(detail.insight.business_cache_creation_tokens) }}</strong></article><article class="mini-stat"><span>缓存读取</span><strong>{{ formatNumber(detail.insight.business_cache_read_tokens) }}</strong></article></div></section>
@@ -171,8 +171,9 @@
       <div class="space-y-6">
         <div class="flex items-center justify-between gap-4"><p class="text-xs text-gray-500">仅展示最近 50 条元数据，不展示原始提示词、模型输出或 Redis 临时文本。</p><button type="button" class="btn btn-danger btn-sm shrink-0" data-test="clear-logs" @click="clearLogsConfirm = true">清空历史日志</button></div>
         <p class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-200">分析批次：等待 {{ batchCount('queued', 'retry') }} · 正在分析 {{ batchCount('processing') }} · 失败 {{ batchCount('failed', 'dropped') }} · 完成 {{ batchCount('done') }}。采样日志中的失败通常是同一分析批次的关联样本，不重复算作新的故障。</p>
-        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">采样原因</th><th class="p-2">分析文本估算</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-2 whitespace-nowrap">≈ {{ formatNumber(item.estimated_tokens) }} Token<p class="mt-1 text-gray-400">{{ formatNumber(item.analyzed_chars) }} / {{ formatNumber(item.prompt_chars) }} 字符<span v-if="item.analyzed_chars < item.prompt_chars" class="text-amber-600"> · 已截断</span></p></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ sampleErrorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
-        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2"><template v-if="item.status === 'done'">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</template><span v-else class="text-gray-400">—<span v-if="item.status === 'processing'" class="block">完成后统计</span></span></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code && item.status !== 'processing'" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
+        <p class="text-xs text-gray-500">字符数格式为“脱敏分析文本 / 用户输入”；脱敏占位符可能比原内容更长，因此前一个数字偶尔会更大。相同字符数不代表输入内容相同。</p>
+        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">采样原因</th><th class="p-2">分析文本估算</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-2 whitespace-nowrap">≈ {{ formatNumber(item.estimated_tokens) }} Token<p class="mt-1 text-gray-400">脱敏后 {{ formatNumber(item.analyzed_chars) }} / 原文 {{ formatNumber(item.prompt_chars) }} 字符<span v-if="item.truncated" class="text-amber-600"> · 已截断</span></p></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ sampleErrorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
+        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2"><template v-if="item.status === 'done'">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</template><span v-else class="text-gray-400">—<span v-if="item.status === 'processing'" class="block">完成后统计</span></span></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code && item.status !== 'processing'" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p><button v-if="item.status === 'failed' || item.status === 'dropped'" type="button" class="btn btn-secondary btn-xs mt-2" :disabled="retryingBatchID !== null" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '正在重试…' : '重新分析' }}</button></td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
         <p v-if="logsLoading" class="py-4 text-center text-sm text-gray-500">正在加载日志…</p>
       </div>
     </BaseDialog>
@@ -205,6 +206,7 @@ const analyzing = ref(false)
 const logsLoading = ref(false)
 const clearLogsConfirm = ref(false)
 const clearingLogs = ref(false)
+const retryingBatchID = ref<number | null>(null)
 const message = ref('')
 const messageError = ref(false)
 const runtime = ref<WorkInsightRuntime | null>(null)
@@ -243,7 +245,7 @@ const budgetSafe = computed(() => !!draft.value && draft.value.max_input_tokens 
 const visibleSamples = computed(() => showAllSamples.value ? detail.value?.representative_items ?? [] : detail.value?.representative_items.slice(0, 4) ?? [])
 const selectedAccount = computed(() => analyzerAccounts.value.find(account => account.id === draft.value?.analyzer_account_id))
 
-const sampleReasonLabels: Record<string, string> = { session_coverage: '新会话首请求必采', rate: '采样率命中' }
+const sampleReasonLabels: Record<string, string> = { session_coverage: '新会话首请求必采', rate: '采样率命中', compact: '会话压缩快照' }
 const triggerReasonLabels: Record<string, string> = { idle: '用户空闲触发', max_wait: '达到最长等待时间', sample_limit: '达到单批样本上限', token_limit: '达到单批 Token 上限', fixed: '定时策略触发', manual: '管理员手动触发', finalize: '每日收口触发' }
 const statusLabels: Record<string, string> = { staging: '正在入库', pending_batch: '等待组成分析批次', batched: '已进入分析批次', queued: '排队等待分析', processing: '正在分析', retry: '异常，等待自动重试', analyzed: '分析完成', done: '分析完成', failed: '分析失败', dropped: '已停止处理' }
 const errorLabels: Record<string, string> = {
@@ -338,6 +340,16 @@ async function clearLogs() {
     showMessage(`已清空 ${result.samples} 条采样日志和 ${result.batches} 条分析日志`)
   } catch (error) { showMessage(error instanceof Error ? error.message : '清空日志失败', true) }
   finally { clearingLogs.value = false }
+}
+async function retryBatch(item: BatchSummary) {
+  if (retryingBatchID.value !== null) return
+  retryingBatchID.value = item.id
+  try {
+    await api.retryBatch(item.id)
+    await Promise.all([openLogs(), loadRuntime()])
+    showMessage('失败批次已重新进入分析队列')
+  } catch (error) { showMessage(error instanceof Error ? error.message : '重新分析失败', true) }
+  finally { retryingBatchID.value = null }
 }
 
 onMounted(refresh)

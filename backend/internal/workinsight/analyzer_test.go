@@ -53,11 +53,18 @@ func TestBuildAnalysisChunksDeduplicatesAndHonorsBudget(t *testing.T) {
 		{ID: 2, Text: "重复   历史", EstimatedTokens: 3},
 		{ID: 3, Text: strings.Repeat("新", 30), EstimatedTokens: 10},
 	}, 8)
-	require.Len(t, chunks, 2)
+	require.Len(t, chunks, 3)
 	require.Equal(t, int64(2), chunks[0][0].ID, "the newest duplicate is retained")
+	var retained strings.Builder
 	for _, chunk := range chunks {
 		require.LessOrEqual(t, chunkTokens(chunk), 8)
+		for _, sample := range chunk {
+			if sample.ID == 3 {
+				_, _ = retained.WriteString(sample.Text)
+			}
+		}
 	}
+	require.Equal(t, strings.Repeat("新", 30), retained.String(), "oversized input is split without truncation")
 }
 
 func TestAnalyzeChunkRepairsInvalidJSONOnce(t *testing.T) {

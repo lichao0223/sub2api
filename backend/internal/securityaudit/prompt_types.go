@@ -2,7 +2,9 @@ package securityaudit
 
 import (
 	"context"
+	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -67,20 +69,21 @@ const (
 )
 
 type Request struct {
-	RequestID  string
-	UserID     int64
-	Username   string
-	UserEmail  string
-	APIKeyID   int64
-	APIKeyName string
-	GroupID    *int64
-	GroupName  string
-	Provider   string
-	Endpoint   string
-	Protocol   string
-	Model      string
-	Body       []byte
-	Stage      string
+	RequestID       string
+	UserID          int64
+	Username        string
+	UserEmail       string
+	APIKeyID        int64
+	APIKeyName      string
+	GroupID         *int64
+	GroupName       string
+	Provider        string
+	Endpoint        string
+	Protocol        string
+	Model           string
+	Body            []byte
+	Stage           string
+	ClientSessionID string
 }
 
 func (r Request) Clone() Request {
@@ -120,10 +123,28 @@ type PromptSnapshot struct {
 type WorkInsightSnapshot struct {
 	Text          string
 	Segments      []string
+	SegmentHashes [][32]byte
+	SegmentChars  []int
 	PromptHash    string
 	PromptChars   int
 	AnalyzedChars int
 	MessageCount  int
+	Truncated     bool
+}
+
+func (s *WorkInsightSnapshot) RetainAfterPrefix(count int, hash string) bool {
+	if s == nil || count <= 0 || count > len(s.Segments) || count > len(s.SegmentHashes) || count > len(s.SegmentChars) || workInsightSegmentHash(s.SegmentHashes[:count]) != hash {
+		return false
+	}
+	s.Segments = s.Segments[count:]
+	s.SegmentHashes = s.SegmentHashes[count:]
+	s.SegmentChars = s.SegmentChars[count:]
+	s.Text = strings.Join(s.Segments, "\n\n")
+	s.PromptHash = workInsightSegmentHash(s.SegmentHashes)
+	s.PromptChars = joinedWorkInsightChars(s.SegmentChars)
+	s.AnalyzedChars = utf8.RuneCountInString(s.Text)
+	s.MessageCount = len(s.Segments)
+	return true
 }
 
 func (s PromptSnapshot) Redacted() PromptSnapshot {

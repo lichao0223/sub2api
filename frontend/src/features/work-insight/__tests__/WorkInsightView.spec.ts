@@ -5,7 +5,7 @@ import WorkInsightView from '../WorkInsightView.vue'
 import { TASK_CATEGORIES } from '../types'
 import type { WorkInsightConfig } from '../types'
 
-const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
+const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), retryBatch: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
 vi.mock('../api', () => ({ default: api }))
 
 const config = (): WorkInsightConfig => ({
@@ -45,7 +45,8 @@ describe('WorkInsightView', () => {
     api.getRuntime.mockResolvedValue({ enabled: false, queue_depth: 0, queue_capacity: 10000, dropped: 0, processed: 0, failed: 0 })
     api.analyzeNow.mockResolvedValue({ created_batches: 2 })
     api.clearLogs.mockResolvedValue({ samples: 9, batches: 1 })
-    api.listSamples.mockResolvedValue([{ id: 11, user_id: 9, username: '测试用户', provider: 'openai', requested_model: 'model-canary', sample_reason: 'session_coverage', estimated_tokens: 100, prompt_chars: 900, analyzed_chars: 300, status: 'pending_batch', error_code: '', created_at: '2026-08-11T02:00:00Z' }])
+    api.retryBatch.mockResolvedValue({ batch_id: 12 })
+    api.listSamples.mockResolvedValue([{ id: 11, user_id: 9, username: '测试用户', provider: 'openai', requested_model: 'model-canary', sample_reason: 'compact', estimated_tokens: 4082, prompt_chars: 12651, analyzed_chars: 12246, truncated: false, status: 'pending_batch', error_code: '', created_at: '2026-08-11T02:00:00Z' }])
     api.listBatches.mockResolvedValue([
       { id: 13, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'processing', attempts: 2, error_code: 'summary_write_failed', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:02:00Z' },
       { id: 12, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'failed', attempts: 3, error_code: 'summary_write_conflict', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:01:00Z' },
@@ -94,6 +95,7 @@ describe('WorkInsightView', () => {
     expect(wrapper.get('[role="dialog"]').text()).toContain('90.9%')
     expect(wrapper.get('[role="dialog"]').text()).toContain('model-canary · 10 次')
     expect(wrapper.get('[role="dialog"]').text()).toContain('P95 耗时')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('最后分析')
     expect(wrapper.get('[role="dialog"]').text()).toContain('路由')
     expect(wrapper.get('[role="dialog"]').text()).toContain('不展示 Redis 临时文本')
     wrapper.unmount()
@@ -109,14 +111,21 @@ describe('WorkInsightView', () => {
     await flushPromises()
     expect(api.listSamples).toHaveBeenCalled()
     expect(api.listBatches).toHaveBeenCalled()
-    expect(wrapper.get('[role="dialog"]').text()).toContain('新会话首请求必采')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('会话压缩快照')
     expect(wrapper.get('[role="dialog"]').text()).toContain('分析文本估算')
-    expect(wrapper.get('[role="dialog"]').text()).toContain('已截断')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('相同字符数不代表输入内容相同')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('脱敏后 12,246 / 原文 12,651 字符')
+    expect(wrapper.get('[role="dialog"]').text()).not.toContain('已截断')
     expect(wrapper.get('[role="dialog"]').text()).toContain('管理员手动触发')
     expect(wrapper.get('[role="dialog"]').text()).toContain('分析失败')
     expect(wrapper.get('[role="dialog"]').text()).toContain('失败 1')
     expect(wrapper.get('[role="dialog"]').text()).toContain('完成后统计')
     expect(wrapper.get('[role="dialog"]').text()).not.toContain('摘要写入数据库失败')
+    const retry = wrapper.findAll('button').find(button => button.text() === '重新分析')
+    expect(retry).toBeDefined()
+    await retry!.trigger('click')
+    await flushPromises()
+    expect(api.retryBatch).toHaveBeenCalledWith(12)
     await wrapper.get('[data-test="clear-logs"]').trigger('click')
     await wrapper.get('[data-test="clear-confirm-action"]').trigger('click')
     await flushPromises()

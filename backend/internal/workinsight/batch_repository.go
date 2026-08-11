@@ -251,6 +251,49 @@ func (r *Repository) RetryBatch(ctx context.Context, batch Batch, next time.Time
 	return requireAffected(result, err)
 }
 
+func (r *Repository) LoadDroppedBatchSamples(ctx context.Context, batchID int64) ([]BatchSample, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT s.id,s.estimated_tokens,s.created_at
+		FROM ai_work_insight_samples s JOIN ai_work_insight_batches b ON b.id=s.batch_id
+		WHERE b.id=$1 AND b.status IN ('failed','dropped') AND s.status IN ('failed','dropped') ORDER BY s.id`, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var samples []BatchSample
+	for rows.Next() {
+		var sample BatchSample
+		if err := rows.Scan(&sample.ID, &sample.EstimatedTokens, &sample.CreatedAt); err != nil {
+			return nil, err
+		}
+		samples = append(samples, sample)
+	}
+	return samples, rows.Err()
+}
+
+func (r *Repository) RequeueDroppedBatch(ctx context.Context, batchID int64, now time.Time) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_batches SET status='queued',attempts=0,next_attempt_at=$2,
+		trigger_reason='manual',error_code='',analyzer_model='',analyzer_input_tokens=0,analyzer_output_tokens=0,
+		chunk_count=0,analyzed_at=NULL,created_at=$2,updated_at=$2 WHERE id=$1 AND status IN ('failed','dropped')`, batchID, now.UTC())
+	if err := requireAffected(result, err); err != nil {
+		return err
+	}
+	result, err = tx.ExecContext(ctx, `UPDATE ai_work_insight_samples SET status='batched',error_code='',updated_at=$2
+		WHERE batch_id=$1 AND status IN ('failed','dropped')`, batchID, now.UTC())
+	if err != nil {
+		return err
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return errors.New("work insight retry samples missing")
+	}
+	return tx.Commit()
+}
+
 func (r *Repository) DropBatch(ctx context.Context, batch Batch, code string) ([]BatchSample, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

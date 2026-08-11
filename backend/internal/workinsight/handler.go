@@ -53,6 +53,19 @@ func (h *AdminHandler) AnalyzeNow(c *gin.Context) {
 	response.Success(c, gin.H{"created_batches": created})
 }
 
+func (h *AdminHandler) RetryBatch(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "分析批次 ID 无效")
+		return
+	}
+	if err := h.service.RetryBatchNow(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"batch_id": id})
+}
+
 func (h *AdminHandler) ListBatches(c *gin.Context) {
 	_, size := response.ParsePagination(c)
 	items, err := h.service.repo.ListBatches(c.Request.Context(), size)

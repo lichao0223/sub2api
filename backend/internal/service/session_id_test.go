@@ -153,3 +153,8 @@ func TestExtractClientSessionID_InjectionHeaderDropped(t *testing.T) {
 	c.Request.Header.Set("session_id", "abc\r\nX-Injected: 1")
 	require.Equal(t, "", ExtractClientSessionID(c))
 }
+
+func TestExtractClientConversationIDFallsBackToPromptCacheKey(t *testing.T) {
+	c := newSessionHeaderContext(t, nil)
+	require.Equal(t, "conversation-42", ExtractClientConversationID(c, []byte(`{"prompt_cache_key":"conversation-42"}`)))
+}

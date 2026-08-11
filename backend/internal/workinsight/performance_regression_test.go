@@ -98,6 +98,37 @@ func TestClearTerminalLogsKeepsActiveWork(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestRequeueDroppedBatchResetsBatchAndSamples(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	now := time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE ai_work_insight_batches SET status='queued'`).WithArgs(int64(12), now).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE ai_work_insight_samples SET status='batched'`).WithArgs(int64(12), now).
+		WillReturnResult(sqlmock.NewResult(0, 8))
+	mock.ExpectCommit()
+
+	require.NoError(t, NewRepository(db).RequeueDroppedBatch(context.Background(), 12, now))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDeleteOlderPendingDuplicatesKeepsNewestExactPrompt(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	date := time.Date(2026, 8, 11, 0, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(`DELETE FROM ai_work_insight_samples WHERE user_id=\$1 AND local_date=\$2 AND prompt_hash=\$3`).
+		WithArgs(int64(9), date, "same-hash", int64(30)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(28).AddRow(29))
+
+	ids, err := NewRepository(db).DeleteOlderPendingDuplicates(context.Background(), 30, 9, date, "same-hash")
+	require.NoError(t, err)
+	require.Equal(t, []int64{28, 29}, ids)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestListUserRankingAggregatesBeforePagination(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

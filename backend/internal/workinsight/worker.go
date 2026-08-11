@@ -371,7 +371,9 @@ func (s *Service) finishBatchFailure(ctx context.Context, cfg storedConfig, batc
 		if len(dropped) > 0 {
 			samples = dropped
 		}
-		s.deletePayloads(ctx, samples)
+		if !retryable {
+			s.deletePayloads(ctx, samples)
+		}
 	}
 }
 

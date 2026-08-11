@@ -40,8 +40,9 @@ const (
 	DefaultMaxJobAge           = 90 * time.Minute
 	DefaultIngressLimit        = 10000
 	ingressWorkerCount         = 4
+	maxCapturedRequestBytes    = 2 << 20
 	maxIngressQueueBytes       = 64 << 20
-	maxPayloadBytes            = 64 << 10
+	maxPayloadBytes            = 12<<20 + 1024
 	maxOutstandingPayloads     = 5000
 	maxOutstandingPayloadBytes = 64 << 20
 )

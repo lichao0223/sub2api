@@ -16,8 +16,8 @@ const maxPersistedSessionIDLength = 255
 // native protocol identifiers that are safe to persist but must not alter OpenAI
 // scheduling behavior.
 var clientSessionIDHeaders = append(
-	append([]string(nil), explicitOpenAIHeaderSessionNames...),
-	claudeCodeSessionHeader,
+	append(append([]string(nil), explicitOpenAIHeaderSessionNames...), claudeCodeSessionHeader),
+	"session-id", "thread-id", "thread_id",
 )
 
 // ExtractClientSessionID resolves the explicit client-provided session identifier from
@@ -43,6 +43,15 @@ func ExtractClientSessionID(c *gin.Context) string {
 		}
 	}
 	return ""
+}
+
+// ExtractClientConversationID also accepts the OpenAI-compatible body-level
+// prompt_cache_key used by clients that do not send a session header.
+func ExtractClientConversationID(c *gin.Context, body []byte) string {
+	if sessionID := ExtractClientSessionID(c); sessionID != "" {
+		return sessionID
+	}
+	return sanitizeSessionID(explicitOpenAISessionID(c, body))
 }
 
 // sanitizeSessionID normalizes a raw client-supplied session identifier for safe

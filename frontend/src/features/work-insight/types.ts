@@ -77,6 +77,7 @@ export interface SampleSummary {
   estimated_tokens: number
   prompt_chars: number
   analyzed_chars: number
+  truncated: boolean
   status: string
   error_code: string
   created_at: string

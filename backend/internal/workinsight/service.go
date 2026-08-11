@@ -37,7 +37,8 @@ if coverage == 'claiming' and tonumber(ARGV[1]) - claim_ms > 30000 then
   redis.call('HSET', KEYS[1], 'coverage', coverage, 'claim_token', '', 'claim_ms', '0')
 end
 local coverage_claim = coverage == 'uncovered'
-local selected = coverage_claim or ARGV[4] == '1'
+local forced_reason = ARGV[10]
+local selected = coverage_claim or forced_reason ~= '' or ARGV[4] == '1'
 if not selected then return {sid, fresh and '1' or '0', '0', 'rate_miss'} end
 if tonumber(redis.call('GET', KEYS[3]) or '0') >= tonumber(ARGV[5]) then return {sid, fresh and '1' or '0', '0', 'user_limit'} end
 if tonumber(redis.call('GET', KEYS[4]) or '0') >= tonumber(ARGV[6]) then return {sid, fresh and '1' or '0', '0', 'global_limit'} end
@@ -46,7 +47,7 @@ redis.call('EXPIRE', KEYS[3], ARGV[9]); redis.call('EXPIRE', KEYS[4], ARGV[9])
 if coverage_claim then
   redis.call('HSET', KEYS[1], 'coverage', 'claiming', 'claim_token', ARGV[8], 'claim_ms', ARGV[1])
 end
-return {sid, fresh and '1' or '0', '1', coverage_claim and 'session_coverage' or 'rate'}
+return {sid, fresh and '1' or '0', '1', coverage_claim and 'session_coverage' or (forced_reason ~= '' and forced_reason or 'rate')}
 `
 
 const finishSamplingScript = `
@@ -100,6 +101,15 @@ else
 end
 return used
 `
+
+const releaseConversationLockScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) end
+return 0
+`
+
+const (
+	conversationStateTTL = 72 * time.Hour
+)
 
 type Service struct {
 	repo               *Repository
@@ -155,7 +165,7 @@ func (s *Service) TrySubmit(req securityaudit.Request) {
 		return
 	}
 	cfg := s.config.Load()
-	if cfg == nil || !cfg.Enabled || cfg.excludes(req.UserID, req.UserEmail) || len(req.Body) == 0 || len(req.Body) > 2<<20 {
+	if cfg == nil || !cfg.Enabled || cfg.excludes(req.UserID, req.UserEmail) || len(req.Body) == 0 || len(req.Body) > maxCapturedRequestBytes {
 		return
 	}
 	if !s.ingressSelected(*cfg, req, time.Now()) {
@@ -220,17 +230,45 @@ func (s *Service) processCandidate(ctx context.Context, req securityaudit.Reques
 		digest := sha256.Sum256(req.Body)
 		entropy = hex.EncodeToString(digest[:])
 	}
-	decision, err := s.sample(ctx, *cfg, req.UserID, localDate, now, entropy)
+	compact := isCompactRequest(req)
+	decision, err := s.sample(ctx, *cfg, req.UserID, localDate, now, entropy, compact)
 	if err != nil || !decision.selected {
 		return err
 	}
-	snapshot, err := securityaudit.ExtractWorkInsightSnapshot(req, securityaudit.DefaultWorkInsightMaxRunes)
+	snapshot, err := securityaudit.ExtractWorkInsightSnapshot(req, maxCapturedRequestBytes)
 	if err != nil {
 		_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
 		if errors.Is(err, securityaudit.ErrNoPromptText) {
 			return nil
 		}
 		return err
+	}
+	conversationKey := s.conversationStateKey(req.UserID, req.ClientSessionID)
+	lockToken := req.RequestID + ":" + strconv.FormatInt(now.UnixNano(), 10)
+	if conversationKey != "" {
+		locked, lockErr := s.redis.SetNX(ctx, conversationKey+":lock", lockToken, 10*time.Second).Result()
+		if lockErr != nil || !locked {
+			_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
+			return lockErr
+		}
+		defer func() {
+			_ = s.redis.Eval(ctx, releaseConversationLockScript, []string{conversationKey + ":lock"}, lockToken).Err()
+		}()
+	}
+	fullSegmentCount, fullPromptHash := snapshot.MessageCount, snapshot.PromptHash
+	if conversationKey != "" {
+		if state, stateErr := s.redis.Get(ctx, conversationKey).Result(); stateErr == nil {
+			if separator := strings.IndexByte(state, ':'); separator > 0 {
+				count, parseErr := strconv.Atoi(state[:separator])
+				if parseErr == nil && snapshot.RetainAfterPrefix(count, state[separator+1:]) && snapshot.MessageCount == 0 {
+					_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
+					return nil
+				}
+			}
+		} else if !errors.Is(stateErr, redis.Nil) {
+			_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
+			return stateErr
+		}
 	}
 	fingerprintRaw := fmt.Sprintf("%d\x00%s\x00%s\x00%s", req.UserID, req.RequestID, decision.sessionID, snapshot.PromptHash)
 	digest := sha256.Sum256([]byte(fingerprintRaw))
@@ -244,7 +282,8 @@ func (s *Service) processCandidate(ctx context.Context, req securityaudit.Reques
 		Username: req.Username, UserEmail: req.UserEmail, APIKeyID: req.APIKeyID, GroupID: req.GroupID, Provider: req.Provider,
 		Protocol: req.Protocol, Endpoint: req.Endpoint, Model: req.Model, LocalDate: date, SessionID: decision.sessionID,
 		Reason: decision.reason, PromptHash: snapshot.PromptHash,
-		EstimatedTokens: (snapshot.AnalyzedChars + 2) / 3, PromptChars: snapshot.PromptChars, AnalyzedChars: snapshot.AnalyzedChars, RedactedPreview: preview,
+		EstimatedTokens: (snapshot.AnalyzedChars + 2) / 3, PromptChars: snapshot.PromptChars, AnalyzedChars: snapshot.AnalyzedChars,
+		Truncated: snapshot.Truncated, RedactedPreview: preview,
 	})
 	if err != nil || !created {
 		_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
@@ -283,7 +322,26 @@ func (s *Service) processCandidate(ctx context.Context, req securityaudit.Reques
 		_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
 		return err
 	}
+	if duplicateIDs, cleanupErr := s.repo.DeleteOlderPendingDuplicates(ctx, id, req.UserID, date, snapshot.PromptHash); cleanupErr == nil {
+		duplicates := make([]BatchSample, len(duplicateIDs))
+		for index, duplicateID := range duplicateIDs {
+			duplicates[index].ID = duplicateID
+		}
+		s.deletePayloads(ctx, duplicates)
+	}
+	if conversationKey != "" {
+		_ = s.redis.Set(ctx, conversationKey, strconv.Itoa(fullSegmentCount)+":"+fullPromptHash, conversationStateTTL).Err()
+	}
 	return s.finishSample(ctx, req.UserID, localDate, decision, true)
+}
+
+func (s *Service) conversationStateKey(userID int64, clientSessionID string) string {
+	clientSessionID = strings.TrimSpace(clientSessionID)
+	if clientSessionID == "" {
+		return ""
+	}
+	digest := sha256.Sum256([]byte(strconv.FormatInt(userID, 10) + "\x00" + clientSessionID))
+	return "sub2api:ai_work_insight:conversation:" + hex.EncodeToString(digest[:])
 }
 
 func (s *Service) reservePayloadSlot(ctx context.Context, id int64, bytes int, ttl time.Duration) (bool, error) {
@@ -321,6 +379,9 @@ type ingressSessionKey struct {
 }
 
 func (s *Service) ingressSelected(cfg storedConfig, req securityaudit.Request, now time.Time) bool {
+	if isCompactRequest(req) {
+		return true
+	}
 	if cfg.SampleRate >= 100 {
 		return true
 	}
@@ -373,7 +434,7 @@ type sampleDecision struct {
 	coverageClaim bool
 }
 
-func (s *Service) sample(ctx context.Context, cfg storedConfig, userID int64, date string, now time.Time, entropy string) (sampleDecision, error) {
+func (s *Service) sample(ctx context.Context, cfg storedConfig, userID int64, date string, now time.Time, entropy string, compact bool) (sampleDecision, error) {
 	prefix := "sub2api:ai_work_insight:" + date
 	uid := strconv.FormatInt(userID, 10)
 	keys := []string{
@@ -389,10 +450,14 @@ func (s *Service) sample(ctx context.Context, cfg storedConfig, userID int64, da
 	if selectedByRate(userID, date, entropy, cfg.SampleRate) {
 		rateSelected = "1"
 	}
+	forcedReason := ""
+	if compact {
+		forcedReason = "compact"
+	}
 	result, err := s.redis.Eval(ctx, samplingScript, keys,
 		now.UnixMilli(), int64(time.Duration(cfg.SessionIdleMinutes)*time.Minute/time.Millisecond),
 		uid+":"+date, rateSelected, cfg.UserDailyLimit, cfg.GlobalDailyLimit,
-		cfg.SampleRate, claimToken, int((72*time.Hour)/time.Second)).Slice()
+		cfg.SampleRate, claimToken, int((72*time.Hour)/time.Second), forcedReason).Slice()
 	if err != nil {
 		return sampleDecision{}, err
 	}
@@ -401,6 +466,11 @@ func (s *Service) sample(ctx context.Context, cfg storedConfig, userID int64, da
 	}
 	reason := fmt.Sprint(result[3])
 	return sampleDecision{sessionID: fmt.Sprint(result[0]), selected: fmt.Sprint(result[2]) == "1", reason: reason, claimToken: claimToken, coverageClaim: reason == "session_coverage"}, nil
+}
+
+func isCompactRequest(req securityaudit.Request) bool {
+	endpoint := strings.TrimRight(strings.ToLower(strings.TrimSpace(req.Endpoint)), "/")
+	return strings.HasSuffix(endpoint, "/responses/compact") || service.HasCompactionTriggerInInput(req.Body)
 }
 
 func (s *Service) finishSample(ctx context.Context, userID int64, date string, decision sampleDecision, success bool) error {
@@ -440,6 +510,32 @@ func (s *Service) AnalyzeNow(ctx context.Context) (int, error) {
 		return 0, infraerrors.BadRequest("ai_work_insight_disabled", "请先启用并保存 AI 使用洞察配置")
 	}
 	return s.repo.CreateDueBatches(ctx, time.Now(), cfg.Config, "manual")
+}
+
+func (s *Service) RetryBatchNow(ctx context.Context, batchID int64) error {
+	cfg := s.config.Load()
+	if cfg == nil || !cfg.Enabled {
+		return infraerrors.BadRequest("ai_work_insight_disabled", "请先启用并保存 AI 使用洞察配置")
+	}
+	samples, err := s.repo.LoadDroppedBatchSamples(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	if len(samples) == 0 {
+		return infraerrors.BadRequest("ai_work_insight_batch_not_retryable", "该分析批次不是已停止状态，或关联样本已被清理")
+	}
+	keys := make([]string, len(samples))
+	for index, sample := range samples {
+		keys[index] = PayloadKeyPrefix + strconv.FormatInt(sample.ID, 10)
+	}
+	available, err := s.redis.Exists(ctx, keys...).Result()
+	if err != nil {
+		return err
+	}
+	if available != int64(len(keys)) {
+		return infraerrors.BadRequest("ai_work_insight_payload_expired", "该批次的脱敏分析文本已过期，无法重新分析")
+	}
+	return s.repo.RequeueDroppedBatch(ctx, batchID, time.Now())
 }
 
 func (s *Service) SaveConfig(ctx context.Context, next Config, actorID int64) (Config, error) {

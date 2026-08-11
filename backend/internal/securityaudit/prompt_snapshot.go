@@ -109,31 +109,43 @@ func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot,
 			allowed = append(allowed, segment)
 		}
 	}
-	ordered := normalizeSegmentsLatestUserFirst(allowed)
+	ordered := promptSegmentTexts(normalizedPromptSegments(allowed))
 	if len(ordered) == 0 {
 		return WorkInsightSnapshot{}, ErrNoPromptText
 	}
 	text := strings.Join(ordered, "\n\n")
-	digest := sha256.Sum256([]byte(text))
+	segmentHashes := make([][32]byte, len(ordered))
+	segmentChars := make([]int, len(ordered))
+	for index, segment := range ordered {
+		segmentHashes[index] = sha256.Sum256([]byte(segment))
+		segmentChars[index] = utf8.RuneCountInString(segment)
+	}
 	if maxRunes <= 0 {
 		maxRunes = DefaultWorkInsightMaxRunes
 	}
 	remaining := maxRunes
 	redactedSegments := make([]string, 0, len(ordered))
-	for _, segment := range ordered {
+	truncated := false
+	for index, segment := range ordered {
 		if len(redactedSegments) > 0 {
 			remaining -= 2
 			if remaining <= 0 {
+				truncated = true
 				break
 			}
 		}
-		redacted := strings.TrimSpace(RedactPreview(segment, remaining))
+		full := strings.TrimSpace(redactSensitiveText(segment))
+		if utf8.RuneCountInString(full) > remaining {
+			truncated = true
+		}
+		redacted := strings.TrimSpace(TrimRunes(full, remaining))
 		if redacted == "" {
 			continue
 		}
 		redactedSegments = append(redactedSegments, redacted)
 		remaining -= utf8.RuneCountInString(redacted)
 		if remaining <= 0 {
+			truncated = truncated || index < len(ordered)-1
 			break
 		}
 	}
@@ -142,10 +154,30 @@ func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot,
 	}
 	redacted := strings.Join(redactedSegments, "\n\n")
 	return WorkInsightSnapshot{
-		Text: redacted, Segments: redactedSegments, PromptHash: hex.EncodeToString(digest[:]),
+		Text: redacted, Segments: redactedSegments, SegmentHashes: segmentHashes, SegmentChars: segmentChars,
+		PromptHash:  workInsightSegmentHash(segmentHashes),
 		PromptChars: utf8.RuneCountInString(text), AnalyzedChars: utf8.RuneCountInString(redacted),
-		MessageCount: len(ordered),
+		MessageCount: len(ordered), Truncated: truncated,
 	}, nil
+}
+
+func workInsightSegmentHash(hashes [][32]byte) string {
+	digest := sha256.New()
+	for _, hash := range hashes {
+		_, _ = digest.Write(hash[:])
+	}
+	return hex.EncodeToString(digest.Sum(nil))
+}
+
+func joinedWorkInsightChars(chars []int) int {
+	total := 0
+	for _, count := range chars {
+		total += count
+	}
+	if len(chars) > 1 {
+		total += (len(chars) - 1) * 2
+	}
+	return total
 }
 
 func extractProtocolSegments(protocol string, document any) []promptSegment {
@@ -629,6 +661,10 @@ func systemPromptSegments(texts []string) []promptSegment {
 }
 
 func RedactPreview(value string, maxRunes int) string {
+	return TrimRunes(redactSensitiveText(value), maxRunes)
+}
+
+func redactSensitiveText(value string) string {
 	value = privateBlockPattern.ReplaceAllString(value, "***PRIVATE_BLOCK***")
 	value = querySecretPattern.ReplaceAllString(value, "${1}***")
 	value = jsonSecretPattern.ReplaceAllString(value, "${1}***")
@@ -646,7 +682,7 @@ func RedactPreview(value string, maxRunes int) string {
 	value = emailPattern.ReplaceAllString(value, "***@***")
 	value = idCardPattern.ReplaceAllString(value, "***ID***")
 	value = phonePattern.ReplaceAllString(value, "***PHONE***")
-	return TrimRunes(value, maxRunes)
+	return value
 }
 
 // BuildPromptPreview stores only a short, non-recoverable head of sanitized

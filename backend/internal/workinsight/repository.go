@@ -62,6 +62,7 @@ type SampleInput struct {
 	SessionID, Reason, PromptHash                                                    string
 	RedactedPreview                                                                  string
 	EstimatedTokens, PromptChars, AnalyzedChars                                      int
+	Truncated                                                                        bool
 }
 
 func (r *Repository) CreateStaging(ctx context.Context, in SampleInput) (int64, bool, error) {
@@ -73,12 +74,12 @@ func (r *Repository) CreateStaging(ctx context.Context, in SampleInput) (int64, 
 		INSERT INTO ai_work_insight_samples (
 			request_fingerprint,request_id,user_id,username_snapshot,user_email_snapshot,api_key_id,group_id,
 			provider,protocol,endpoint,requested_model,local_date,active_session_id,sample_reason,prompt_hash,
-			estimated_tokens,prompt_chars,analyzed_chars,redacted_preview,status)
-		VALUES ($1,$2,NULLIF($3,0),$4,$5,NULLIF($6,0),$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'staging')
+			estimated_tokens,prompt_chars,analyzed_chars,truncated,redacted_preview,status)
+		VALUES ($1,$2,NULLIF($3,0),$4,$5,NULLIF($6,0),$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'staging')
 		ON CONFLICT (request_fingerprint) DO NOTHING RETURNING id`,
 		in.Fingerprint, in.RequestID, in.UserID, in.Username, in.UserEmail, in.APIKeyID, in.GroupID,
 		in.Provider, in.Protocol, in.Endpoint, in.Model, in.LocalDate, in.SessionID, in.Reason, in.PromptHash,
-		in.EstimatedTokens, in.PromptChars, in.AnalyzedChars, in.RedactedPreview).Scan(&id)
+		in.EstimatedTokens, in.PromptChars, in.AnalyzedChars, in.Truncated, in.RedactedPreview).Scan(&id)
 	if err == nil {
 		return id, true, nil
 	}
@@ -99,6 +100,24 @@ func (r *Repository) Publish(ctx context.Context, id int64) error {
 		return errors.New("work insight sample is not staging")
 	}
 	return nil
+}
+
+func (r *Repository) DeleteOlderPendingDuplicates(ctx context.Context, id, userID int64, date time.Time, promptHash string) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx, `DELETE FROM ai_work_insight_samples WHERE user_id=$1 AND local_date=$2 AND prompt_hash=$3
+		AND id<$4 AND status IN ('staging','pending_batch') RETURNING id`, userID, date, promptHash, id)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	for rows.Next() {
+		var duplicateID int64
+		if err := rows.Scan(&duplicateID); err != nil {
+			return nil, err
+		}
+		ids = append(ids, duplicateID)
+	}
+	return ids, rows.Err()
 }
 
 func (r *Repository) Drop(ctx context.Context, id int64, code string) error {
@@ -129,6 +148,7 @@ type SampleSummary struct {
 	EstimatedTokens int       `json:"estimated_tokens"`
 	PromptChars     int       `json:"prompt_chars"`
 	AnalyzedChars   int       `json:"analyzed_chars"`
+	Truncated       bool      `json:"truncated"`
 	RedactedPreview string    `json:"redacted_preview,omitempty"`
 	Status          string    `json:"status"`
 	Attempts        int       `json:"attempts"`
@@ -140,7 +160,7 @@ type SampleSummary struct {
 
 func (r *Repository) ListSamples(ctx context.Context, beforeID int64, size int) ([]SampleSummary, int64, bool, error) {
 	query := `SELECT id,request_id,user_id,username_snapshot,provider,protocol,endpoint,requested_model,
-		local_date,active_session_id,sample_reason,estimated_tokens,prompt_chars,analyzed_chars,redacted_preview,status,
+		local_date,active_session_id,sample_reason,estimated_tokens,prompt_chars,analyzed_chars,truncated,redacted_preview,status,
 		attempts,error_code,created_at,updated_at,batch_id FROM ai_work_insight_samples`
 	args := []any{size + 1}
 	if beforeID > 0 {
@@ -159,7 +179,7 @@ func (r *Repository) ListSamples(ctx context.Context, beforeID int64, size int) 
 		var item SampleSummary
 		if err := rows.Scan(&item.ID, &item.RequestID, &item.UserID, &item.Username, &item.Provider, &item.Protocol, &item.Endpoint,
 			&item.RequestedModel, &item.LocalDate, &item.ActiveSessionID, &item.SampleReason, &item.EstimatedTokens, &item.PromptChars,
-			&item.AnalyzedChars, &item.RedactedPreview, &item.Status, &item.Attempts, &item.ErrorCode, &item.CreatedAt, &item.UpdatedAt, &item.BatchID); err != nil {
+			&item.AnalyzedChars, &item.Truncated, &item.RedactedPreview, &item.Status, &item.Attempts, &item.ErrorCode, &item.CreatedAt, &item.UpdatedAt, &item.BatchID); err != nil {
 			return nil, 0, false, err
 		}
 		items = append(items, item)
@@ -181,11 +201,11 @@ func (r *Repository) ListSamples(ctx context.Context, beforeID int64, size int) 
 func (r *Repository) GetSample(ctx context.Context, id int64) (*SampleSummary, error) {
 	var item SampleSummary
 	err := r.db.QueryRowContext(ctx, `SELECT id,request_id,user_id,username_snapshot,provider,protocol,endpoint,requested_model,
-		local_date,active_session_id,sample_reason,estimated_tokens,prompt_chars,analyzed_chars,redacted_preview,status,
+		local_date,active_session_id,sample_reason,estimated_tokens,prompt_chars,analyzed_chars,truncated,redacted_preview,status,
 		attempts,error_code,created_at,updated_at,batch_id FROM ai_work_insight_samples WHERE id=$1`, id).Scan(
 		&item.ID, &item.RequestID, &item.UserID, &item.Username, &item.Provider, &item.Protocol, &item.Endpoint,
 		&item.RequestedModel, &item.LocalDate, &item.ActiveSessionID, &item.SampleReason, &item.EstimatedTokens, &item.PromptChars,
-		&item.AnalyzedChars, &item.RedactedPreview, &item.Status, &item.Attempts, &item.ErrorCode, &item.CreatedAt, &item.UpdatedAt, &item.BatchID)
+		&item.AnalyzedChars, &item.Truncated, &item.RedactedPreview, &item.Status, &item.Attempts, &item.ErrorCode, &item.CreatedAt, &item.UpdatedAt, &item.BatchID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

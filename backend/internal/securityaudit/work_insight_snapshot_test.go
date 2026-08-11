@@ -72,4 +72,31 @@ func TestExtractWorkInsightSnapshot_RedactsCredentialShapes(t *testing.T) {
 	require.Contains(t, snapshot.Text, "***PRIVATE_BLOCK***")
 	require.Contains(t, snapshot.Text, "***BASE64***")
 	require.Contains(t, snapshot.Text, "***TOKEN***")
+	require.False(t, snapshot.Truncated, "redaction becoming shorter is not truncation")
+}
+
+func TestExtractWorkInsightSnapshot_ReportsActualTruncation(t *testing.T) {
+	body, err := json.Marshal(map[string]any{"input": []any{
+		map[string]any{"role": "user", "content": strings.Repeat("a", 30)},
+	}})
+	require.NoError(t, err)
+	snapshot, err := ExtractWorkInsightSnapshot(Request{Protocol: "openai_responses", Body: body}, 20)
+	require.NoError(t, err)
+	require.True(t, snapshot.Truncated)
+}
+
+func TestWorkInsightSnapshotRetainsOnlyNewConversationSuffix(t *testing.T) {
+	previous, err := ExtractWorkInsightSnapshot(Request{Protocol: "openai_chat", Body: []byte(`{"messages":[{"role":"user","content":"昨天任务"},{"role":"assistant","content":"完成"},{"role":"user","content":"昨天补充"}]}`)}, 2<<20)
+	require.NoError(t, err)
+	current, err := ExtractWorkInsightSnapshot(Request{Protocol: "openai_chat", Body: []byte(`{"messages":[{"role":"user","content":"昨天任务"},{"role":"assistant","content":"完成"},{"role":"user","content":"昨天补充"},{"role":"assistant","content":"完成"},{"role":"user","content":"今天新增"}]}`)}, 2<<20)
+	require.NoError(t, err)
+
+	require.True(t, current.RetainAfterPrefix(previous.MessageCount, previous.PromptHash))
+	require.Equal(t, []string{"今天新增"}, current.Segments)
+	require.Equal(t, "今天新增", current.Text)
+	require.Equal(t, len([]rune("今天新增")), current.PromptChars)
+
+	different, err := ExtractWorkInsightSnapshot(Request{Protocol: "openai_chat", Body: []byte(`{"messages":[{"role":"user","content":"长度相同"},{"role":"user","content":"今天新增"}]}`)}, 2<<20)
+	require.NoError(t, err)
+	require.False(t, different.RetainAfterPrefix(previous.MessageCount, previous.PromptHash), "equal counts or lengths must not merge different content")
 }

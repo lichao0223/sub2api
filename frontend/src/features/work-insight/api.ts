@@ -50,6 +50,11 @@ export async function clearLogs(): Promise<{ samples: number; batches: number }>
   return data
 }
 
+export async function retryBatch(id: number): Promise<{ batch_id: number }> {
+	const { data } = await apiClient.post<{ batch_id: number }>(`${basePath}/batches/${id}/retry`)
+	return data
+}
+
 export async function listAnalyzerAccounts(): Promise<AnalyzerAccount[]> {
   const { data } = await apiClient.get<AnalyzerAccount[]>(`${basePath}/analyzer-accounts`)
   return data
@@ -82,4 +87,4 @@ export async function listRepresentativeItems(id: number, page: number, pageSize
   return data
 }
 
-export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }
+export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, retryBatch, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }
