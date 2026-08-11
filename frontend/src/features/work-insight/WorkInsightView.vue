@@ -313,7 +313,7 @@ const sampleReasonLabels: Record<string, string> = { session_coverage: '新会�
 const triggerReasonLabels: Record<string, string> = { idle: '用户空闲触发', max_wait: '达到最长等待时间', sample_limit: '达到单批样本上限', token_limit: '达到单批 Token 上限', fixed: '定时策略触发', manual: '管理员手动触发', finalize: '每日收口触发' }
 const statusLabels: Record<string, string> = { staging: '正在入库', pending_batch: '等待组成分析批次', batched: '已进入分析批次', queued: '排队等待分析', processing: '正在分析', retry: '异常，等待自动重试', analyzed: '分析完成', done: '分析完成', failed: '分析失败', dropped: '已停止处理' }
 const errorLabels: Record<string, string> = {
-  summary_write_conflict: '摘要写入版本冲突，自动重试后仍未成功', summary_write_failed: '摘要写入数据库失败', summary_load_failed: '读取已有摘要失败',
+  summary_write_conflict: '摘要写入版本冲突，自动重试后仍未成功', summary_json_invalid: '分析结果包含无效的 JSON 数组', summary_write_failed: '摘要写入数据库失败，请查看后台错误日志', summary_load_failed: '读取已有摘要失败',
   sample_load_failed: '读取样本记录失败', samples_missing: '分析批次没有可用样本', payload_missing: 'Redis 中的临时请求文本已不存在', payload_empty: '请求文本为空，无法分析',
   analyzer_config_invalid: '分析模型配置无效', analyzer_context_length: '输入超过分析模型上下文限制', analyzer_invalid_result: '分析模型返回的结果格式无效', analyzer_unavailable: '分析模型暂时不可用',
   job_expired: '任务超过最大等待时间', user_deleted: '用户已删除，停止分析', admin_stopped: '管理员手动停止', payload_capacity: 'Redis 临时文本容量已满', payload_store_failed: '请求文本写入 Redis 失败', payload_encode_failed: '请求文本编码失败', payload_too_large: '请求文本超过大小限制', queue_publish_failed: '采样任务加入队列失败',

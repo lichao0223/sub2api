@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -432,7 +433,7 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 			offset++
 			continue
 		}
-		raw, err := normalizeWorkSummary(raw)
+		raw, err := normalizeAnalyzerResult(raw)
 		if err != nil {
 			offset++
 			continue
@@ -448,34 +449,57 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 	return BatchResult{}, errors.New("invalid analyzer JSON")
 }
 
-func normalizeWorkSummary(raw json.RawMessage) (json.RawMessage, error) {
+func normalizeAnalyzerResult(raw json.RawMessage) (json.RawMessage, error) {
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &object); err != nil {
 		return nil, err
 	}
-	value, ok := object["work_summary"]
-	if !ok {
-		return raw, nil
-	}
-	var text string
-	if json.Unmarshal(value, &text) == nil {
-		return raw, nil
-	}
-	var items []string
-	if err := json.Unmarshal(value, &items); err != nil {
-		return nil, err
-	}
-	clean := items[:0]
-	for _, item := range items {
-		if item = strings.TrimSpace(strings.TrimLeft(item, "-•* ")); item != "" {
-			clean = append(clean, item)
+	if value, ok := object["work_summary"]; ok {
+		var text string
+		if json.Unmarshal(value, &text) != nil {
+			var items []string
+			if err := json.Unmarshal(value, &items); err != nil {
+				return nil, err
+			}
+			clean := items[:0]
+			for _, item := range items {
+				if item = strings.TrimSpace(strings.TrimLeft(item, "-•* ")); item != "" {
+					clean = append(clean, item)
+				}
+			}
+			if len(clean) == 0 {
+				return nil, errors.New("empty work summary")
+			}
+			object["work_summary"], _ = json.Marshal("- " + strings.Join(clean, "\n- "))
 		}
 	}
-	if len(clean) == 0 {
-		return nil, errors.New("empty work summary")
+	var representativeItems []map[string]json.RawMessage
+	if value, ok := object["representative_items"]; ok && json.Unmarshal(value, &representativeItems) == nil {
+		for _, item := range representativeItems {
+			var values []json.RawMessage
+			if json.Unmarshal(item["source_sample_ids"], &values) != nil {
+				continue
+			}
+			ids := make([]int64, 0, len(values))
+			for _, value := range values {
+				var id int64
+				if json.Unmarshal(value, &id) != nil {
+					var text string
+					if json.Unmarshal(value, &text) != nil {
+						return nil, errors.New("invalid source sample ID")
+					}
+					parsed, err := strconv.ParseInt(text, 10, 64)
+					if err != nil {
+						return nil, errors.New("invalid source sample ID")
+					}
+					id = parsed
+				}
+				ids = append(ids, id)
+			}
+			item["source_sample_ids"], _ = json.Marshal(ids)
+		}
+		object["representative_items"], _ = json.Marshal(representativeItems)
 	}
-	text = "- " + strings.Join(clean, "\n- ")
-	object["work_summary"], _ = json.Marshal(text)
 	return json.Marshal(object)
 }
 
@@ -544,9 +568,10 @@ func isInvalidAnalyzerResult(err error) bool {
 
 func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 	result.WorkSummary = strings.TrimSpace(result.WorkSummary)
-	if result.WorkSummary == "" || utf8.RuneCountInString(result.WorkSummary) > 300 {
+	if result.WorkSummary == "" {
 		return errors.New("invalid work summary")
 	}
+	result.WorkSummary = truncateRunes(result.WorkSummary, 300)
 	validIDs := map[int64]struct{}{}
 	var evidence strings.Builder
 	for _, sample := range samples {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 	"strconv"
 	"time"
@@ -449,4 +450,11 @@ func mergeUnique(base []string, additions ...[]string) []string {
 	return result
 }
 
-func jsonValue(value any) []byte { raw, _ := json.Marshal(value); return raw }
+func jsonValue(value any) []byte {
+	reflected := reflect.ValueOf(value)
+	if reflected.IsValid() && reflected.Kind() == reflect.Slice && reflected.IsNil() {
+		return []byte("[]")
+	}
+	raw, _ := json.Marshal(value)
+	return raw
+}

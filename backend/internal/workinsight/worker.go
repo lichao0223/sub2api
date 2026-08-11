@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 	"go.uber.org/zap"
 )
 
@@ -356,10 +357,21 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	result := mergeBatchResults(results)
 	if err := s.repo.CompleteBatch(ctx, *batch, result, cfg.AnalyzerModel, inputTokens, outputTokens, callCount, eligible, cfg.Timezone); err != nil {
 		logger.L().Error("work insight summary write failed", zap.Int64("batch_id", batch.ID), zap.Int64("user_id", batch.UserID), zap.String("local_date", batch.LocalDate.Format("2006-01-02")), zap.Error(err))
-		s.finishBatchFailure(ctx, cfg, *batch, samples, "summary_write_failed", true)
+		s.finishBatchFailure(ctx, cfg, *batch, samples, summaryWriteErrorCode(err), true)
 		return
 	}
 	s.deletePayloads(ctx, samples)
+}
+
+func summaryWriteErrorCode(err error) string {
+	if err != nil && err.Error() == "work insight claim lost" {
+		return "summary_write_conflict"
+	}
+	var postgresError *pq.Error
+	if errors.As(err, &postgresError) && postgresError.Constraint == "chk_ai_work_insight_batches_json" {
+		return "summary_json_invalid"
+	}
+	return "summary_write_failed"
 }
 
 func batchExpired(batch Batch, cfg storedConfig, now time.Time) bool {

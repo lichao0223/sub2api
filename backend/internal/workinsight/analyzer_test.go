@@ -196,8 +196,8 @@ func TestParseAnalyzerResponseAcceptsReasoningAndArrayContent(t *testing.T) {
 	require.Equal(t, "整理会议纪要。", result.WorkSummary)
 }
 
-func TestParseAnalyzerResponseAcceptsSummaryArrayInReasoning(t *testing.T) {
-	content := `{"work_summary":["整理简短的会议纪要"],"task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":[],"representative_items":[{"source_sample_ids":[1],"summary":"整理简短会议纪要","task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
+func TestParseAnalyzerResponseAcceptsSummaryArrayAndStringSampleIDs(t *testing.T) {
+	content := `{"work_summary":["整理简短的会议纪要"],"task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":[],"representative_items":[{"source_sample_ids":["1"],"summary":"整理简短会议纪要","task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
 	raw := []byte(`{"choices":[{"message":{"content":null,"reasoning":` + strconv.Quote(content) + `},"finish_reason":"stop"}],"usage":{"prompt_tokens":342,"completion_tokens":146}}`)
 
 	result, input, output, err := parseAnalyzerResponse(raw, []analysisInput{{ID: 1, Text: "连接检测样本：整理一份简短会议纪要。"}})
@@ -205,6 +205,7 @@ func TestParseAnalyzerResponseAcceptsSummaryArrayInReasoning(t *testing.T) {
 	require.Equal(t, "- 整理简短的会议纪要", result.WorkSummary)
 	require.Equal(t, int64(342), input)
 	require.Equal(t, int64(146), output)
+	require.Equal(t, []int64{1}, result.RepresentativeItems[0].SourceSampleIDs)
 }
 
 func TestParseAnalyzerResponseReportsTruncatedOutput(t *testing.T) {
@@ -282,6 +283,12 @@ func TestValidateBatchResultNormalizesUnknownEvidenceLevel(t *testing.T) {
 	result := BatchResult{WorkSummary: "整理会议纪要。", TaskCategories: []string{"会议纪要"}, EvidenceLevel: "低"}
 	require.NoError(t, validateBatchResult(&result, []analysisInput{{ID: 1, Text: "整理会议纪要"}}))
 	require.Equal(t, "unknown", result.EvidenceLevel)
+}
+
+func TestValidateBatchResultTruncatesLongSummary(t *testing.T) {
+	result := BatchResult{WorkSummary: strings.Repeat("长", 301), TaskCategories: []string{"其他"}, EvidenceLevel: "explicit"}
+	require.NoError(t, validateBatchResult(&result, nil))
+	require.Len(t, []rune(result.WorkSummary), 300)
 }
 
 func TestMergeBatchResultsFormatsHumanReadableWorkList(t *testing.T) {

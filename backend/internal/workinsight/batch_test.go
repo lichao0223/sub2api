@@ -1,15 +1,28 @@
 package workinsight
 
 import (
+	"errors"
 	"testing"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCleanupHasMoreWhenAnyTableFillsBatch(t *testing.T) {
 	require.False(t, cleanupHasMore(CleanupResult{Samples: 4999, Batches: 2, Daily: 1}, 5000))
 	require.True(t, cleanupHasMore(CleanupResult{Samples: 5000}, 5000))
+}
+
+func TestJSONValueKeepsNilSlicesAsArrays(t *testing.T) {
+	require.JSONEq(t, `[]`, string(jsonValue([]string(nil))))
+	require.JSONEq(t, `{}`, string(jsonValue(map[string]int{})))
+}
+
+func TestSummaryWriteErrorCodeExplainsKnownFailures(t *testing.T) {
+	require.Equal(t, "summary_write_conflict", summaryWriteErrorCode(errors.New("work insight claim lost")))
+	require.Equal(t, "summary_json_invalid", summaryWriteErrorCode(&pq.Error{Constraint: "chk_ai_work_insight_batches_json"}))
+	require.Equal(t, "summary_write_failed", summaryWriteErrorCode(errors.New("disk unavailable")))
 }
 
 func TestAnalyzerPauseExpires(t *testing.T) {
