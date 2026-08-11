@@ -10,8 +10,41 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAnalyzerModelsUsesMappingAndOAuthDefaults(t *testing.T) {
+	mapped := &service.Account{Credentials: map[string]any{"model_mapping": map[string]any{"alias-b": "upstream-b", "wild-*": "upstream", "alias-a": "upstream-a"}}}
+	require.Equal(t, []string{"alias-a", "alias-b"}, analyzerModels(mapped))
+
+	oauth := &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Credentials: map[string]any{}}
+	require.Contains(t, analyzerModels(oauth), "gpt-5.5")
+}
+
+func TestAnalyzerProbeMessageSanitizesFailures(t *testing.T) {
+	require.Equal(t, "分析账号鉴权失败（HTTP 401）", analyzerProbeMessage(errors.New("analyzer_http_401")))
+	require.Equal(t, "分析节点连接失败", analyzerProbeMessage(errors.New("dial tcp 10.0.0.1: secret failure")))
+}
+
+func TestProbeRequestsACompleteAnalysisResult(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.NotContains(t, body.Messages[1].Content, "仅返回任务类型")
+		writeAnalyzerResult(w, "整理一份简短会议纪要。")
+	}))
+	defer server.Close()
+
+	cfg := DefaultConfig()
+	cfg.AnalyzerSource, cfg.AnalyzerBaseURL, cfg.AnalyzerToken, cfg.AnalyzerModel = "custom", server.URL, "token", "model"
+	result := (&Service{}).Probe(context.Background(), cfg)
+	require.True(t, result.OK, result.Message)
+}
 
 func TestBuildAnalysisChunksDeduplicatesAndHonorsBudget(t *testing.T) {
 	chunks := buildAnalysisChunks([]analysisInput{
@@ -72,6 +105,7 @@ func TestAnalyzeChunkValidatesStructuredResultAndEvidence(t *testing.T) {
 		require.Equal(t, "Bearer token-canary", r.Header.Get("Authorization"))
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
+		require.NotContains(t, body, "response_format", "OpenAI-compatible analyzers may not implement JSON mode")
 		content := `{"work_summary":"排查 sub2api 网关问题并补充测试。","task_categories":["问题排查","测试用例"],"explicit_projects":["sub2api"],"explicit_modules":["网关"],"change_types":["Bug 修复"],"business_topics":["路由"],"representative_items":[{"source_sample_ids":[11],"summary":"排查网关路由问题。","task_categories":["问题排查"],"explicit_projects":["sub2api"],"explicit_modules":["网关"]},{"source_sample_ids":[11],"summary":"请排查 sub2api 的网关路由问题","task_categories":["问题排查"],"explicit_projects":["sub2api"],"explicit_modules":["网关"]},{"source_sample_ids":[999],"summary":"虚构样本。","task_categories":["问题排查"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": content}}}, "usage": map[string]int{"prompt_tokens": 20, "completion_tokens": 10}})
 	}))

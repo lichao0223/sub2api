@@ -280,7 +280,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	promptService := securityaudit.NewPromptService(configManager, postgreSQLRepository, redisPayloadStore, openAICompatibleScanner, atomicMetrics)
 	promptAdminHandler := securityaudit.NewPromptAdminHandler(promptService)
 	workinsightRepository := workinsight.NewRepository(db)
-	workinsightService := workinsight.NewService(workinsightRepository, redisClient, settingRepository, secretEncryptor, accountRepository, opsRepository)
+	workinsightService := workinsight.NewService(workinsightRepository, redisClient, settingRepository, secretEncryptor, accountRepository, opsRepository, openAIGatewayService)
 	adminHandler := workinsight.NewAdminHandler(workinsightService)
 	paymentHandler := admin.NewPaymentHandler(paymentService, paymentConfigService)
 	affiliateHandler := admin.NewAffiliateHandler(affiliateService, adminService)

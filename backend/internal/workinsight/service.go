@@ -108,6 +108,7 @@ type Service struct {
 	encryptor          service.SecretEncryptor
 	accounts           service.AccountRepository
 	ops                service.OpsRepository
+	openAIGateway      *service.OpenAIGatewayService
 	queue              chan queuedRequest
 	config             atomic.Pointer[storedConfig]
 	queuedCount        atomic.Int64
@@ -125,8 +126,8 @@ type queuedRequest struct {
 	bytes   int64
 }
 
-func NewService(repo *Repository, rdb *redis.Client, settings service.SettingRepository, encryptor service.SecretEncryptor, accounts service.AccountRepository, ops service.OpsRepository) *Service {
-	s := &Service{repo: repo, redis: rdb, settings: settings, encryptor: encryptor, accounts: accounts, ops: ops, queue: make(chan queuedRequest, DefaultIngressLimit)}
+func NewService(repo *Repository, rdb *redis.Client, settings service.SettingRepository, encryptor service.SecretEncryptor, accounts service.AccountRepository, ops service.OpsRepository, openAIGateway *service.OpenAIGatewayService) *Service {
+	s := &Service{repo: repo, redis: rdb, settings: settings, encryptor: encryptor, accounts: accounts, ops: ops, openAIGateway: openAIGateway, queue: make(chan queuedRequest, DefaultIngressLimit)}
 	defaults := storedConfig{Config: DefaultConfig()}
 	s.config.Store(&defaults)
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

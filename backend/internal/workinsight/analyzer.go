@@ -8,14 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	openaiapi "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 type analysisInput struct {
@@ -27,6 +30,7 @@ type analysisInput struct {
 type analysisEndpoint struct {
 	baseURL, token, model string
 	timeoutSeconds        int
+	account               *service.Account
 }
 
 func (s *Service) resolveAnalyzer(ctx context.Context, cfg storedConfig) (analysisEndpoint, error) {
@@ -51,6 +55,7 @@ func (s *Service) resolveAnalyzer(ctx context.Context, cfg storedConfig) (analys
 		if account == nil || !account.IsActive() {
 			return endpoint, errors.New("analyzer account unavailable")
 		}
+		endpoint.account = account
 		endpoint.baseURL = strings.TrimSpace(account.GetCredential("base_url"))
 		endpoint.token = strings.TrimSpace(account.GetCredential("api_key"))
 		if account.Platform == service.PlatformOpenAI {
@@ -77,11 +82,11 @@ func (s *Service) Probe(ctx context.Context, request Config) ProbeResult {
 	stored := storedConfig{Config: request}
 	endpoint, err := s.resolveAnalyzer(ctx, stored)
 	if err == nil {
-		_, _, _, _, err = s.analyzeChunkResilient(ctx, endpoint, "", []analysisInput{{ID: 1, Text: "连接检测 canary，请仅返回任务类型“其他”。", EstimatedTokens: 16}}, false)
+		_, _, _, err = s.analyzeChunk(ctx, endpoint, "", []analysisInput{{ID: 1, Text: "连接检测样本：整理一份简短会议纪要。", EstimatedTokens: 16}})
 	}
 	result := ProbeResult{OK: err == nil, Status: "ok", Message: "分析节点连接正常", LatencyMS: time.Since(started).Milliseconds(), CheckedAt: time.Now().UTC()}
 	if err != nil {
-		result.Status, result.Message = "error", "分析节点连接失败"
+		result.Status, result.Message = "error", analyzerProbeMessage(err)
 	}
 	return result
 }
@@ -110,10 +115,64 @@ func (s *Service) AnalyzerAccounts(ctx context.Context) ([]AnalyzerAccount, erro
 		if baseURL == "" || token == "" {
 			continue
 		}
-		models := stringSlice(account.Credentials["models"])
+		models := analyzerModels(account)
 		result = append(result, AnalyzerAccount{ID: account.ID, Name: account.Name, Platform: account.Platform, Models: models})
 	}
 	return result, nil
+}
+
+func analyzerModels(account *service.Account) []string {
+	models := stringSlice(account.Credentials["models"])
+	for model := range account.GetModelMapping() {
+		if !strings.ContainsAny(model, "*?") {
+			models = append(models, model)
+		}
+	}
+	if len(models) == 0 && account.IsOpenAIOAuth() {
+		for _, model := range openaiapi.DefaultModelIDs() {
+			if strings.HasPrefix(model, "gpt-") && !strings.Contains(model, "image") {
+				models = append(models, model)
+			}
+		}
+	}
+	unique := make(map[string]struct{}, len(models))
+	result := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" || utf8.RuneCountInString(model) > 128 {
+			continue
+		}
+		if _, exists := unique[model]; !exists {
+			unique[model] = struct{}{}
+			result = append(result, model)
+		}
+	}
+	sort.Strings(result)
+	return result
+}
+
+func analyzerProbeMessage(err error) string {
+	message := err.Error()
+	switch {
+	case strings.Contains(message, "analyzer_http_400"):
+		return "模型或请求格式不受支持（HTTP 400）"
+	case strings.Contains(message, "analyzer_http_401"):
+		return "分析账号鉴权失败（HTTP 401）"
+	case strings.Contains(message, "analyzer_http_403"):
+		return "分析账号无权限（HTTP 403）"
+	case strings.Contains(message, "analyzer_http_429"):
+		return "分析账号已限流（HTTP 429）"
+	case strings.Contains(message, "analyzer_http_404"):
+		return "分析接口地址不存在（HTTP 404）"
+	case strings.Contains(message, "analyzer_http_5"):
+		return "分析节点服务异常"
+	case isInvalidAnalyzerResult(err):
+		return "分析节点响应格式不兼容"
+	case strings.Contains(message, "credentials incomplete"):
+		return "分析账号配置不完整"
+	default:
+		return "分析节点连接失败"
+	}
 }
 
 func stringSlice(value any) []string {
@@ -128,8 +187,7 @@ func stringSlice(value any) []string {
 			}
 		}
 	}
-	result, _ := validateList(values, false)
-	return result
+	return values
 }
 
 func buildAnalysisChunks(samples []analysisInput, budget int) [][]analysisInput {
@@ -192,10 +250,27 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 		fmt.Fprintf(&input, "<sample id=%d>\n%s\n</sample>\n", sample.ID, sample.Text)
 	}
 	payload := map[string]any{
-		"model": endpoint.model, "temperature": 0, "response_format": map[string]string{"type": "json_object"},
+		"model": endpoint.model, "temperature": 0,
 		"messages": []map[string]string{{"role": "system", "content": analyzerInstruction}, {"role": "user", "content": input.String()}},
 	}
 	body, _ := json.Marshal(payload)
+	if endpoint.account != nil && endpoint.account.IsOpenAIOAuth() {
+		if s.openAIGateway == nil {
+			return BatchResult{}, 0, 0, errors.New("analyzer gateway unavailable")
+		}
+		recorder := httptest.NewRecorder()
+		ginContext, _ := gin.CreateTestContext(recorder)
+		ginContext.Request = httptest.NewRequestWithContext(ctx, http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+		ginContext.Request.Header.Set("Content-Type", "application/json")
+		_, gatewayErr := s.openAIGateway.ForwardAsChatCompletions(ctx, ginContext, endpoint.account, body, "", endpoint.model)
+		if gatewayErr != nil {
+			if recorder.Code >= 400 {
+				return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", recorder.Code)
+			}
+			return BatchResult{}, 0, 0, gatewayErr
+		}
+		return parseAnalyzerResponse(recorder.Body.Bytes(), samples)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return BatchResult{}, 0, 0, err
@@ -221,6 +296,10 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 		}
 		return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", resp.StatusCode)
 	}
+	return parseAnalyzerResponse(raw, samples)
+}
+
+func parseAnalyzerResponse(raw []byte, samples []analysisInput) (BatchResult, int64, int64, error) {
 	var envelope struct {
 		Choices []struct {
 			Message struct {
