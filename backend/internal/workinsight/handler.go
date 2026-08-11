@@ -133,6 +133,21 @@ func (h *AdminHandler) ListDaily(c *gin.Context) {
 	response.Paginated(c, items, total, page, size)
 }
 
+func (h *AdminHandler) ListRanking(c *gin.Context) {
+	page, size := response.ParsePagination(c)
+	filter, ok := parseDailyFilter(c)
+	if !ok {
+		return
+	}
+	filter.Page, filter.Size = page, size
+	items, total, err := h.service.repo.ListUserRanking(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, size)
+}
+
 func (h *AdminHandler) GetOverview(c *gin.Context) {
 	filter, ok := parseDailyFilter(c)
 	if !ok {

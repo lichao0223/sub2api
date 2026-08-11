@@ -254,7 +254,7 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 		"messages": []map[string]string{{"role": "system", "content": analyzerInstruction}, {"role": "user", "content": input.String()}},
 	}
 	body, _ := json.Marshal(payload)
-	if endpoint.account != nil && endpoint.account.IsOpenAIOAuth() {
+	if endpoint.account != nil {
 		if s.openAIGateway == nil {
 			return BatchResult{}, 0, 0, errors.New("analyzer gateway unavailable")
 		}

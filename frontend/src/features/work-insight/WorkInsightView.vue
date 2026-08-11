@@ -39,18 +39,18 @@
 
         <section class="card overflow-hidden">
           <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700">
-            <h2 class="font-semibold text-gray-950 dark:text-white">用户每日洞察</h2>
-            <p class="mt-1 text-xs text-gray-500">共 {{ page.total }} 条汇总记录；不展示原始对话。</p>
+            <h2 class="font-semibold text-gray-950 dark:text-white">用户洞察排名</h2>
+            <p class="mt-1 text-xs text-gray-500">当前筛选时间范围内按 Token 用量排名，共 {{ page.total }} 位用户；点击查看最新一日详情。</p>
           </div>
-          <DataTable :columns="columns" :data="page.items" :loading="loading" row-key="id" clickable-rows @row-click="openDetail">
-            <template #cell-insight_date="{ row }">{{ formatDate(row.insight_date) }}</template>
+          <DataTable :columns="columns" :data="page.items" :loading="loading" row-key="latest_insight_id" clickable-rows @row-click="openDetail">
+            <template #cell-rank="{ row }"><strong>#{{ rankingPosition(row) }}</strong></template>
             <template #cell-user="{ row }"><div><strong>{{ row.username || `用户 ${row.user_id ?? '-'}` }}</strong><p class="text-xs text-gray-400">ID {{ row.user_id ?? '已删除' }}</p></div></template>
             <template #cell-usage="{ row }"><strong>{{ formatNumber(row.business_total_tokens) }}</strong><p class="text-xs text-gray-400">{{ row.business_request_count }} 次请求</p></template>
+            <template #cell-sample_count="{ row }">{{ formatNumber(row.sample_count) }}</template>
             <template #cell-coverage="{ row }">{{ row.covered_active_session_count }} / {{ row.eligible_active_session_count }}</template>
-            <template #cell-category="{ row }"><span class="badge">{{ primaryCategory(row) }}</span></template>
-            <template #cell-projects="{ row }"><div class="flex max-w-64 flex-wrap gap-1"><span v-for="item in row.explicit_projects.slice(0, 2)" :key="item" class="badge">{{ item }}</span><span v-if="!row.explicit_projects.length" class="text-gray-400">未明确</span></div></template>
-            <template #cell-summary="{ row }"><p class="max-w-md whitespace-normal text-sm">{{ row.daily_summary || '等待分析结果' }}</p></template>
-            <template #cell-status="{ row }"><StatusBadge :status="row.failed_sample_count ? 'warning' : row.last_analyzed_at ? 'success' : 'inactive'" :label="row.failed_sample_count ? '部分失败' : row.last_analyzed_at ? '已完成' : '分析中'" /></template>
+            <template #cell-days="{ row }"><strong>{{ row.insight_days }}</strong><p class="text-xs text-gray-400">{{ formatRange(row.start_date, row.end_date) }}</p></template>
+            <template #cell-summary="{ row }"><p class="max-w-md whitespace-normal text-sm">{{ row.latest_summary || '等待分析结果' }}</p></template>
+            <template #cell-status="{ row }"><StatusBadge :status="row.failed_sample_count ? 'warning' : row.analyzed ? 'success' : 'inactive'" :label="row.failed_sample_count ? '部分失败' : row.analyzed ? '已完成' : '分析中'" /></template>
           </DataTable>
           <Pagination :total="page.total" :page="page.page" :page-size="page.page_size" @update:page="changePage" @update:page-size="changePageSize" />
         </section>
@@ -60,11 +60,14 @@
         <div class="space-y-5">
           <ConfigCard title="采样开关" description="控制新的业务请求是否进入异步采样队列">
             <label class="flex items-center justify-between gap-4"><span><strong>启用采样分析</strong><small>关闭后历史洞察仍可查看</small></span><Toggle v-model="draft.enabled" aria-label="启用采样分析" /></label>
+            <div data-test="sample-rate-config" class="mt-5 border-t border-gray-200 pt-5 dark:border-dark-700">
+              <NumberField v-model="draft.sample_rate" label="请求采样率" suffix="%" :min="0" :max="100" />
+              <p class="mt-2 text-xs text-gray-500">每个新会话的首个请求必定采样，后续请求按此比例采样；默认 20%。</p>
+            </div>
           </ConfigCard>
 
-          <ConfigCard title="采样策略" description="按用户活跃会话采样，同一用户的多个 API Key 共享状态">
+          <ConfigCard title="采样限制与排除" description="按用户活跃会话采样，同一用户的多个 API Key 共享状态">
             <div class="form-grid">
-              <NumberField v-model="draft.sample_rate" label="后续请求采样率" suffix="%" :min="0" :max="100" />
               <NumberField v-model="draft.session_idle_minutes" label="会话空闲阈值" suffix="分钟" :min="1" />
               <NumberField v-model="draft.user_daily_limit" label="单用户每日上限" suffix="次" :min="1" :max="100000" />
               <NumberField v-model="draft.global_daily_limit" label="全局每日上限" suffix="次" :min="1" :max="500000" />
@@ -127,6 +130,7 @@
         <aside class="card h-fit p-5 xl:sticky xl:top-5">
           <h2 class="font-semibold text-gray-950 dark:text-white">运行状态</h2>
           <dl class="mt-4 space-y-4 text-sm">
+            <div><dt>当前采样策略</dt><dd>首请求必采 · 后续 {{ draft.sample_rate }}%</dd></div>
             <div><dt>本地队列</dt><dd>{{ runtime?.queue_depth ?? 0 }} / {{ runtime?.queue_capacity ?? draft.queue_capacity }} 条 · {{ formatBytes(runtime?.queue_bytes ?? 0) }} / {{ formatBytes(runtime?.queue_byte_capacity ?? 0) }}</dd></div>
             <div><dt>已处理候选</dt><dd>{{ formatNumber(runtime?.processed ?? 0) }}</dd></div>
             <div><dt>忙丢弃</dt><dd>{{ formatNumber(runtime?.dropped ?? 0) }}</dd></div>
@@ -166,8 +170,9 @@
     <BaseDialog :show="logsOpen" title="采样与分析日志" width="wide" close-on-click-outside @close="logsOpen = false">
       <div class="space-y-6">
         <p class="text-xs text-gray-500">仅展示最近 50 条元数据，不展示原始提示词、模型输出或 Redis 临时文本。</p>
-        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">原因</th><th class="p-2">Token</th><th class="p-2">状态</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ item.username || '已删除用户' }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ item.sample_reason }}</td><td class="p-2">{{ formatNumber(item.estimated_tokens) }}</td><td class="p-2">{{ item.error_code || item.status }}</td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
-        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ item.username || '已删除用户' }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ item.trigger_reason }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</td><td class="p-2">{{ item.error_code || item.status }}</td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
+        <p class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-200">分析批次：等待 {{ batchCount('queued', 'retry') }} · 正在分析 {{ batchCount('processing') }} · 失败 {{ batchCount('failed', 'dropped') }} · 完成 {{ batchCount('done') }}。采样日志中的失败通常是同一分析批次的关联样本，不重复算作新的故障。</p>
+        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">采样原因</th><th class="p-2">Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-2">{{ formatNumber(item.estimated_tokens) }}</td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
+        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
         <p v-if="logsLoading" class="py-4 text-center text-sm text-gray-500">正在加载日志…</p>
       </div>
     </BaseDialog>
@@ -185,7 +190,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import type { Column } from '@/components/common/types'
 import api from './api'
 import { TASK_CATEGORIES } from './types'
-import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, DailyInsightPage, SampleSummary, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
+import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, SampleSummary, UserInsightRanking, UserInsightRankingPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
 
 const ConfigCard = defineComponent({ props: { title: { type: String, required: true }, description: { type: String, required: true } }, setup: (props, { slots }) => () => h('section', { class: 'card p-5' }, [h('div', { class: 'mb-5' }, [h('h2', { class: 'font-semibold text-gray-950 dark:text-white' }, props.title), h('p', { class: 'mt-1 text-xs text-gray-500' }, props.description)]), slots.default?.()]) })
 const NumberField = defineComponent({ props: { modelValue: { type: Number, default: 0 }, label: { type: String, required: true }, suffix: { type: String, default: '' }, min: { type: Number, default: 0 }, max: { type: Number, default: undefined } }, emits: ['update:modelValue'], setup: (props, { emit }) => () => h('label', { class: 'field' }, [h('span', props.label), h('div', { class: 'relative' }, [h('input', { type: 'number', min: props.min, max: props.max, value: props.modelValue ?? 0, class: 'input w-full pr-16', onInput: (event: Event) => emit('update:modelValue', Number((event.target as HTMLInputElement).value)) }), props.suffix && h('em', { class: 'pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs not-italic text-gray-400' }, props.suffix)])]) })
@@ -203,7 +208,7 @@ const overview = ref<WorkInsightOverview | null>(null)
 const analyzerAccounts = ref<AnalyzerAccount[]>([])
 const savedConfig = ref<WorkInsightConfig | null>(null)
 const draft = ref<WorkInsightConfig | null>(null)
-const page = reactive<DailyInsightPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+const page = reactive<UserInsightRankingPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
 const filters = reactive<DailyInsightFilters>({ start_date: '', end_date: '', user_name: '', task_category: '', project_name: '' })
 const appliedFilters = ref<DailyInsightFilters>({ ...filters })
 const detailOpen = ref(false)
@@ -213,9 +218,9 @@ const logsOpen = ref(false)
 const sampleLogs = ref<SampleSummary[]>([])
 const batchLogs = ref<BatchSummary[]>([])
 const columns: Column[] = [
-  { key: 'insight_date', label: '日期' }, { key: 'user', label: '用户' }, { key: 'usage', label: '业务用量' },
-  { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'category', label: '主要任务' },
-  { key: 'projects', label: '明确项目' }, { key: 'summary', label: '工作摘要' }, { key: 'status', label: '状态' },
+  { key: 'rank', label: '排名' }, { key: 'user', label: '用户' }, { key: 'usage', label: 'Token 用量' },
+  { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'days', label: '洞察天数' },
+  { key: 'summary', label: '最新工作摘要' }, { key: 'status', label: '状态' },
 ]
 const metrics = computed(() => {
   const eligible = overview.value?.active_sessions ?? 0
@@ -234,21 +239,47 @@ const budgetSafe = computed(() => !!draft.value && draft.value.max_input_tokens 
 const visibleSamples = computed(() => showAllSamples.value ? detail.value?.representative_items ?? [] : detail.value?.representative_items.slice(0, 4) ?? [])
 const selectedAccount = computed(() => analyzerAccounts.value.find(account => account.id === draft.value?.analyzer_account_id))
 
+const sampleReasonLabels: Record<string, string> = { session_coverage: '新会话首请求必采', rate: '采样率命中' }
+const triggerReasonLabels: Record<string, string> = { idle: '用户空闲触发', max_wait: '达到最长等待时间', sample_limit: '达到单批样本上限', token_limit: '达到单批 Token 上限', fixed: '定时策略触发', manual: '管理员手动触发', finalize: '每日收口触发' }
+const statusLabels: Record<string, string> = { staging: '正在入库', pending_batch: '等待组成分析批次', batched: '已进入分析批次', queued: '排队等待分析', processing: '正在分析', retry: '异常，等待自动重试', analyzed: '分析完成', done: '分析完成', failed: '分析失败', dropped: '已停止处理' }
+const errorLabels: Record<string, string> = {
+  summary_write_conflict: '摘要写入版本冲突，自动重试后仍未成功', summary_write_failed: '摘要写入数据库失败', summary_load_failed: '读取已有摘要失败',
+  sample_load_failed: '读取样本记录失败', samples_missing: '分析批次没有可用样本', payload_missing: 'Redis 中的临时请求文本已不存在', payload_empty: '请求文本为空，无法分析',
+  analyzer_config_invalid: '分析模型配置无效', analyzer_context_length: '输入超过分析模型上下文限制', analyzer_invalid_result: '分析模型返回的结果格式无效', analyzer_unavailable: '分析模型暂时不可用',
+  job_expired: '任务超过最大等待时间', user_deleted: '用户已删除，停止分析', payload_capacity: 'Redis 临时文本容量已满', payload_store_failed: '请求文本写入 Redis 失败', payload_encode_failed: '请求文本编码失败', payload_too_large: '请求文本超过大小限制', queue_publish_failed: '采样任务加入队列失败',
+}
+
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 function splitList(value: string): string[] { return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))] }
 function parseIDs(value: string): number[] { return splitList(value).map(Number).filter(value => Number.isInteger(value) && value > 0) }
 function formatNumber(value: number): string { return new Intl.NumberFormat('zh-CN', { notation: value >= 100000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value) }
 function formatBytes(value: number): string { return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${Math.ceil(value / 1024)} KiB` }
 function formatDate(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value)) : '—' }
+function formatRange(start: string, end: string): string { return start === end ? formatDate(start) : `${formatDate(start)}—${formatDate(end)}` }
+function rankingPosition(row: UserInsightRanking): number { return (page.page - 1) * page.page_size + page.items.indexOf(row) + 1 }
 function formatDateTime(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '—' }
 function formatDuration(value: number): string { return value > 0 ? `${formatNumber(value)} ms` : '—' }
 function successRate(row: DailyInsight): string { const total = row.business_request_count + row.business_error_count; return total ? `${(row.business_request_count / total * 100).toFixed(1)}%` : '—' }
-function primaryCategory(row: DailyInsight): string { return Object.entries(row.task_category_stats ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '待分析' }
+function sampleReasonLabel(value: string): string { return sampleReasonLabels[value] ?? `其他采样原因（${value || '未记录'}）` }
+function triggerReasonLabel(value: string): string { return triggerReasonLabels[value] ?? `其他触发原因（${value || '未记录'}）` }
+function statusLabel(value: string): string { return statusLabels[value] ?? `未知状态（${value || '未记录'}）` }
+function batchCount(...statuses: string[]): number { return batchLogs.value.filter(item => statuses.includes(item.status)).length }
+function logUserLabel(username: string, userID?: number): string { return userID ? (username || `用户 ${userID}`) : (username ? `${username}（用户已删除）` : '用户已删除') }
+function errorLabel(value: string): string {
+  if (errorLabels[value]) return errorLabels[value]
+  if (value === 'analyzer_http_400') return '分析模型拒绝了请求（HTTP 400）'
+  if (value === 'analyzer_http_401') return '分析模型 API Key 无效（HTTP 401）'
+  if (value === 'analyzer_http_403') return '分析模型拒绝访问（HTTP 403）'
+  if (value === 'analyzer_http_404') return '分析模型或接口地址不存在（HTTP 404）'
+  if (value === 'analyzer_http_429') return '分析模型请求过于频繁（HTTP 429）'
+  if (value.startsWith('analyzer_http_5')) return `分析模型服务端异常（${value.replace('analyzer_http_', 'HTTP ')}）`
+  return `处理异常（错误码：${value}）`
+}
 function showMessage(text: string, error = false) { message.value = text; messageError.value = error }
 
 async function loadConfig() { const value = await api.getConfig(); savedConfig.value = clone(value); draft.value = clone(value) }
 async function loadRuntime() { runtime.value = await api.getRuntime() }
-async function loadDaily() { Object.assign(page, await api.listDaily(appliedFilters.value, page.page, page.page_size)) }
+async function loadDaily() { Object.assign(page, await api.listRanking(appliedFilters.value, page.page, page.page_size)) }
 async function loadOverview() { overview.value = await api.getOverview(appliedFilters.value) }
 async function refresh() {
   loading.value = true
@@ -259,7 +290,7 @@ async function refresh() {
 async function search() { appliedFilters.value = { ...filters }; page.page = 1; loading.value = true; try { await Promise.all([loadDaily(), loadOverview()]) } catch { showMessage('洞察列表加载失败', true) } finally { loading.value = false } }
 async function changePage(value: number) { page.page = value; await loadDaily() }
 async function changePageSize(value: number) { page.page_size = value; page.page = 1; await loadDaily() }
-async function openDetail(row: DailyInsight) { detail.value = null; showAllSamples.value = false; detailOpen.value = true; try { detail.value = await api.getDaily(row.id) } catch { detailOpen.value = false; showMessage('洞察详情加载失败', true) } }
+async function openDetail(row: UserInsightRanking) { detail.value = null; showAllSamples.value = false; detailOpen.value = true; try { detail.value = await api.getDaily(row.latest_insight_id) } catch { detailOpen.value = false; showMessage('洞察详情加载失败', true) } }
 function resetConfig() { if (savedConfig.value) draft.value = clone(savedConfig.value) }
 async function saveConfig() {
   if (!draft.value) return

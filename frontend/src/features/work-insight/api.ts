@@ -2,7 +2,6 @@ import { apiClient } from '@/api/client'
 import type {
   DailyInsightDetail,
   DailyInsightFilters,
-  DailyInsightPage,
   RepresentativeItem,
   ProbeResult,
   WorkInsightConfig,
@@ -11,6 +10,7 @@ import type {
   WorkInsightOverview,
   SampleSummary,
   BatchSummary,
+  UserInsightRankingPage,
 } from './types'
 
 const basePath = '/admin/ai-work-insights'
@@ -55,9 +55,9 @@ export async function probe(config: WorkInsightConfig): Promise<ProbeResult> {
   return data
 }
 
-export async function listDaily(filters: DailyInsightFilters, page: number, pageSize: number): Promise<DailyInsightPage> {
+export async function listRanking(filters: DailyInsightFilters, page: number, pageSize: number): Promise<UserInsightRankingPage> {
   const params = Object.fromEntries(Object.entries({ ...filters, page, page_size: pageSize }).filter(([, value]) => value !== ''))
-  const { data } = await apiClient.get<DailyInsightPage>(`${basePath}/daily`, { params })
+  const { data } = await apiClient.get<UserInsightRankingPage>(`${basePath}/ranking`, { params })
   return data
 }
 
@@ -77,4 +77,4 @@ export async function listRepresentativeItems(id: number, page: number, pageSize
   return data
 }
 
-export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, listAnalyzerAccounts, probe, listDaily, getOverview, getDaily, listRepresentativeItems }
+export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }

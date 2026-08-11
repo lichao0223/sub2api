@@ -69,6 +69,7 @@ export interface WorkInsightRuntime {
 
 export interface SampleSummary {
   id: number
+  user_id?: number
   username: string
   provider: string
   requested_model: string
@@ -81,6 +82,7 @@ export interface SampleSummary {
 
 export interface BatchSummary {
   id: number
+  user_id?: number
   username: string
   sample_count: number
   trigger_reason: string
@@ -152,8 +154,25 @@ export interface DailyInsightDetail {
   representative_items_expired: boolean
 }
 
-export interface DailyInsightPage {
-  items: DailyInsight[]
+export interface UserInsightRanking {
+  latest_insight_id: number
+  user_id?: number
+  username: string
+  start_date: string
+  end_date: string
+  insight_days: number
+  business_request_count: number
+  business_total_tokens: number
+  sample_count: number
+  failed_sample_count: number
+  eligible_active_session_count: number
+  covered_active_session_count: number
+  latest_summary: string
+  analyzed: boolean
+}
+
+export interface UserInsightRankingPage {
+  items: UserInsightRanking[]
   total: number
   page: number
   page_size: number

@@ -281,6 +281,10 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	if err != nil || !claimed {
 		return
 	}
+	if batch.UserID == 0 {
+		s.finishBatchFailure(ctx, cfg, *batch, nil, "user_deleted", false)
+		return
+	}
 	samples, err := s.repo.LoadBatchSamples(ctx, batch.ID)
 	if err != nil {
 		s.finishBatchFailure(ctx, cfg, *batch, nil, "sample_load_failed", true)
@@ -342,7 +346,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	eligible, _ := s.redis.Get(ctx, "sub2api:ai_work_insight:"+batch.LocalDate.Format("2006-01-02")+":eligible:"+strconv.FormatInt(batch.UserID, 10)).Int()
 	result := mergeBatchResults(results)
 	if err := s.repo.CompleteBatch(ctx, *batch, result, cfg.AnalyzerModel, inputTokens, outputTokens, callCount, eligible, cfg.Timezone); err != nil {
-		s.finishBatchFailure(ctx, cfg, *batch, samples, "summary_write_conflict", true)
+		s.finishBatchFailure(ctx, cfg, *batch, samples, "summary_write_failed", true)
 		return
 	}
 	s.deletePayloads(ctx, samples)

@@ -22,7 +22,7 @@ describe('work insight api', () => {
     await api.listAnalyzerAccounts()
     await api.probe({} as never)
     const filters = { start_date: '2026-08-01', end_date: '', user_name: '', task_category: '问题排查', project_name: '' }
-    await api.listDaily(filters, 2, 20)
+    await api.listRanking(filters, 2, 20)
     await api.getOverview(filters)
     await api.getDaily(7)
 
@@ -33,7 +33,7 @@ describe('work insight api', () => {
     expect(client.get).toHaveBeenNthCalledWith(4, '/admin/ai-work-insights/batches', { params: { page_size: 50 } })
     expect(client.get).toHaveBeenNthCalledWith(5, '/admin/ai-work-insights/analyzer-accounts')
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/endpoint/probe', {})
-    expect(client.get).toHaveBeenNthCalledWith(6, '/admin/ai-work-insights/daily', { params: { start_date: '2026-08-01', task_category: '问题排查', page: 2, page_size: 20 } })
+    expect(client.get).toHaveBeenNthCalledWith(6, '/admin/ai-work-insights/ranking', { params: { start_date: '2026-08-01', task_category: '问题排查', page: 2, page_size: 20 } })
     expect(client.get).toHaveBeenNthCalledWith(7, '/admin/ai-work-insights/overview', { params: { start_date: '2026-08-01', task_category: '问题排查' } })
     expect(client.get).toHaveBeenNthCalledWith(8, '/admin/ai-work-insights/daily/7')
   })

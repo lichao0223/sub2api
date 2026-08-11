@@ -64,6 +64,35 @@ func TestListSamplesUsesCursorWithoutCountOrOffset(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestListUserRankingAggregatesBeforePagination(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	repo := NewRepository(db)
+
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM \(SELECT 1 FROM ai_user_daily_work_insights`).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
+	mock.ExpectQuery(`GROUP BY COALESCE\(d.user_id::text,'deleted:'\|\|d.username_snapshot\).*ORDER BY SUM\(d.business_total_tokens\) DESC`).
+		WithArgs(20, 0).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"latest_insight_id", "user_id", "username", "start_date", "end_date", "insight_days",
+			"business_request_count", "business_total_tokens", "sample_count", "failed_sample_count",
+			"eligible_active_session_count", "covered_active_session_count", "latest_summary", "last_analyzed_at",
+		}))
+
+	items, total, err := repo.ListUserRanking(context.Background(), DailyFilter{Page: 1, Size: 20})
+	require.NoError(t, err)
+	require.Empty(t, items)
+	require.Equal(t, int64(1), total)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestDailyWhereExcludesUsageOnlyRows(t *testing.T) {
+	where, args := dailyWhere(DailyFilter{})
+	require.Contains(t, where, "d.sample_count > 0")
+	require.Empty(t, args)
+}
+
 func TestReconcileUsageReusesExistingUsageAndErrorLogs(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

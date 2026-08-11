@@ -150,6 +150,7 @@ func registerWorkInsightRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		insights.GET("/samples/:id", h.Admin.WorkInsight.GetSample)
 		insights.GET("/batches", h.Admin.WorkInsight.ListBatches)
 		insights.GET("/overview", h.Admin.WorkInsight.GetOverview)
+		insights.GET("/ranking", h.Admin.WorkInsight.ListRanking)
 		insights.GET("/daily", h.Admin.WorkInsight.ListDaily)
 		insights.GET("/daily/:id", h.Admin.WorkInsight.GetDaily)
 		insights.GET("/daily/:id/representative-items", h.Admin.WorkInsight.ListRepresentativeItems)

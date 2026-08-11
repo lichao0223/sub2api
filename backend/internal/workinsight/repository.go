@@ -233,6 +233,60 @@ type DailyInsight struct {
 	FinalizedAt                 *time.Time      `json:"finalized_at"`
 }
 
+type UserRanking struct {
+	LatestInsightID      int64     `json:"latest_insight_id"`
+	UserID               *int64    `json:"user_id"`
+	Username             string    `json:"username"`
+	StartDate            time.Time `json:"start_date"`
+	EndDate              time.Time `json:"end_date"`
+	InsightDays          int       `json:"insight_days"`
+	BusinessRequestCount int64     `json:"business_request_count"`
+	BusinessTotalTokens  int64     `json:"business_total_tokens"`
+	SampleCount          int64     `json:"sample_count"`
+	FailedSampleCount    int64     `json:"failed_sample_count"`
+	EligibleSessionCount int64     `json:"eligible_active_session_count"`
+	CoveredSessionCount  int64     `json:"covered_active_session_count"`
+	LatestSummary        string    `json:"latest_summary"`
+	Analyzed             bool      `json:"analyzed"`
+}
+
+func (r *Repository) ListUserRanking(ctx context.Context, f DailyFilter) ([]UserRanking, int64, error) {
+	if r == nil || r.db == nil {
+		return nil, 0, errors.New("work insight database unavailable")
+	}
+	where, args := dailyWhere(f)
+	groupKey := "COALESCE(d.user_id::text,'deleted:'||d.username_snapshot)"
+	var total int64
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT 1 FROM ai_user_daily_work_insights d`+where+` GROUP BY `+groupKey+`) ranked`, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, f.Size, (f.Page-1)*f.Size)
+	rows, err := r.db.QueryContext(ctx, `SELECT
+		(array_agg(d.id ORDER BY d.insight_date DESC,d.id DESC))[1],MAX(d.user_id),
+		(array_agg(d.username_snapshot ORDER BY d.insight_date DESC,d.id DESC))[1],MIN(d.insight_date),MAX(d.insight_date),COUNT(*),
+		SUM(d.business_request_count),SUM(d.business_total_tokens),SUM(d.sample_count),SUM(d.failed_sample_count),
+		SUM(d.eligible_active_session_count),SUM(d.covered_active_session_count),
+		(array_agg(d.daily_summary ORDER BY d.insight_date DESC,d.id DESC))[1],BOOL_AND(d.last_analyzed_at IS NOT NULL)
+		FROM ai_user_daily_work_insights d`+where+` GROUP BY `+groupKey+`
+		ORDER BY SUM(d.business_total_tokens) DESC,SUM(d.business_request_count) DESC,MAX(d.id) DESC
+		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]UserRanking, 0, f.Size)
+	for rows.Next() {
+		var item UserRanking
+		if err := rows.Scan(&item.LatestInsightID, &item.UserID, &item.Username, &item.StartDate, &item.EndDate, &item.InsightDays,
+			&item.BusinessRequestCount, &item.BusinessTotalTokens, &item.SampleCount, &item.FailedSampleCount,
+			&item.EligibleSessionCount, &item.CoveredSessionCount, &item.LatestSummary, &item.Analyzed); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
+}
+
 func (r *Repository) ListDaily(ctx context.Context, f DailyFilter) ([]DailyInsight, int64, error) {
 	if r == nil || r.db == nil {
 		return nil, 0, errors.New("work insight database unavailable")
@@ -272,7 +326,9 @@ func (r *Repository) ListDaily(ctx context.Context, f DailyFilter) ([]DailyInsig
 }
 
 func dailyWhere(f DailyFilter) (string, []any) {
-	clauses, args := []string{"1=1"}, []any{}
+	// Usage reconciliation also creates rows for days with no AI samples. Those rows
+	// are usage statistics, not insight results, and must stay out of insight views.
+	clauses, args := []string{"d.sample_count > 0"}, []any{}
 	if !f.Start.IsZero() {
 		args = append(args, f.Start)
 		clauses = append(clauses, fmt.Sprintf("d.insight_date >= $%d", len(args)))

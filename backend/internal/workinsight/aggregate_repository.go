@@ -48,9 +48,6 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 	if err != nil {
 		return err
 	}
-	if state.version != batch.BaseSummaryVersion {
-		return errors.New("work insight summary version conflict")
-	}
 	for _, category := range result.TaskCategories {
 		state.categoryStats[category]++
 	}

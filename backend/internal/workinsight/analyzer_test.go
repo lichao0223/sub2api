@@ -121,6 +121,21 @@ func TestAnalyzeChunkValidatesStructuredResultAndEvidence(t *testing.T) {
 	require.Len(t, result.RepresentativeItems, 1, "invented IDs and verbatim prompt excerpts are removed")
 }
 
+func TestAnalyzeChunkUsesInternalGatewayForManagedAPIKeyAccount(t *testing.T) {
+	var directCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		directCalls.Add(1)
+	}))
+	defer server.Close()
+
+	account := &service.Account{Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey}
+	_, _, _, err := (&Service{}).analyzeChunk(context.Background(), analysisEndpoint{
+		baseURL: server.URL, token: "token-canary", model: "model-canary", timeoutSeconds: 2, account: account,
+	}, "", []analysisInput{{ID: 1, Text: "canary", EstimatedTokens: 2}})
+	require.EqualError(t, err, "analyzer gateway unavailable")
+	require.Zero(t, directCalls.Load(), "managed accounts must not bypass the internal gateway")
+}
+
 func TestValidateBatchResultRejectsUnknownCategoryAndUnsupportedProject(t *testing.T) {
 	base := BatchResult{WorkSummary: "摘要", TaskCategories: []string{"自造分类"}, EvidenceLevel: "unknown"}
 	require.ErrorContains(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}), "task category")
