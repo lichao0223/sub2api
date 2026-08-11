@@ -34,4 +34,36 @@ describe('BaseDialog', () => {
     expect(document.body.querySelector<HTMLElement>('.modal-body')?.scrollTop).toBe(0)
     wrapper.unmount()
   })
+
+  it('traps focus and restores it after closing', async () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+    const wrapper = mount(BaseDialog, {
+      attachTo: document.body,
+      props: { show: false, title: 'Details' },
+      slots: { default: '<button id="first">first</button><button id="last">last</button>' },
+      global: { stubs: { Icon: true } }
+    })
+
+    await wrapper.setProps({ show: true })
+    await nextTick()
+    const last = document.body.querySelector<HTMLElement>('#last')!
+    const close = document.body.querySelector<HTMLElement>('[aria-label="Close modal"]')!
+    expect(document.activeElement).toBe(close)
+    last.focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(close)
+    close.focus()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }))
+    expect(document.activeElement).toBe(last)
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    expect(wrapper.emitted('close')).toHaveLength(1)
+
+    await wrapper.setProps({ show: false })
+    await nextTick()
+    expect(document.activeElement).toBe(trigger)
+    wrapper.unmount()
+  })
 })

@@ -17,18 +17,30 @@ type PromptEngine interface {
 	Evaluate(ctx context.Context, req Request) (*PromptDecision, error)
 }
 
+type InsightSink interface {
+	TrySubmit(Request)
+}
+
 type Coordinator struct {
-	legacy LegacyEngine
-	prompt PromptEngine
+	legacy  LegacyEngine
+	prompt  PromptEngine
+	insight InsightSink
 }
 
 func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
 	return &Coordinator{legacy: legacy, prompt: prompt}
 }
 
+func NewCoordinatorWithInsight(legacy LegacyEngine, prompt PromptEngine, insight InsightSink) *Coordinator {
+	return &Coordinator{legacy: legacy, prompt: prompt, insight: insight}
+}
+
 func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
+	}
+	if c.insight != nil {
+		c.insight.TrySubmit(req)
 	}
 	mode := ModeOff
 	if c.prompt != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
+	"github.com/Wei-Shaw/sub2api/internal/workinsight"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -110,6 +111,7 @@ func TestPromptAuditAdminRoutesRejectUnauthenticatedAndNonAdminRequests(t *testi
 	router := gin.New()
 	handlers := &handler.Handlers{Admin: &handler.AdminHandlers{
 		PromptAudit: securityaudit.NewPromptAdminHandler(nil),
+		WorkInsight: workinsight.NewAdminHandler(nil),
 	}}
 	adminAuth := servermiddleware.AdminAuthMiddleware(func(c *gin.Context) {
 		if c.GetHeader("Authorization") == "" {
@@ -131,13 +133,15 @@ func TestPromptAuditAdminRoutesRejectUnauthenticatedAndNonAdminRequests(t *testi
 		{name: "non-admin", auth: "Bearer user-token", wantStatus: http.StatusForbidden},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/prompt-audit/config", nil)
-			if tc.auth != "" {
-				request.Header.Set("Authorization", tc.auth)
+			for _, path := range []string{"/api/v1/admin/prompt-audit/config", "/api/v1/admin/ai-work-insights/config"} {
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				if tc.auth != "" {
+					request.Header.Set("Authorization", tc.auth)
+				}
+				router.ServeHTTP(recorder, request)
+				require.Equal(t, tc.wantStatus, recorder.Code)
 			}
-			router.ServeHTTP(recorder, request)
-			require.Equal(t, tc.wantStatus, recorder.Code)
 		})
 	}
 }

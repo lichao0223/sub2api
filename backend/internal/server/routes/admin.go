@@ -126,11 +126,31 @@ func RegisterAdminRoutes(
 		// 独立提示词输入审计
 		registerPromptAuditRoutes(admin, h)
 
+		// 异步 AI 使用洞察
+		registerWorkInsightRoutes(admin, h)
+
 		// 邀请返利（专属用户管理）
 		registerAffiliateRoutes(admin, h)
 
 		// 操作审计日志
 		registerAuditLogRoutes(admin, h, stepUpAuth)
+	}
+}
+
+func registerWorkInsightRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	insights := admin.Group("/ai-work-insights")
+	{
+		insights.GET("/config", h.Admin.WorkInsight.GetConfig)
+		insights.PUT("/config", h.Admin.WorkInsight.UpdateConfig)
+		insights.POST("/endpoint/probe", h.Admin.WorkInsight.Probe)
+		insights.GET("/analyzer-accounts", h.Admin.WorkInsight.ListAnalyzerAccounts)
+		insights.GET("/runtime", h.Admin.WorkInsight.GetRuntime)
+		insights.GET("/samples", h.Admin.WorkInsight.ListSamples)
+		insights.GET("/samples/:id", h.Admin.WorkInsight.GetSample)
+		insights.GET("/overview", h.Admin.WorkInsight.GetOverview)
+		insights.GET("/daily", h.Admin.WorkInsight.ListDaily)
+		insights.GET("/daily/:id", h.Admin.WorkInsight.GetDaily)
+		insights.GET("/daily/:id/representative-items", h.Admin.WorkInsight.ListRepresentativeItems)
 	}
 }
 

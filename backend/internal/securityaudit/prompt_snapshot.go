@@ -14,11 +14,18 @@ import (
 var (
 	ErrNoPromptText = errors.New("prompt audit request contains no user text")
 
-	bearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+\-/]+=*`)
-	apiKeyPattern = regexp.MustCompile(`(?i)\b(sk|rk|pk|api[_-]?key|token|secret|password)[-_:=\s]+[A-Za-z0-9._~+\-/]{8,}`)
-	canaryPattern = regexp.MustCompile(`(?i)([A-Z]+_CANARY_)[A-Za-z0-9_-]+`)
-	emailPattern  = regexp.MustCompile(`(?i)\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b`)
-	phonePattern  = regexp.MustCompile(`(?:\+?\d[\d\s().-]{8,}\d)`)
+	bearerPattern       = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+\-/]+=*`)
+	apiKeyPattern       = regexp.MustCompile(`(?i)\b(sk|rk|pk|api[_-]?key|token|secret|password)[-_:=\s]+[A-Za-z0-9._~+\-/]{8,}`)
+	jsonSecretPattern   = regexp.MustCompile(`(?i)((?:["']?(?:access_token|refresh_token|api[_-]?key|token|secret|password|signature)["']?)\s*[:=]\s*["']?)[^"',\s}&#]+`)
+	querySecretPattern  = regexp.MustCompile(`(?i)([?&](?:access_token|refresh_token|api[_-]?key|token|key|secret|password|signature|sig)=)[^&#\s]+`)
+	jwtPattern          = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b`)
+	privateBlockPattern = regexp.MustCompile(`(?s)-----BEGIN [^-\r\n]{1,80}-----.*?-----END [^-\r\n]{1,80}-----`)
+	longBase64Pattern   = regexp.MustCompile(`\b[A-Za-z0-9+/]{64,}={0,2}\b`)
+	longTokenPattern    = regexp.MustCompile(`\b[A-Za-z0-9_-]{64,}\b`)
+	canaryPattern       = regexp.MustCompile(`(?i)([A-Z]+_CANARY_)[A-Za-z0-9_-]+`)
+	emailPattern        = regexp.MustCompile(`(?i)\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b`)
+	phonePattern        = regexp.MustCompile(`(?:\+?\d[\d\s().-]{8,}\d)`)
+	idCardPattern       = regexp.MustCompile(`\b\d{17}[\dXx]\b`)
 )
 
 const promptAuditPrioritySeparator = "\x00SUB2API_PROMPT_AUDIT_PRIORITY_END\x00"
@@ -79,6 +86,68 @@ const DefaultPromptPreviewMaxRunes = 96
 // on an audit event for admin review. It is deliberately generous so realistic
 // prompts are kept intact while bounding per-row storage.
 const DefaultFullPromptMaxRunes = 65536
+
+const DefaultWorkInsightMaxRunes = 16000
+
+// ExtractWorkInsightSnapshot reuses protocol parsing but deliberately applies
+// a stricter role whitelist than prompt audit: assistant/model/tool/function
+// output is never part of work-insight input, even when clients resend it.
+func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot, error) {
+	protocol := strings.ToLower(strings.TrimSpace(req.Protocol))
+	switch protocol {
+	case "openai_images", "grok_media", "media", "images":
+		return WorkInsightSnapshot{}, ErrNoPromptText
+	}
+	var document any
+	if err := json.Unmarshal(req.Body, &document); err != nil {
+		return WorkInsightSnapshot{}, errors.New("work insight request JSON is invalid")
+	}
+	segments := extractProtocolSegments(req.Protocol, document)
+	allowed := segments[:0]
+	for _, segment := range segments {
+		switch strings.ToLower(strings.TrimSpace(segment.role)) {
+		case "", "user", "system", "developer":
+			allowed = append(allowed, segment)
+		}
+	}
+	ordered := normalizeSegmentsLatestUserFirst(allowed)
+	if len(ordered) == 0 {
+		return WorkInsightSnapshot{}, ErrNoPromptText
+	}
+	text := strings.Join(ordered, "\n\n")
+	digest := sha256.Sum256([]byte(text))
+	if maxRunes <= 0 {
+		maxRunes = DefaultWorkInsightMaxRunes
+	}
+	remaining := maxRunes
+	redactedSegments := make([]string, 0, len(ordered))
+	for _, segment := range ordered {
+		if len(redactedSegments) > 0 {
+			remaining -= 2
+			if remaining <= 0 {
+				break
+			}
+		}
+		redacted := strings.TrimSpace(RedactPreview(segment, remaining))
+		if redacted == "" {
+			continue
+		}
+		redactedSegments = append(redactedSegments, redacted)
+		remaining -= utf8.RuneCountInString(redacted)
+		if remaining <= 0 {
+			break
+		}
+	}
+	if len(redactedSegments) == 0 {
+		return WorkInsightSnapshot{}, ErrNoPromptText
+	}
+	redacted := strings.Join(redactedSegments, "\n\n")
+	return WorkInsightSnapshot{
+		Text: redacted, Segments: redactedSegments, PromptHash: hex.EncodeToString(digest[:]),
+		PromptChars: utf8.RuneCountInString(text), AnalyzedChars: utf8.RuneCountInString(redacted),
+		MessageCount: len(ordered),
+	}, nil
+}
 
 func extractProtocolSegments(protocol string, document any) []promptSegment {
 	root, _ := document.(map[string]any)
@@ -561,7 +630,13 @@ func systemPromptSegments(texts []string) []promptSegment {
 }
 
 func RedactPreview(value string, maxRunes int) string {
+	value = privateBlockPattern.ReplaceAllString(value, "***PRIVATE_BLOCK***")
+	value = querySecretPattern.ReplaceAllString(value, "${1}***")
+	value = jsonSecretPattern.ReplaceAllString(value, "${1}***")
 	value = bearerPattern.ReplaceAllString(value, "Bearer ***")
+	value = jwtPattern.ReplaceAllString(value, "***JWT***")
+	value = longBase64Pattern.ReplaceAllString(value, "***BASE64***")
+	value = longTokenPattern.ReplaceAllString(value, "***TOKEN***")
 	value = apiKeyPattern.ReplaceAllStringFunc(value, func(match string) string {
 		if index := strings.IndexAny(match, ":= \t"); index >= 0 {
 			return match[:index+1] + "***"
@@ -570,6 +645,7 @@ func RedactPreview(value string, maxRunes int) string {
 	})
 	value = canaryPattern.ReplaceAllString(value, "${1}***")
 	value = emailPattern.ReplaceAllString(value, "***@***")
+	value = idCardPattern.ReplaceAllString(value, "***ID***")
 	value = phonePattern.ReplaceAllString(value, "***PHONE***")
 	return TrimRunes(value, maxRunes)
 }

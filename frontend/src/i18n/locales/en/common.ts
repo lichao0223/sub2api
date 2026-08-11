@@ -206,6 +206,7 @@ export default {
     securityAudit: 'Security Audit',
     contentModeration: 'Content Moderation',
     promptAudit: 'Prompt Audit',
+    workInsight: 'AI Work Insights',
     auditLogs: 'Audit Logs',
     costManagement: 'Cost Management',
   },

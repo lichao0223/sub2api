@@ -115,6 +115,17 @@ type PromptSnapshot struct {
 	ScanText string `json:"-"`
 }
 
+// WorkInsightSnapshot is a Redis-only, secret-redacted request snapshot.
+// PostgreSQL stores its hashes and counts, never Text.
+type WorkInsightSnapshot struct {
+	Text          string
+	Segments      []string
+	PromptHash    string
+	PromptChars   int
+	AnalyzedChars int
+	MessageCount  int
+}
+
 func (s PromptSnapshot) Redacted() PromptSnapshot {
 	s.ScanText = ""
 	return s

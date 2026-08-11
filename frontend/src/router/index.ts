@@ -623,6 +623,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/ai-work-insights',
+    name: 'AdminAIWorkInsights',
+    component: () => import('@/features/work-insight/WorkInsightView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'AI Work Insights',
+      titleKey: 'nav.workInsight'
+    }
+  },
+  {
     path: '/admin/cost-management',
     name: 'AdminCostManagement',
     component: () => import('@/features/cost-management/CostManagementView.vue'),
