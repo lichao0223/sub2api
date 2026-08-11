@@ -250,7 +250,7 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 		fmt.Fprintf(&input, "<sample id=%d>\n%s\n</sample>\n", sample.ID, sample.Text)
 	}
 	payload := map[string]any{
-		"model": endpoint.model, "temperature": 0,
+		"model":    endpoint.model,
 		"messages": []map[string]string{{"role": "system", "content": analyzerInstruction}, {"role": "user", "content": input.String()}},
 	}
 	body, _ := json.Marshal(payload)
@@ -415,8 +415,8 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 	if result.BusinessTopics, err = validateList(result.BusinessTopics, false); err != nil {
 		return err
 	}
-	if result.EvidenceLevel != "explicit" && result.EvidenceLevel != "unknown" {
-		return errors.New("invalid evidence level")
+	if result.EvidenceLevel != "explicit" {
+		result.EvidenceLevel = "unknown"
 	}
 	if len(result.RepresentativeItems) > 10 {
 		return errors.New("too many representative items")
@@ -533,4 +533,4 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
-const analyzerInstruction = `你是企业 AI 使用洞察分析器。只分析脱敏后的用户请求，不做绩效、合规或是否工作的判断。项目和模块只能收录输入中明确出现的名称，不得推断。返回且仅返回 JSON 对象，字段严格为 work_summary、task_categories、explicit_projects、explicit_modules、change_types、business_topics、representative_items、evidence_level。task_categories 只能从以下枚举选择：代码开发、问题排查、测试用例、接口文档、需求分析、方案设计、数据分析、SQL/报表、运维部署、日志分析、文档写作、翻译润色、会议纪要、客服支持、培训学习、其他。representative_items 每项包含 source_sample_ids、summary、task_categories、explicit_projects、explicit_modules。未明确出现的项目和模块返回空数组。`
+const analyzerInstruction = `你是企业 AI 使用洞察分析器。只分析脱敏后的用户请求，不做绩效、合规或是否工作的判断。项目和模块只能收录输入中明确出现的名称，不得推断。返回且仅返回 JSON 对象，字段严格为 work_summary、task_categories、explicit_projects、explicit_modules、change_types、business_topics、representative_items、evidence_level。task_categories 只能从以下枚举选择：代码开发、问题排查、测试用例、接口文档、需求分析、方案设计、数据分析、SQL/报表、运维部署、日志分析、文档写作、翻译润色、会议纪要、客服支持、培训学习、其他。evidence_level 只能是 "explicit" 或 "unknown"。representative_items 每项包含 source_sample_ids、summary、task_categories、explicit_projects、explicit_modules。未明确出现的项目和模块返回空数组。`

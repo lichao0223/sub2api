@@ -36,6 +36,7 @@ func TestProbeRequestsACompleteAnalysisResult(t *testing.T) {
 		}
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 		require.NotContains(t, body.Messages[1].Content, "仅返回任务类型")
+		require.Contains(t, body.Messages[0].Content, `evidence_level 只能是 "explicit" 或 "unknown"`)
 		writeAnalyzerResult(w, "整理一份简短会议纪要。")
 	}))
 	defer server.Close()
@@ -106,6 +107,7 @@ func TestAnalyzeChunkValidatesStructuredResultAndEvidence(t *testing.T) {
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
 		require.NotContains(t, body, "response_format", "OpenAI-compatible analyzers may not implement JSON mode")
+		require.NotContains(t, body, "temperature", "some compatible models only accept their default temperature")
 		content := `{"work_summary":"排查 sub2api 网关问题并补充测试。","task_categories":["问题排查","测试用例"],"explicit_projects":["sub2api"],"explicit_modules":["网关"],"change_types":["Bug 修复"],"business_topics":["路由"],"representative_items":[{"source_sample_ids":[11],"summary":"排查网关路由问题。","task_categories":["问题排查"],"explicit_projects":["sub2api"],"explicit_modules":["网关"]},{"source_sample_ids":[11],"summary":"请排查 sub2api 的网关路由问题","task_categories":["问题排查"],"explicit_projects":["sub2api"],"explicit_modules":["网关"]},{"source_sample_ids":[999],"summary":"虚构样本。","task_categories":["问题排查"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
 		_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": content}}}, "usage": map[string]int{"prompt_tokens": 20, "completion_tokens": 10}})
 	}))
@@ -124,6 +126,12 @@ func TestValidateBatchResultRejectsUnknownCategoryAndUnsupportedProject(t *testi
 	require.ErrorContains(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}), "task category")
 	base = BatchResult{WorkSummary: "摘要", TaskCategories: []string{"其他"}, ExplicitProjects: []string{"不存在项目"}, EvidenceLevel: "explicit"}
 	require.ErrorContains(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}), "evidence")
+}
+
+func TestValidateBatchResultNormalizesUnknownEvidenceLevel(t *testing.T) {
+	result := BatchResult{WorkSummary: "整理会议纪要。", TaskCategories: []string{"会议纪要"}, EvidenceLevel: "低"}
+	require.NoError(t, validateBatchResult(&result, []analysisInput{{ID: 1, Text: "整理会议纪要"}}))
+	require.Equal(t, "unknown", result.EvidenceLevel)
 }
 
 func TestContextLimitStopsAfterCompensatingSplit(t *testing.T) {
