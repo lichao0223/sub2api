@@ -427,7 +427,17 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 			break
 		}
 		offset += index
-		decoder := json.NewDecoder(strings.NewReader(content[offset:]))
+		var raw json.RawMessage
+		if err := json.NewDecoder(strings.NewReader(content[offset:])).Decode(&raw); err != nil {
+			offset++
+			continue
+		}
+		raw, err := normalizeWorkSummary(raw)
+		if err != nil {
+			offset++
+			continue
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.DisallowUnknownFields()
 		var result BatchResult
 		if err := decoder.Decode(&result); err == nil {
@@ -436,6 +446,37 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 		offset++
 	}
 	return BatchResult{}, errors.New("invalid analyzer JSON")
+}
+
+func normalizeWorkSummary(raw json.RawMessage) (json.RawMessage, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, err
+	}
+	value, ok := object["work_summary"]
+	if !ok {
+		return raw, nil
+	}
+	var text string
+	if json.Unmarshal(value, &text) == nil {
+		return raw, nil
+	}
+	var items []string
+	if err := json.Unmarshal(value, &items); err != nil {
+		return nil, err
+	}
+	clean := items[:0]
+	for _, item := range items {
+		if item = strings.TrimSpace(strings.TrimLeft(item, "-•* ")); item != "" {
+			clean = append(clean, item)
+		}
+	}
+	if len(clean) == 0 {
+		return nil, errors.New("empty work summary")
+	}
+	text = "- " + strings.Join(clean, "\n- ")
+	object["work_summary"], _ = json.Marshal(text)
+	return json.Marshal(object)
 }
 
 func (s *Service) analyzeChunkResilient(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput, allowSplit bool) (BatchResult, int64, int64, int, error) {

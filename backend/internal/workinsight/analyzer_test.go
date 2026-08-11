@@ -196,6 +196,17 @@ func TestParseAnalyzerResponseAcceptsReasoningAndArrayContent(t *testing.T) {
 	require.Equal(t, "整理会议纪要。", result.WorkSummary)
 }
 
+func TestParseAnalyzerResponseAcceptsSummaryArrayInReasoning(t *testing.T) {
+	content := `{"work_summary":["整理简短的会议纪要"],"task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":[],"representative_items":[{"source_sample_ids":[1],"summary":"整理简短会议纪要","task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
+	raw := []byte(`{"choices":[{"message":{"content":null,"reasoning":` + strconv.Quote(content) + `},"finish_reason":"stop"}],"usage":{"prompt_tokens":342,"completion_tokens":146}}`)
+
+	result, input, output, err := parseAnalyzerResponse(raw, []analysisInput{{ID: 1, Text: "连接检测样本：整理一份简短会议纪要。"}})
+	require.NoError(t, err)
+	require.Equal(t, "- 整理简短的会议纪要", result.WorkSummary)
+	require.Equal(t, int64(342), input)
+	require.Equal(t, int64(146), output)
+}
+
 func TestParseAnalyzerResponseReportsTruncatedOutput(t *testing.T) {
 	_, _, _, err := parseAnalyzerResponse([]byte(`{"choices":[{"message":{"content":"{\\\"work_summary\\\":"},"finish_reason":"length"}]}`), nil)
 	require.EqualError(t, err, "analyzer output truncated")
