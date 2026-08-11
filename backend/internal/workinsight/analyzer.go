@@ -185,9 +185,9 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	var input strings.Builder
 	if previousSummary != "" {
-		input.WriteString("上一版结构化摘要：\n" + previousSummary + "\n\n")
+		_, _ = input.WriteString("上一版结构化摘要：\n" + previousSummary + "\n\n")
 	}
-	input.WriteString("本批脱敏样本：\n")
+	_, _ = input.WriteString("本批脱敏样本：\n")
 	for _, sample := range samples {
 		fmt.Fprintf(&input, "<sample id=%d>\n%s\n</sample>\n", sample.ID, sample.Text)
 	}
@@ -206,7 +206,7 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 	if err != nil {
 		return BatchResult{}, 0, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 256*1024+1))
 	if err != nil {
 		return BatchResult{}, 0, 0, err
@@ -317,8 +317,8 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 	var evidence strings.Builder
 	for _, sample := range samples {
 		validIDs[sample.ID] = struct{}{}
-		evidence.WriteString(strings.ToLower(sample.Text))
-		evidence.WriteByte('\n')
+		_, _ = evidence.WriteString(strings.ToLower(sample.Text))
+		_ = evidence.WriteByte('\n')
 	}
 	var err error
 	if result.TaskCategories, err = validateList(result.TaskCategories, true); err != nil {

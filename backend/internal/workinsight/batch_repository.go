@@ -29,7 +29,7 @@ func (r *Repository) DropExpiredSamples(ctx context.Context, cutoff time.Time) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var samples []BatchSample
 	for rows.Next() {
 		var sample BatchSample
@@ -194,7 +194,7 @@ func (r *Repository) LoadBatchSamples(ctx context.Context, batchID int64) ([]Bat
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var samples []BatchSample
 	for rows.Next() {
 		var sample BatchSample

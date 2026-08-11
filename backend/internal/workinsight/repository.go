@@ -153,7 +153,7 @@ func (r *Repository) ListSamples(ctx context.Context, beforeID int64, size int) 
 	if err != nil {
 		return nil, 0, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]SampleSummary, 0, size+1)
 	for rows.Next() {
 		var item SampleSummary
@@ -253,7 +253,7 @@ func (r *Repository) ListDaily(ctx context.Context, f DailyFilter) ([]DailyInsig
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]DailyInsight, 0, f.Size)
 	for rows.Next() {
 		var item DailyInsight
@@ -356,7 +356,7 @@ func (r *Repository) ListRepresentativeItems(ctx context.Context, userID *int64,
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]RepresentativeItem, 0, limit)
 	for rows.Next() {
 		var raw []byte
