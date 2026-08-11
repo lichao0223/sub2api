@@ -270,11 +270,12 @@ func TestAnalyzeChunkUsesInternalGatewayForManagedAPIKeyAccount(t *testing.T) {
 	require.Zero(t, directCalls.Load(), "managed accounts must not bypass the internal gateway")
 }
 
-func TestValidateBatchResultRejectsUnknownCategoryAndUnsupportedProject(t *testing.T) {
+func TestValidateBatchResultRejectsUnknownCategoryAndFiltersUnsupportedProject(t *testing.T) {
 	base := BatchResult{WorkSummary: "摘要", TaskCategories: []string{"自造分类"}, EvidenceLevel: "unknown"}
 	require.ErrorContains(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}), "task category")
 	base = BatchResult{WorkSummary: "摘要", TaskCategories: []string{"其他"}, ExplicitProjects: []string{"不存在项目"}, EvidenceLevel: "explicit"}
-	require.ErrorContains(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}), "evidence")
+	require.NoError(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}))
+	require.Empty(t, base.ExplicitProjects)
 }
 
 func TestValidateBatchResultNormalizesUnknownEvidenceLevel(t *testing.T) {
@@ -295,4 +296,9 @@ func TestContextLimitStopsAfterCompensatingSplit(t *testing.T) {
 	err := errors.New("analyzer_context_length")
 	require.Equal(t, "analyzer_context_length", analyzerErrorCode(err))
 	require.False(t, analyzerRetryable(err))
+}
+
+func TestAnalyzerValidationErrorsAreNotReportedAsUnavailable(t *testing.T) {
+	require.Equal(t, "analyzer_invalid_result", analyzerErrorCode(errors.New("too many result values")))
+	require.Equal(t, "analyzer_invalid_result", analyzerErrorCode(errors.New("invalid result value")))
 }

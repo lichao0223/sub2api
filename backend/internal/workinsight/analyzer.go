@@ -650,12 +650,13 @@ func validateEvidenceList(values []string, evidence string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	verified := result[:0]
 	for _, value := range result {
-		if !strings.Contains(evidence, strings.ToLower(value)) {
-			return nil, errors.New("result lacks explicit evidence")
+		if strings.Contains(evidence, strings.ToLower(value)) {
+			verified = append(verified, value)
 		}
 	}
-	return result, nil
+	return verified, nil
 }
 
 func mergeBatchResults(results []BatchResult) BatchResult {

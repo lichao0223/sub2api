@@ -9,7 +9,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"go.uber.org/zap"
 )
 
 const (
@@ -353,6 +355,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	eligible, _ := s.redis.Get(ctx, "sub2api:ai_work_insight:"+batch.LocalDate.Format("2006-01-02")+":eligible:"+strconv.FormatInt(batch.UserID, 10)).Int()
 	result := mergeBatchResults(results)
 	if err := s.repo.CompleteBatch(ctx, *batch, result, cfg.AnalyzerModel, inputTokens, outputTokens, callCount, eligible, cfg.Timezone); err != nil {
+		logger.L().Error("work insight summary write failed", zap.Int64("batch_id", batch.ID), zap.Int64("user_id", batch.UserID), zap.String("local_date", batch.LocalDate.Format("2006-01-02")), zap.Error(err))
 		s.finishBatchFailure(ctx, cfg, *batch, samples, "summary_write_failed", true)
 		return
 	}
@@ -415,9 +418,12 @@ func analyzerErrorCode(err error) string {
 	switch value {
 	case "analyzer_context_length":
 		return value
-	case "invalid analyzer JSON", "invalid analyzer response", "invalid work summary", "invalid task category", "result lacks explicit evidence":
+	case "invalid analyzer JSON", "invalid analyzer response", "invalid work summary", "invalid task category":
 		return "analyzer_invalid_result"
 	default:
+		if isInvalidAnalyzerResult(err) {
+			return "analyzer_invalid_result"
+		}
 		return "analyzer_unavailable"
 	}
 }
