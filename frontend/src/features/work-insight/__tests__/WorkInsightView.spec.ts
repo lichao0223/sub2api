@@ -5,11 +5,11 @@ import WorkInsightView from '../WorkInsightView.vue'
 import { TASK_CATEGORIES } from '../types'
 import type { WorkInsightConfig } from '../types'
 
-const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listDaily: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
+const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listDaily: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
 vi.mock('../api', () => ({ default: api }))
 
 const config = (): WorkInsightConfig => ({
-  enabled: false, config_version: 1, sample_rate: 2, session_idle_minutes: 5, user_daily_limit: 5000, global_daily_limit: 200000,
+  enabled: false, config_version: 1, sample_rate: 20, session_idle_minutes: 5, user_daily_limit: 5000, global_daily_limit: 200000,
   timezone: 'Asia/Shanghai', excluded_user_ids: [], excluded_user_emails: [], queue_capacity: 10000, worker_count: 4,
   analysis_idle_minutes: 15, analysis_max_wait_minutes: 60, analysis_trigger_mode: 'hybrid', analysis_fixed_interval_minutes: 30,
   analysis_fixed_times: [], max_samples_per_batch: 50, context_window_tokens: 128000, max_input_tokens: 64000,
@@ -41,6 +41,9 @@ describe('WorkInsightView', () => {
     vi.clearAllMocks()
     api.getConfig.mockResolvedValue(config())
     api.getRuntime.mockResolvedValue({ enabled: false, queue_depth: 0, queue_capacity: 10000, dropped: 0, processed: 0, failed: 0 })
+    api.analyzeNow.mockResolvedValue({ created_batches: 2 })
+    api.listSamples.mockResolvedValue([{ id: 11, username: '测试用户', provider: 'openai', requested_model: 'model-canary', sample_reason: 'session_coverage', estimated_tokens: 100, status: 'pending_batch', error_code: '', created_at: '2026-08-11T02:00:00Z' }])
+    api.listBatches.mockResolvedValue([{ id: 12, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'queued', attempts: 0, error_code: '', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:01:00Z' }])
     api.listAnalyzerAccounts.mockResolvedValue([{ id: 1, name: '分析账号', platform: 'openai', models: ['model-canary'] }])
     api.probe.mockResolvedValue({ ok: true, status: 'ok', message: '连接正常', latency_ms: 12, checked_at: '' })
     api.listDaily.mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20, pages: 1 })
@@ -58,8 +61,9 @@ describe('WorkInsightView', () => {
     expect(tabs[1].attributes('aria-controls')).toBe('work-config-panel')
     await tabs[1].trigger('click')
     await nextTick()
-    expect(wrapper.text()).toContain('后续请求采样率 2%')
+    expect(wrapper.text()).toContain('后续请求采样率')
     const values = wrapper.findAll('input[type="number"]').map(input => input.element.value)
+    expect(values).toContain('20')
     expect(values).toContain('200000')
     expect(values).toContain('10000')
     expect(wrapper.text()).toContain('样本/批次保留')
@@ -82,6 +86,26 @@ describe('WorkInsightView', () => {
     expect(wrapper.get('[role="dialog"]').text()).toContain('P95 耗时')
     expect(wrapper.get('[role="dialog"]').text()).toContain('路由')
     expect(wrapper.get('[role="dialog"]').text()).toContain('不展示 Redis 临时文本')
+    wrapper.unmount()
+  })
+
+  it('shows privacy-safe logs and manually creates analysis batches', async () => {
+    const enabled = config()
+    enabled.enabled = true
+    api.getConfig.mockResolvedValue(enabled)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="open-logs"]').trigger('click')
+    await flushPromises()
+    expect(api.listSamples).toHaveBeenCalled()
+    expect(api.listBatches).toHaveBeenCalled()
+    expect(wrapper.get('[role="dialog"]').text()).toContain('session_coverage')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('manual')
+    await wrapper.findAll('[role="tab"]')[1].trigger('click')
+    await wrapper.get('[data-test="analyze-now"]').trigger('click')
+    await flushPromises()
+    expect(api.analyzeNow).toHaveBeenCalled()
+    expect(wrapper.text()).toContain('已创建 2 个分析批次')
     wrapper.unmount()
   })
 })

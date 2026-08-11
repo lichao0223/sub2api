@@ -41,7 +41,7 @@ func (r *Repository) DropExpiredSamples(ctx context.Context, cutoff time.Time) (
 	return samples, rows.Err()
 }
 
-func (r *Repository) CreateDueBatches(ctx context.Context, now time.Time, cfg Config, fixedDue bool) (int, error) {
+func (r *Repository) CreateDueBatches(ctx context.Context, now time.Time, cfg Config, forceReason string) (int, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -61,7 +61,7 @@ func (r *Repository) CreateDueBatches(ctx context.Context, now time.Time, cfg Co
 		WHERE s.status='pending_batch' ORDER BY s.id FOR UPDATE OF s SKIP LOCKED LIMIT 5000`,
 		cfg.MaxSamplesPerBatch, cfg.MaxInputTokens, cfg.AnalysisTriggerMode == "hybrid",
 		now.Add(-time.Duration(cfg.AnalysisMaxWaitMinutes)*time.Minute), now.Add(-time.Duration(cfg.AnalysisIdleMinutes)*time.Minute),
-		cfg.AnalysisTriggerMode == "fixed_interval", now.Add(-time.Duration(cfg.FixedIntervalMinutes)*time.Minute), fixedDue)
+		cfg.AnalysisTriggerMode == "fixed_interval", now.Add(-time.Duration(cfg.FixedIntervalMinutes)*time.Minute), forceReason != "")
 	if err != nil {
 		return 0, err
 	}
@@ -90,7 +90,7 @@ func (r *Repository) CreateDueBatches(ctx context.Context, now time.Time, cfg Co
 		if bucket.userID == 0 || len(bucket.samples) == 0 {
 			continue
 		}
-		reason := batchTrigger(bucket.samples, now, cfg, fixedDue)
+		reason := batchTrigger(bucket.samples, now, cfg, forceReason)
 		if reason == "" {
 			continue
 		}
@@ -123,9 +123,12 @@ func (r *Repository) CreateDueBatches(ctx context.Context, now time.Time, cfg Co
 	return created, tx.Commit()
 }
 
-func batchTrigger(samples []Sample, now time.Time, cfg Config, fixedDue bool) string {
+func batchTrigger(samples []Sample, now time.Time, cfg Config, forceReason string) string {
 	if len(samples) == 0 {
 		return ""
+	}
+	if forceReason != "" {
+		return forceReason
 	}
 	tokens := 0
 	for _, sample := range samples {
@@ -136,9 +139,6 @@ func batchTrigger(samples []Sample, now time.Time, cfg Config, fixedDue bool) st
 	}
 	if tokens >= cfg.MaxInputTokens {
 		return "token_limit"
-	}
-	if fixedDue {
-		return "fixed"
 	}
 	if cfg.AnalysisTriggerMode == "fixed_interval" && !now.Before(samples[0].CreatedAt.Add(time.Duration(cfg.FixedIntervalMinutes)*time.Minute)) {
 		return "fixed"
@@ -153,6 +153,46 @@ func batchTrigger(samples []Sample, now time.Time, cfg Config, fixedDue bool) st
 		return "idle"
 	}
 	return ""
+}
+
+type BatchSummary struct {
+	ID                   int64      `json:"id"`
+	UserID               *int64     `json:"user_id"`
+	Username             string     `json:"username"`
+	LocalDate            time.Time  `json:"local_date"`
+	SessionID            string     `json:"active_session_id"`
+	SampleCount          int        `json:"sample_count"`
+	TriggerReason        string     `json:"trigger_reason"`
+	Status               string     `json:"status"`
+	Attempts             int        `json:"attempts"`
+	ErrorCode            string     `json:"error_code"`
+	AnalyzerModel        string     `json:"analyzer_model"`
+	AnalyzerInputTokens  int64      `json:"analyzer_input_tokens"`
+	AnalyzerOutputTokens int64      `json:"analyzer_output_tokens"`
+	AnalyzedAt           *time.Time `json:"analyzed_at"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+}
+
+func (r *Repository) ListBatches(ctx context.Context, size int) ([]BatchSummary, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id,user_id,username_snapshot,local_date,active_session_id,sample_count,
+		trigger_reason,status,attempts,error_code,analyzer_model,analyzer_input_tokens,analyzer_output_tokens,analyzed_at,created_at,updated_at
+		FROM ai_work_insight_batches ORDER BY id DESC LIMIT $1`, size)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]BatchSummary, 0, size)
+	for rows.Next() {
+		var item BatchSummary
+		if err := rows.Scan(&item.ID, &item.UserID, &item.Username, &item.LocalDate, &item.SessionID, &item.SampleCount,
+			&item.TriggerReason, &item.Status, &item.Attempts, &item.ErrorCode, &item.AnalyzerModel, &item.AnalyzerInputTokens,
+			&item.AnalyzerOutputTokens, &item.AnalyzedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 func selectBatchSamples(samples []Sample, maxSamples, maxTokens int) []Sample {

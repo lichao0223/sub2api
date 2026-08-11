@@ -32,7 +32,7 @@ func (s *Service) scheduler(ctx context.Context) {
 			if cfg == nil || !cfg.Enabled {
 				continue
 			}
-			fixedDue := false
+			forceReason := ""
 			if cfg.AnalysisTriggerMode == "fixed_time" {
 				location, err := time.LoadLocation(cfg.Timezone)
 				if err == nil {
@@ -40,7 +40,7 @@ func (s *Service) scheduler(ctx context.Context) {
 					minute := local.Format("15:04")
 					for _, value := range cfg.FixedTimes {
 						if value == minute {
-							fixedDue = true
+							forceReason = "fixed"
 							break
 						}
 					}
@@ -54,7 +54,7 @@ func (s *Service) scheduler(ctx context.Context) {
 			}
 			created := 0
 			if err == nil {
-				created, err = s.repo.CreateDueBatches(workCtx, now, cfg.Config, fixedDue)
+				created, err = s.repo.CreateDueBatches(workCtx, now, cfg.Config, forceReason)
 			}
 			cancel()
 			s.reportJob(jobBatchScheduler, started, fmt.Sprintf("queued_batches=%d expired_samples=%d", created, len(expired)), err)
@@ -105,6 +105,7 @@ func (s *Service) maintenance(ctx context.Context) {
 }
 
 func (s *Service) runReconciliation(parent context.Context, now time.Time) {
+	s.pruneIngressSessions(now.Add(-24 * time.Hour))
 	cfg := s.config.Load()
 	if cfg == nil || !cfg.Enabled {
 		return

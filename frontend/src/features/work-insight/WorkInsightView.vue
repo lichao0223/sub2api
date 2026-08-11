@@ -7,7 +7,7 @@
           <h1 class="mt-1 text-2xl font-semibold tracking-tight text-gray-950 dark:text-white">AI 使用洞察</h1>
           <p class="mt-2 max-w-3xl text-sm text-gray-500 dark:text-dark-300">通过脱敏采样了解团队如何使用 AI，结果基于抽样且可能不完整或误判。</p>
         </div>
-        <button type="button" class="btn btn-secondary" :disabled="loading" @click="refresh">刷新数据</button>
+        <div class="flex gap-2"><button type="button" class="btn btn-secondary" data-test="open-logs" :disabled="logsLoading" @click="openLogs">采样与分析日志</button><button type="button" class="btn btn-secondary" :disabled="loading" @click="refresh">刷新数据</button></div>
       </header>
 
       <div role="tablist" aria-label="AI 使用洞察" class="mb-4 tabs inline-flex">
@@ -64,7 +64,7 @@
 
           <ConfigCard title="采样策略" description="按用户活跃会话采样，同一用户的多个 API Key 共享状态">
             <div class="form-grid">
-              <label class="field"><span>后续请求采样率 {{ draft.sample_rate }}%</span><input v-model.number="draft.sample_rate" type="range" min="0" max="100" /></label>
+              <NumberField v-model="draft.sample_rate" label="后续请求采样率" suffix="%" :min="0" :max="100" />
               <NumberField v-model="draft.session_idle_minutes" label="会话空闲阈值" suffix="分钟" :min="1" />
               <NumberField v-model="draft.user_daily_limit" label="单用户每日上限" suffix="次" :min="1" :max="100000" />
               <NumberField v-model="draft.global_daily_limit" label="全局每日上限" suffix="次" :min="1" :max="500000" />
@@ -89,6 +89,7 @@
           </ConfigCard>
 
           <ConfigCard title="分析调度与上下文" description="按用户归桶；原始样本只分析一次，历史只合并结构化摘要">
+            <div class="mb-4 flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-3 dark:bg-dark-800"><span class="text-sm"><strong>手动触发</strong><small>将当前待分析样本立即归入批次，由后台异步处理</small></span><button type="button" class="btn btn-primary" data-test="analyze-now" :disabled="analyzing || dirty || !draft.enabled" @click="analyzeNow">{{ analyzing ? '正在创建批次…' : '立即分析' }}</button></div>
             <div class="form-grid">
               <label class="field"><span>触发策略</span><select v-model="draft.analysis_trigger_mode" class="input"><option value="hybrid">混合触发（推荐）</option><option value="fixed_interval">固定间隔</option><option value="fixed_time">固定时点</option></select></label>
               <NumberField v-if="draft.analysis_trigger_mode === 'hybrid'" v-model="draft.analysis_idle_minutes" label="用户空闲触发" suffix="分钟" :min="1" />
@@ -161,6 +162,15 @@
       </div>
       <p v-else class="py-8 text-center text-sm text-gray-500">正在加载详情…</p>
     </BaseDialog>
+
+    <BaseDialog :show="logsOpen" title="采样与分析日志" width="wide" close-on-click-outside @close="logsOpen = false">
+      <div class="space-y-6">
+        <p class="text-xs text-gray-500">仅展示最近 50 条元数据，不展示原始提示词、模型输出或 Redis 临时文本。</p>
+        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">原因</th><th class="p-2">Token</th><th class="p-2">状态</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ item.username || '已删除用户' }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ item.sample_reason }}</td><td class="p-2">{{ formatNumber(item.estimated_tokens) }}</td><td class="p-2">{{ item.error_code || item.status }}</td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
+        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ item.username || '已删除用户' }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ item.trigger_reason }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</td><td class="p-2">{{ item.error_code || item.status }}</td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
+        <p v-if="logsLoading" class="py-4 text-center text-sm text-gray-500">正在加载日志…</p>
+      </div>
+    </BaseDialog>
   </AppLayout>
 </template>
 
@@ -175,15 +185,17 @@ import Toggle from '@/components/common/Toggle.vue'
 import type { Column } from '@/components/common/types'
 import api from './api'
 import { TASK_CATEGORIES } from './types'
-import type { AnalyzerAccount, DailyInsight, DailyInsightDetail, DailyInsightFilters, DailyInsightPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
+import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, DailyInsightPage, SampleSummary, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
 
 const ConfigCard = defineComponent({ props: { title: { type: String, required: true }, description: { type: String, required: true } }, setup: (props, { slots }) => () => h('section', { class: 'card p-5' }, [h('div', { class: 'mb-5' }, [h('h2', { class: 'font-semibold text-gray-950 dark:text-white' }, props.title), h('p', { class: 'mt-1 text-xs text-gray-500' }, props.description)]), slots.default?.()]) })
-const NumberField = defineComponent({ props: { modelValue: { type: Number, default: 0 }, label: { type: String, required: true }, suffix: { type: String, default: '' }, min: { type: Number, default: 0 } }, emits: ['update:modelValue'], setup: (props, { emit }) => () => h('label', { class: 'field' }, [h('span', props.label), h('div', { class: 'relative' }, [h('input', { type: 'number', min: props.min, value: props.modelValue ?? 0, class: 'input w-full pr-16', onInput: (event: Event) => emit('update:modelValue', Number((event.target as HTMLInputElement).value)) }), props.suffix && h('em', { class: 'pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs not-italic text-gray-400' }, props.suffix)])]) })
+const NumberField = defineComponent({ props: { modelValue: { type: Number, default: 0 }, label: { type: String, required: true }, suffix: { type: String, default: '' }, min: { type: Number, default: 0 }, max: { type: Number, default: undefined } }, emits: ['update:modelValue'], setup: (props, { emit }) => () => h('label', { class: 'field' }, [h('span', props.label), h('div', { class: 'relative' }, [h('input', { type: 'number', min: props.min, max: props.max, value: props.modelValue ?? 0, class: 'input w-full pr-16', onInput: (event: Event) => emit('update:modelValue', Number((event.target as HTMLInputElement).value)) }), props.suffix && h('em', { class: 'pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs not-italic text-gray-400' }, props.suffix)])]) })
 
 const tab = ref<'insights' | 'config'>('insights')
 const loading = ref(false)
 const saving = ref(false)
 const probing = ref(false)
+const analyzing = ref(false)
+const logsLoading = ref(false)
 const message = ref('')
 const messageError = ref(false)
 const runtime = ref<WorkInsightRuntime | null>(null)
@@ -197,6 +209,9 @@ const appliedFilters = ref<DailyInsightFilters>({ ...filters })
 const detailOpen = ref(false)
 const detail = ref<DailyInsightDetail | null>(null)
 const showAllSamples = ref(false)
+const logsOpen = ref(false)
+const sampleLogs = ref<SampleSummary[]>([])
+const batchLogs = ref<BatchSummary[]>([])
 const columns: Column[] = [
   { key: 'insight_date', label: '日期' }, { key: 'user', label: '用户' }, { key: 'usage', label: '业务用量' },
   { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'category', label: '主要任务' },
@@ -225,6 +240,7 @@ function parseIDs(value: string): number[] { return splitList(value).map(Number)
 function formatNumber(value: number): string { return new Intl.NumberFormat('zh-CN', { notation: value >= 100000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value) }
 function formatBytes(value: number): string { return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${Math.ceil(value / 1024)} KiB` }
 function formatDate(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value)) : '—' }
+function formatDateTime(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '—' }
 function formatDuration(value: number): string { return value > 0 ? `${formatNumber(value)} ms` : '—' }
 function successRate(row: DailyInsight): string { const total = row.business_request_count + row.business_error_count; return total ? `${(row.business_request_count / total * 100).toFixed(1)}%` : '—' }
 function primaryCategory(row: DailyInsight): string { return Object.entries(row.task_category_stats ?? {}).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '待分析' }
@@ -258,6 +274,19 @@ async function probeAnalyzer() {
   try { const result = await api.probe(draft.value); showMessage(`${result.message}（${result.latency_ms} ms）`, !result.ok) }
   catch { showMessage('分析节点连接失败', true) }
   finally { probing.value = false }
+}
+async function analyzeNow() {
+  analyzing.value = true
+  try { const result = await api.analyzeNow(); showMessage(result.created_batches ? `已创建 ${result.created_batches} 个分析批次，后台正在处理` : '当前没有待分析样本'); await loadRuntime() }
+  catch (error) { showMessage(error instanceof Error ? error.message : '立即分析失败', true) }
+  finally { analyzing.value = false }
+}
+async function openLogs() {
+  logsOpen.value = true
+  logsLoading.value = true
+  try { [sampleLogs.value, batchLogs.value] = await Promise.all([api.listSamples(), api.listBatches()]) }
+  catch { showMessage('采样与分析日志加载失败', true) }
+  finally { logsLoading.value = false }
 }
 
 onMounted(refresh)

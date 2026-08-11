@@ -2,6 +2,7 @@ package workinsight
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/stretchr/testify/require"
@@ -55,8 +56,25 @@ func TestTrySubmitDropsRateMissBeforeBodyCopy(t *testing.T) {
 	cfg.Enabled, cfg.SampleRate = true, 0
 	service.config.Store(&cfg)
 
-	service.TrySubmit(securityaudit.Request{RequestID: "rate-miss", Body: make([]byte, 1<<20)})
+	request := securityaudit.Request{UserID: 7, RequestID: "rate-miss", Body: make([]byte, 1<<20)}
+	service.TrySubmit(request)
+	queued := <-service.queue
+	service.queuedCount.Add(-1)
+	service.queuedBytes.Add(-queued.bytes)
+	service.TrySubmit(request)
 
 	require.Empty(t, service.queue)
 	require.Zero(t, service.queuedBytes.Load())
+}
+
+func TestIngressPrefilterAlwaysSelectsFirstRequestOfSession(t *testing.T) {
+	service := &Service{}
+	cfg := storedConfig{Config: DefaultConfig()}
+	cfg.SampleRate = 0
+	now := time.Date(2026, 8, 11, 1, 0, 0, 0, time.UTC)
+	request := securityaudit.Request{UserID: 7, RequestID: "request"}
+
+	require.True(t, service.ingressSelected(cfg, request, now))
+	require.False(t, service.ingressSelected(cfg, request, now.Add(time.Minute)))
+	require.True(t, service.ingressSelected(cfg, request, now.Add(6*time.Minute+time.Millisecond)))
 }

@@ -117,6 +117,7 @@ type Service struct {
 	processed          atomic.Int64
 	failed             atomic.Int64
 	analyzerPauseUntil atomic.Int64
+	ingressSessions    sync.Map
 	cancel             context.CancelFunc
 	wg                 sync.WaitGroup
 }
@@ -157,7 +158,7 @@ func (s *Service) TrySubmit(req securityaudit.Request) {
 	if cfg == nil || !cfg.Enabled || cfg.excludes(req.UserID, req.UserEmail) || len(req.Body) == 0 || len(req.Body) > 2<<20 {
 		return
 	}
-	if !rateSelected(*cfg, req) {
+	if !s.ingressSelected(*cfg, req, time.Now()) {
 		return
 	}
 	queueCapacity := min(cfg.QueueCapacity, cap(s.queue))
@@ -314,8 +315,27 @@ func stringSliceToAny(values []string) []any {
 	return result
 }
 
-func rateSelected(cfg storedConfig, req securityaudit.Request) bool {
+type ingressSessionKey struct {
+	userID int64
+	date   string
+}
+
+func (s *Service) ingressSelected(cfg storedConfig, req securityaudit.Request, now time.Time) bool {
 	if cfg.SampleRate >= 100 {
+		return true
+	}
+	location, err := time.LoadLocation(cfg.Timezone)
+	if err != nil {
+		return false
+	}
+	date := now.In(location).Format("2006-01-02")
+	state, _ := s.ingressSessions.LoadOrStore(ingressSessionKey{userID: req.UserID, date: date}, &atomic.Int64{})
+	counter, ok := state.(*atomic.Int64)
+	if !ok {
+		return false
+	}
+	last := counter.Swap(now.UnixMilli())
+	if last == 0 || now.UnixMilli()-last > int64(time.Duration(cfg.SessionIdleMinutes)*time.Minute/time.Millisecond) {
 		return true
 	}
 	if cfg.SampleRate <= 0 {
@@ -326,11 +346,18 @@ func rateSelected(cfg storedConfig, req securityaudit.Request) bool {
 		digest := sha256.Sum256(req.Body)
 		entropy = hex.EncodeToString(digest[:])
 	}
-	location, err := time.LoadLocation(cfg.Timezone)
-	if err != nil {
-		return false
-	}
-	return selectedByRate(req.UserID, time.Now().In(location).Format("2006-01-02"), entropy, cfg.SampleRate)
+	return selectedByRate(req.UserID, date, entropy, cfg.SampleRate)
+}
+
+func (s *Service) pruneIngressSessions(cutoff time.Time) {
+	cutoffMS := cutoff.UnixMilli()
+	s.ingressSessions.Range(func(key, value any) bool {
+		counter, ok := value.(*atomic.Int64)
+		if ok && counter.Load() < cutoffMS {
+			s.ingressSessions.Delete(key)
+		}
+		return true
+	})
 }
 
 func selectedByRate(userID int64, date, entropy string, rate int) bool {
@@ -405,6 +432,14 @@ func (s *Service) PublicConfig() Config {
 	cfg := stored.Config
 	cfg.AnalyzerToken, cfg.AnalyzerTokenSet = "", stored.AnalyzerTokenCiphertext != ""
 	return cfg
+}
+
+func (s *Service) AnalyzeNow(ctx context.Context) (int, error) {
+	cfg := s.config.Load()
+	if cfg == nil || !cfg.Enabled {
+		return 0, infraerrors.BadRequest("ai_work_insight_disabled", "请先启用并保存 AI 使用洞察配置")
+	}
+	return s.repo.CreateDueBatches(ctx, time.Now(), cfg.Config, "manual")
 }
 
 func (s *Service) SaveConfig(ctx context.Context, next Config, actorID int64) (Config, error) {

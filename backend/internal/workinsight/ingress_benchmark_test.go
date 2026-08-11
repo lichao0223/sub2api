@@ -3,6 +3,7 @@ package workinsight
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 )
@@ -24,6 +25,9 @@ func benchmarkTrySubmit(b *testing.B, enabled bool, size, rate int) {
 	cfg.SampleRate = rate
 	service.config.Store(&cfg)
 	request := securityaudit.Request{RequestID: "benchmark", Body: make([]byte, size)}
+	if enabled && rate < 100 {
+		service.ingressSelected(cfg, request, time.Now())
+	}
 	b.SetBytes(int64(size))
 	b.ReportAllocs()
 	b.ResetTimer()

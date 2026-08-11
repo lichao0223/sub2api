@@ -24,16 +24,18 @@ func TestBatchTriggerModesAndBoundaries(t *testing.T) {
 	cfg := DefaultConfig()
 	now := time.Date(2026, 8, 11, 2, 0, 0, 0, time.UTC)
 	samples := []Sample{{ID: 1, EstimatedTokens: 100, CreatedAt: now.Add(-15 * time.Minute)}}
-	require.Equal(t, "idle", batchTrigger(samples, now, cfg, false))
+	require.Equal(t, "idle", batchTrigger(samples, now, cfg, ""))
 
 	samples = []Sample{{ID: 1, EstimatedTokens: 100, CreatedAt: now.Add(-60 * time.Minute)}, {ID: 2, EstimatedTokens: 100, CreatedAt: now}}
-	require.Equal(t, "max_wait", batchTrigger(samples, now, cfg, false))
+	require.Equal(t, "max_wait", batchTrigger(samples, now, cfg, ""))
 
 	cfg.AnalysisTriggerMode = "fixed_interval"
 	cfg.FixedIntervalMinutes = 10
-	require.Equal(t, "fixed", batchTrigger([]Sample{{CreatedAt: now.Add(-10 * time.Minute)}}, now, cfg, false))
+	require.Equal(t, "fixed", batchTrigger([]Sample{{CreatedAt: now.Add(-10 * time.Minute)}}, now, cfg, ""))
 	cfg.AnalysisTriggerMode = "fixed_time"
-	require.Equal(t, "fixed", batchTrigger([]Sample{{CreatedAt: now}}, now, cfg, true))
+	require.Equal(t, "fixed", batchTrigger([]Sample{{CreatedAt: now}}, now, cfg, "fixed"))
+	cfg.MaxSamplesPerBatch = 1
+	require.Equal(t, "manual", batchTrigger([]Sample{{CreatedAt: now}}, now, cfg, "manual"))
 }
 
 func TestSelectBatchSamplesKeepsOneOversizeAndPrefix(t *testing.T) {

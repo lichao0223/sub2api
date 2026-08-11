@@ -99,7 +99,7 @@ type storedConfig struct {
 
 func DefaultConfig() Config {
 	return Config{
-		ConfigVersion: 1, SampleRate: 2, SessionIdleMinutes: 5,
+		ConfigVersion: 1, SampleRate: 20, SessionIdleMinutes: 5,
 		UserDailyLimit: 5000, GlobalDailyLimit: 200000, Timezone: "Asia/Shanghai",
 		QueueCapacity: 10000, WorkerCount: 4, AnalysisIdleMinutes: 15,
 		AnalysisMaxWaitMinutes: 60, AnalysisTriggerMode: "hybrid", FixedIntervalMinutes: 30,

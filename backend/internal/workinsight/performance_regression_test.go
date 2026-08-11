@@ -38,7 +38,7 @@ func TestCreateDueBatchesFiltersDueSessionsInSQL(t *testing.T) {
 	).WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "username_snapshot", "local_date", "active_session_id", "estimated_tokens", "created_at"}))
 	mock.ExpectCommit()
 
-	created, err := repo.CreateDueBatches(context.Background(), now, cfg, false)
+	created, err := repo.CreateDueBatches(context.Background(), now, cfg, "")
 	require.NoError(t, err)
 	require.Zero(t, created)
 	require.NoError(t, mock.ExpectationsWereMet())

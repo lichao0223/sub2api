@@ -31,3 +31,12 @@ func TestPerformanceMigrationUpgradesExistingCapacity(t *testing.T) {
 		require.Contains(t, sql, required)
 	}
 }
+
+func TestSamplingDefaultMigrationUpgradesLegacyDefault(t *testing.T) {
+	raw, err := os.ReadFile("../../migrations/915_ai_work_insight_sample_rate.sql")
+	require.NoError(t, err)
+	sql := string(raw)
+	require.Contains(t, sql, "'sample_rate'")
+	require.Contains(t, sql, "'20'")
+	require.Contains(t, sql, "= '2'")
+}

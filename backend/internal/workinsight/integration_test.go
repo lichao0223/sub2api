@@ -79,7 +79,7 @@ func TestWorkInsightCandidateToDailyInsight(t *testing.T) {
 		Provider: "openai", Protocol: "openai_chat", Endpoint: "/v1/chat/completions", Model: "model-canary",
 		Body: []byte(`{"messages":[{"role":"user","content":"请使用 sub2api 排查网关问题"}]}`),
 	}))
-	created, err := repo.CreateDueBatches(ctx, time.Now(), cfg, false)
+	created, err := repo.CreateDueBatches(ctx, time.Now(), cfg, "")
 	require.NoError(t, err)
 	require.Equal(t, 1, created)
 	var sampleID int64

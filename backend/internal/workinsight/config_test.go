@@ -9,7 +9,7 @@ import (
 func TestDefaultConfigMatchesProductContract(t *testing.T) {
 	cfg := DefaultConfig()
 	require.NoError(t, cfg.validate())
-	require.Equal(t, 2, cfg.SampleRate)
+	require.Equal(t, 20, cfg.SampleRate)
 	require.Equal(t, 5000, cfg.UserDailyLimit)
 	require.Equal(t, 200000, cfg.GlobalDailyLimit)
 	require.Equal(t, 50, cfg.MaxSamplesPerBatch)

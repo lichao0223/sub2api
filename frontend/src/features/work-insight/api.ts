@@ -9,6 +9,8 @@ import type {
   WorkInsightRuntime,
   AnalyzerAccount,
   WorkInsightOverview,
+  SampleSummary,
+  BatchSummary,
 } from './types'
 
 const basePath = '/admin/ai-work-insights'
@@ -26,6 +28,21 @@ export async function updateConfig(config: WorkInsightConfig): Promise<WorkInsig
 export async function getRuntime(): Promise<WorkInsightRuntime> {
   const { data } = await apiClient.get<WorkInsightRuntime>(`${basePath}/runtime`)
   return data
+}
+
+export async function analyzeNow(): Promise<{ created_batches: number }> {
+  const { data } = await apiClient.post<{ created_batches: number }>(`${basePath}/analyze-now`)
+  return data
+}
+
+export async function listSamples(pageSize = 50): Promise<SampleSummary[]> {
+  const { data } = await apiClient.get<{ items: SampleSummary[] }>(`${basePath}/samples`, { params: { page_size: pageSize } })
+  return data.items
+}
+
+export async function listBatches(pageSize = 50): Promise<BatchSummary[]> {
+  const { data } = await apiClient.get<{ items: BatchSummary[] }>(`${basePath}/batches`, { params: { page_size: pageSize } })
+  return data.items
 }
 
 export async function listAnalyzerAccounts(): Promise<AnalyzerAccount[]> {
@@ -60,4 +77,4 @@ export async function listRepresentativeItems(id: number, page: number, pageSize
   return data
 }
 
-export default { getConfig, updateConfig, getRuntime, listAnalyzerAccounts, probe, listDaily, getOverview, getDaily, listRepresentativeItems }
+export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, listAnalyzerAccounts, probe, listDaily, getOverview, getDaily, listRepresentativeItems }

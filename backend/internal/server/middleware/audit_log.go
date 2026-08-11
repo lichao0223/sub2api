@@ -122,6 +122,7 @@ var auditSensitiveReads = map[string]string{
 	"GET /api/v1/admin/ai-work-insights/daily/:id/representative-items": "admin.ai_work_insights.representative_items.read",
 	"GET /api/v1/admin/ai-work-insights/samples":                        "admin.ai_work_insights.samples.read",
 	"GET /api/v1/admin/ai-work-insights/samples/:id":                    "admin.ai_work_insights.sample.read",
+	"GET /api/v1/admin/ai-work-insights/batches":                        "admin.ai_work_insights.batches.read",
 }
 
 // auditActionOverrides 变更类请求的动作名精确映射（未命中时自动推导）。
@@ -143,6 +144,7 @@ var auditActionOverrides = map[string]string{
 	"PUT /api/v1/admin/prompt-audit/config":                             "admin.prompt_audit.config.update",
 	"PUT /api/v1/admin/ai-work-insights/config":                         "admin.ai_work_insights.config.update",
 	"POST /api/v1/admin/ai-work-insights/endpoint/probe":                "admin.ai_work_insights.endpoint.probe",
+	"POST /api/v1/admin/ai-work-insights/analyze-now":                   "admin.ai_work_insights.analyze_now",
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":                   "admin.prompt_audit.endpoint.probe",
 	"DELETE /api/v1/admin/prompt-audit/events/:id":                      "admin.prompt_audit.event.delete",
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":               "admin.prompt_audit.events.batch_delete",
@@ -167,6 +169,7 @@ var auditBodyOmittedRoutes = map[string]struct{}{
 	"PUT /api/v1/admin/prompt-audit/config":                     {},
 	"PUT /api/v1/admin/ai-work-insights/config":                 {},
 	"POST /api/v1/admin/ai-work-insights/endpoint/probe":        {},
+	"POST /api/v1/admin/ai-work-insights/analyze-now":           {},
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":           {},
 	"DELETE /api/v1/admin/prompt-audit/events/:id":              {},
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":       {},

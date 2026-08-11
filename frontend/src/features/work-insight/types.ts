@@ -67,6 +67,32 @@ export interface WorkInsightRuntime {
   analyzer_calls: number
 }
 
+export interface SampleSummary {
+  id: number
+  username: string
+  provider: string
+  requested_model: string
+  sample_reason: string
+  estimated_tokens: number
+  status: string
+  error_code: string
+  created_at: string
+}
+
+export interface BatchSummary {
+  id: number
+  username: string
+  sample_count: number
+  trigger_reason: string
+  status: string
+  attempts: number
+  error_code: string
+  analyzer_model: string
+  analyzer_input_tokens: number
+  analyzer_output_tokens: number
+  created_at: string
+}
+
 export interface ProbeResult {
   ok: boolean
   status: string
