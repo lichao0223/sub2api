@@ -508,8 +508,15 @@ func validateEvidenceList(values []string, evidence string) ([]string, error) {
 func mergeBatchResults(results []BatchResult) BatchResult {
 	merged := BatchResult{EvidenceLevel: "unknown"}
 	var summaries []string
+	seenSummaries := map[string]struct{}{}
 	for _, result := range results {
-		summaries = append(summaries, result.WorkSummary)
+		for _, summary := range strings.FieldsFunc(result.WorkSummary, func(r rune) bool { return r == '\n' || r == '；' }) {
+			summary = strings.TrimSpace(strings.TrimLeft(summary, "-•* "))
+			if _, seen := seenSummaries[summary]; summary != "" && !seen {
+				summaries = append(summaries, summary)
+				seenSummaries[summary] = struct{}{}
+			}
+		}
 		merged.TaskCategories = mergeUnique(merged.TaskCategories, result.TaskCategories)
 		merged.ExplicitProjects = mergeUnique(merged.ExplicitProjects, result.ExplicitProjects)
 		merged.ExplicitModules = mergeUnique(merged.ExplicitModules, result.ExplicitModules)
@@ -520,7 +527,7 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 			merged.EvidenceLevel = "explicit"
 		}
 	}
-	merged.WorkSummary = truncateRunes(strings.Join(mergeUnique(nil, summaries), "；"), 300)
+	merged.WorkSummary = truncateRunes("- "+strings.Join(summaries, "\n- "), 300)
 	if len(merged.RepresentativeItems) > 10 {
 		merged.RepresentativeItems = merged.RepresentativeItems[:10]
 	}
@@ -535,4 +542,4 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
-const analyzerInstruction = `你是企业 AI 使用洞察分析器。只分析脱敏后的用户请求，不做绩效、合规或是否工作的判断。项目和模块只能收录输入中明确出现的名称，不得推断。返回且仅返回 JSON 对象，字段严格为 work_summary、task_categories、explicit_projects、explicit_modules、change_types、business_topics、representative_items、evidence_level。task_categories 只能从以下枚举选择：代码开发、问题排查、测试用例、接口文档、需求分析、方案设计、数据分析、SQL/报表、运维部署、日志分析、文档写作、翻译润色、会议纪要、客服支持、培训学习、其他。evidence_level 只能是 "explicit" 或 "unknown"。representative_items 每项包含 source_sample_ids、summary、task_categories、explicit_projects、explicit_modules。未明确出现的项目和模块返回空数组。`
+const analyzerInstruction = `你是企业 AI 使用洞察分析器。只分析脱敏后的用户请求，不做绩效、合规或是否工作的判断。项目和模块只能收录输入中明确出现的名称，不得推断。返回且仅返回 JSON 对象，字段严格为 work_summary、task_categories、explicit_projects、explicit_modules、change_types、business_topics、representative_items、evidence_level。task_categories 只能从以下枚举选择：代码开发、问题排查、测试用例、接口文档、需求分析、方案设计、数据分析、SQL/报表、运维部署、日志分析、文档写作、翻译润色、会议纪要、客服支持、培训学习、其他。evidence_level 只能是 "explicit" 或 "unknown"。work_summary 必须用自然、简洁的中文分条概括具体工作，每行以 "- " 开头，最多 6 条；按事实使用“新增功能：”“修复问题：”“完成事项：”，证据不足以确认完成时使用“排查：”“设计：”“整理：”，不要写“用户询问”“提出要求”“希望”“请求”等对话描述。representative_items 每项包含 source_sample_ids、summary、task_categories、explicit_projects、explicit_modules；summary 每项只写一件具体工作，使用“新增、修复、排查、设计、整理、编写、部署”等动词开头，不复述提问过程，相同事项合并。未明确出现的项目和模块返回空数组。`

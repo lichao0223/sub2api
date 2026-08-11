@@ -98,6 +98,14 @@ export interface BatchSummary {
   created_at: string
 }
 
+export interface LogPage<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
 export interface ProbeResult {
   ok: boolean
   status: string

@@ -174,12 +174,20 @@ type BatchSummary struct {
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
 
-func (r *Repository) ListBatches(ctx context.Context, size int) ([]BatchSummary, error) {
+func (r *Repository) ListBatches(ctx context.Context, page, size int, errorsOnly bool) ([]BatchSummary, int64, error) {
+	where := `status NOT IN ('retry','failed','dropped')`
+	if errorsOnly {
+		where = `status IN ('retry','failed','dropped')`
+	}
+	var total int64
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ai_work_insight_batches WHERE `+where).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.db.QueryContext(ctx, `SELECT id,user_id,username_snapshot,local_date,active_session_id,sample_count,
 		trigger_reason,status,attempts,error_code,analyzer_model,analyzer_input_tokens,analyzer_output_tokens,analyzed_at,created_at,updated_at
-		FROM ai_work_insight_batches ORDER BY id DESC LIMIT $1`, size)
+		FROM ai_work_insight_batches WHERE `+where+` ORDER BY id DESC LIMIT $1 OFFSET $2`, size, (page-1)*size)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 	items := make([]BatchSummary, 0, size)
@@ -188,11 +196,11 @@ func (r *Repository) ListBatches(ctx context.Context, size int) ([]BatchSummary,
 		if err := rows.Scan(&item.ID, &item.UserID, &item.Username, &item.LocalDate, &item.SessionID, &item.SampleCount,
 			&item.TriggerReason, &item.Status, &item.Attempts, &item.ErrorCode, &item.AnalyzerModel, &item.AnalyzerInputTokens,
 			&item.AnalyzerOutputTokens, &item.AnalyzedAt, &item.CreatedAt, &item.UpdatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		items = append(items, item)
 	}
-	return items, rows.Err()
+	return items, total, rows.Err()
 }
 
 func selectBatchSamples(samples []Sample, maxSamples, maxTokens int) []Sample {
@@ -251,10 +259,10 @@ func (r *Repository) RetryBatch(ctx context.Context, batch Batch, next time.Time
 	return requireAffected(result, err)
 }
 
-func (r *Repository) LoadDroppedBatchSamples(ctx context.Context, batchID int64) ([]BatchSample, error) {
+func (r *Repository) LoadRetryableBatchSamples(ctx context.Context, batchID int64) ([]BatchSample, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT s.id,s.estimated_tokens,s.created_at
 		FROM ai_work_insight_samples s JOIN ai_work_insight_batches b ON b.id=s.batch_id
-		WHERE b.id=$1 AND b.status IN ('failed','dropped') AND s.status IN ('failed','dropped') ORDER BY s.id`, batchID)
+		WHERE b.id=$1 AND b.status IN ('retry','failed','dropped') AND s.status IN ('batched','failed','dropped') ORDER BY s.id`, batchID)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +278,7 @@ func (r *Repository) LoadDroppedBatchSamples(ctx context.Context, batchID int64)
 	return samples, rows.Err()
 }
 
-func (r *Repository) RequeueDroppedBatch(ctx context.Context, batchID int64, now time.Time) error {
+func (r *Repository) RequeueBatch(ctx context.Context, batchID int64, now time.Time) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -278,12 +286,12 @@ func (r *Repository) RequeueDroppedBatch(ctx context.Context, batchID int64, now
 	defer func() { _ = tx.Rollback() }()
 	result, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_batches SET status='queued',attempts=0,next_attempt_at=$2,
 		trigger_reason='manual',error_code='',analyzer_model='',analyzer_input_tokens=0,analyzer_output_tokens=0,
-		chunk_count=0,analyzed_at=NULL,created_at=$2,updated_at=$2 WHERE id=$1 AND status IN ('failed','dropped')`, batchID, now.UTC())
+		chunk_count=0,analyzed_at=NULL,created_at=$2,updated_at=$2 WHERE id=$1 AND status IN ('retry','failed','dropped')`, batchID, now.UTC())
 	if err := requireAffected(result, err); err != nil {
 		return err
 	}
 	result, err = tx.ExecContext(ctx, `UPDATE ai_work_insight_samples SET status='batched',error_code='',updated_at=$2
-		WHERE batch_id=$1 AND status IN ('failed','dropped')`, batchID, now.UTC())
+		WHERE batch_id=$1 AND status IN ('batched','failed','dropped')`, batchID, now.UTC())
 	if err != nil {
 		return err
 	}
@@ -292,6 +300,80 @@ func (r *Repository) RequeueDroppedBatch(ctx context.Context, batchID int64, now
 		return errors.New("work insight retry samples missing")
 	}
 	return tx.Commit()
+}
+
+type RetryBatchCandidate struct {
+	ID        int64
+	SampleIDs []int64
+}
+
+func (r *Repository) ListRetryBatchCandidates(ctx context.Context) ([]RetryBatchCandidate, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT b.id,ARRAY_AGG(s.id ORDER BY s.id)
+		FROM ai_work_insight_batches b JOIN ai_work_insight_samples s ON s.batch_id=b.id
+		WHERE b.status IN ('retry','failed','dropped') AND s.status IN ('batched','failed','dropped')
+		GROUP BY b.id ORDER BY b.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var items []RetryBatchCandidate
+	for rows.Next() {
+		var item RetryBatchCandidate
+		if err := rows.Scan(&item.ID, pq.Array(&item.SampleIDs)); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+func (r *Repository) RequeueBatches(ctx context.Context, batchIDs []int64, now time.Time) (int64, error) {
+	if len(batchIDs) == 0 {
+		return 0, nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_batches SET status='queued',attempts=0,next_attempt_at=$2,
+		trigger_reason='manual',error_code='',analyzer_model='',analyzer_input_tokens=0,analyzer_output_tokens=0,
+		chunk_count=0,analyzed_at=NULL,created_at=$2,updated_at=$2
+		WHERE id=ANY($1) AND status IN ('retry','failed','dropped')`, pq.Array(batchIDs), now.UTC())
+	if err != nil {
+		return 0, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_samples SET status='batched',error_code='',updated_at=$2
+		WHERE batch_id=ANY($1) AND status IN ('batched','failed','dropped')`, pq.Array(batchIDs), now.UTC()); err != nil {
+		return 0, err
+	}
+	return affected, tx.Commit()
+}
+
+func (r *Repository) StopBatch(ctx context.Context, batchID int64, now time.Time) (bool, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_batches SET status='dropped',error_code='admin_stopped',
+		claim_version=claim_version+1,updated_at=$2 WHERE id=$1 AND status IN ('queued','processing','retry')`, batchID, now.UTC())
+	if err != nil {
+		return false, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_samples SET status='dropped',error_code='admin_stopped',updated_at=$2
+		WHERE batch_id=$1 AND status='batched'`, batchID, now.UTC()); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 func (r *Repository) DropBatch(ctx context.Context, batch Batch, code string) ([]BatchSample, error) {

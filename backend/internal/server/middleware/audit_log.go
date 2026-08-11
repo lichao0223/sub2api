@@ -147,6 +147,8 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/ai-work-insights/endpoint/probe":                "admin.ai_work_insights.endpoint.probe",
 	"POST /api/v1/admin/ai-work-insights/analyze-now":                   "admin.ai_work_insights.analyze_now",
 	"POST /api/v1/admin/ai-work-insights/batches/:id/retry":             "admin.ai_work_insights.batch.retry",
+	"POST /api/v1/admin/ai-work-insights/batches/retry-all":             "admin.ai_work_insights.batch.retry_all",
+	"POST /api/v1/admin/ai-work-insights/batches/:id/stop":              "admin.ai_work_insights.batch.stop",
 	"POST /api/v1/admin/prompt-audit/endpoints/probe":                   "admin.prompt_audit.endpoint.probe",
 	"DELETE /api/v1/admin/prompt-audit/events/:id":                      "admin.prompt_audit.event.delete",
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":               "admin.prompt_audit.events.batch_delete",

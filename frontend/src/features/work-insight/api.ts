@@ -10,6 +10,7 @@ import type {
   WorkInsightOverview,
   SampleSummary,
   BatchSummary,
+  LogPage,
   UserInsightRankingPage,
 } from './types'
 
@@ -35,14 +36,14 @@ export async function analyzeNow(): Promise<{ created_batches: number }> {
   return data
 }
 
-export async function listSamples(pageSize = 50): Promise<SampleSummary[]> {
-  const { data } = await apiClient.get<{ items: SampleSummary[] }>(`${basePath}/samples`, { params: { page_size: pageSize } })
-  return data.items
+export async function listSamples(page = 1, pageSize = 20): Promise<LogPage<SampleSummary>> {
+  const { data } = await apiClient.get<LogPage<SampleSummary>>(`${basePath}/samples`, { params: { page, page_size: pageSize } })
+  return data
 }
 
-export async function listBatches(pageSize = 50): Promise<BatchSummary[]> {
-  const { data } = await apiClient.get<{ items: BatchSummary[] }>(`${basePath}/batches`, { params: { page_size: pageSize } })
-  return data.items
+export async function listBatches(page = 1, pageSize = 20, kind: 'normal' | 'errors' = 'normal'): Promise<LogPage<BatchSummary>> {
+  const { data } = await apiClient.get<LogPage<BatchSummary>>(`${basePath}/batches`, { params: { page, page_size: pageSize, kind } })
+  return data
 }
 
 export async function clearLogs(): Promise<{ samples: number; batches: number }> {
@@ -51,8 +52,18 @@ export async function clearLogs(): Promise<{ samples: number; batches: number }>
 }
 
 export async function retryBatch(id: number): Promise<{ batch_id: number }> {
-	const { data } = await apiClient.post<{ batch_id: number }>(`${basePath}/batches/${id}/retry`)
-	return data
+  const { data } = await apiClient.post<{ batch_id: number }>(`${basePath}/batches/${id}/retry`)
+  return data
+}
+
+export async function retryAllBatches(): Promise<{ retried: number; skipped: number }> {
+  const { data } = await apiClient.post<{ retried: number; skipped: number }>(`${basePath}/batches/retry-all`)
+  return data
+}
+
+export async function stopBatch(id: number): Promise<{ batch_id: number }> {
+  const { data } = await apiClient.post<{ batch_id: number }>(`${basePath}/batches/${id}/stop`)
+  return data
 }
 
 export async function listAnalyzerAccounts(): Promise<AnalyzerAccount[]> {
@@ -87,4 +98,4 @@ export async function listRepresentativeItems(id: number, page: number, pageSize
   return data
 }
 
-export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, retryBatch, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }
+export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, retryBatch, retryAllBatches, stopBatch, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }

@@ -281,6 +281,13 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	if err != nil || !claimed {
 		return
 	}
+	batchCtx, cancel := context.WithCancel(ctx)
+	s.batchCancels.Store(batch.ID, cancel)
+	defer func() {
+		s.batchCancels.Delete(batch.ID)
+		cancel()
+	}()
+	ctx = batchCtx
 	if batch.UserID == 0 {
 		s.finishBatchFailure(ctx, cfg, *batch, nil, "user_deleted", false)
 		return

@@ -49,7 +49,7 @@
             <template #cell-sample_count="{ row }">{{ formatNumber(row.sample_count) }}</template>
             <template #cell-coverage="{ row }">{{ row.covered_active_session_count }} / {{ row.eligible_active_session_count }}</template>
             <template #cell-days="{ row }"><strong>{{ row.insight_days }}</strong><p class="text-xs text-gray-400">{{ formatRange(row.start_date, row.end_date) }}</p></template>
-            <template #cell-summary="{ row }"><p class="max-w-md whitespace-normal text-sm">{{ row.latest_summary || '等待分析结果' }}</p></template>
+            <template #cell-summary="{ row }"><p class="max-w-md whitespace-pre-line text-sm">{{ row.latest_summary || '等待分析结果' }}</p></template>
             <template #cell-status="{ row }"><StatusBadge :status="row.failed_sample_count ? 'warning' : row.analyzed ? 'success' : 'inactive'" :label="row.failed_sample_count ? '部分失败' : row.analyzed ? '已完成' : '分析中'" /></template>
           </DataTable>
           <Pagination :total="page.total" :page="page.page" :page-size="page.page_size" @update:page="changePage" @update:page-size="changePageSize" />
@@ -153,14 +153,14 @@
     <BaseDialog :show="detailOpen" :title="detail ? `${detail.insight.username} 的 AI 工作洞察` : 'AI 工作洞察'" width="wide" close-on-click-outside @close="detailOpen = false">
       <div v-if="detail" class="space-y-5">
         <p class="text-xs text-gray-500">{{ formatDate(detail.insight.insight_date) }} · 最后分析 {{ formatDateTime(detail.insight.last_analyzed_at || '') }} · 基于抽样，可能不完整或误判</p>
-        <section class="rounded-xl bg-primary-50 p-4 dark:bg-primary-950/30"><h3 class="text-xs font-semibold text-primary-700 dark:text-primary-300">AI 生成的工作摘要</h3><p class="mt-2 text-sm text-gray-800 dark:text-dark-100">{{ detail.insight.daily_summary || '暂无摘要' }}</p></section>
+        <section class="rounded-xl bg-primary-50 p-4 dark:bg-primary-950/30"><h3 class="text-xs font-semibold text-primary-700 dark:text-primary-300">最新工作摘要</h3><p class="mt-2 whitespace-pre-line text-sm leading-6 text-gray-800 dark:text-dark-100">{{ detail.insight.daily_summary || '暂无摘要' }}</p></section>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4"><article class="mini-stat"><span>成功请求</span><strong>{{ formatNumber(detail.insight.business_request_count) }}</strong></article><article class="mini-stat"><span>请求成功率</span><strong>{{ successRate(detail.insight) }}</strong></article><article class="mini-stat"><span>平均耗时</span><strong>{{ formatDuration(detail.insight.average_duration_ms) }}</strong></article><article class="mini-stat"><span>P95 耗时</span><strong>{{ formatDuration(detail.insight.p95_duration_ms) }}</strong></article></div>
-        <section><h3 class="section-title">Token 构成</h3><div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4"><article class="mini-stat"><span>输入</span><strong>{{ formatNumber(detail.insight.business_input_tokens) }}</strong></article><article class="mini-stat"><span>输出</span><strong>{{ formatNumber(detail.insight.business_output_tokens) }}</strong></article><article class="mini-stat"><span>缓存写入</span><strong>{{ formatNumber(detail.insight.business_cache_creation_tokens) }}</strong></article><article class="mini-stat"><span>缓存读取</span><strong>{{ formatNumber(detail.insight.business_cache_read_tokens) }}</strong></article></div></section>
+        <section><h3 class="section-title">Token 构成</h3><div class="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3"><article class="mini-stat"><span>输入</span><strong>{{ formatNumber(detail.insight.business_input_tokens) }}</strong></article><article class="mini-stat"><span>输出</span><strong>{{ formatNumber(detail.insight.business_output_tokens) }}</strong></article><article class="mini-stat"><span>缓存读取</span><strong>{{ formatNumber(detail.insight.business_cache_read_tokens) }}</strong></article></div></section>
         <section><h3 class="section-title">使用模型</h3><div class="mt-2 flex flex-wrap gap-2"><span v-for="([model, count]) in Object.entries(detail.insight.model_usage)" :key="model" class="badge">{{ model }} · {{ count }} 次</span><span v-if="!Object.keys(detail.insight.model_usage).length" class="text-sm text-gray-400">暂无模型统计</span></div></section>
         <section><h3 class="section-title">任务分类</h3><div class="mt-2 flex flex-wrap gap-2"><span v-for="([category, count]) in Object.entries(detail.insight.task_category_stats).sort((a, b) => b[1] - a[1])" :key="category" class="badge">{{ category }} · {{ count }}</span><span v-if="!Object.keys(detail.insight.task_category_stats).length" class="text-sm text-gray-400">暂无任务分类</span></div></section>
         <section><h3 class="section-title">明确项目与模块</h3><div class="mt-2 flex flex-wrap gap-2"><span v-for="item in [...detail.insight.explicit_projects, ...detail.insight.explicit_modules]" :key="item" class="badge">{{ item }}</span><span v-if="!detail.insight.explicit_projects.length && !detail.insight.explicit_modules.length" class="text-sm text-gray-400">输入中未出现明确项目或模块</span></div></section>
         <section v-if="detail.insight.change_types.length || detail.insight.business_topics.length"><h3 class="section-title">变更类型与业务主题</h3><div class="mt-2 flex flex-wrap gap-2"><span v-for="item in [...detail.insight.change_types, ...detail.insight.business_topics]" :key="item" class="badge">{{ item }}</span></div></section>
-        <section><div class="flex items-center justify-between"><h3 class="section-title">代表性工作样本</h3><span class="text-xs text-gray-500">共 {{ detail.representative_item_count }} 条</span></div><div class="mt-3 space-y-2"><article v-for="(item, index) in visibleSamples" :key="`${item.summary}-${index}`" class="rounded-lg border border-gray-200 p-3 dark:border-dark-700"><strong class="text-sm">{{ item.summary }}</strong><p class="mt-1 text-xs text-gray-500">{{ [...item.task_categories, ...item.explicit_projects, ...item.explicit_modules].join(' · ') }}</p></article><p v-if="detail.representative_items_expired" class="text-sm text-amber-600">样本详情已超过保留期，摘要仍可查看。</p></div><button v-if="detail.representative_items.length > 4" type="button" class="btn btn-secondary btn-sm mt-3" @click="showAllSamples = !showAllSamples">{{ showAllSamples ? '收起样本' : `展开其余 ${detail.representative_items.length - 4} 条` }}</button></section>
+        <section><div class="flex items-center justify-between"><h3 class="section-title">代表性工作样本</h3><span class="text-xs text-gray-500">共 {{ detail.representative_item_count }} 条</span></div><div class="mt-3 space-y-2"><article v-for="(item, index) in visibleSamples" :key="`${item.summary}-${index}`" class="flex gap-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700"><span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-50 text-xs font-semibold text-primary-700 dark:bg-primary-950 dark:text-primary-300">{{ index + 1 }}</span><div><strong class="text-sm leading-6">{{ item.summary }}</strong><p class="mt-1 text-xs text-gray-500">{{ [...item.task_categories, ...item.explicit_projects, ...item.explicit_modules].join(' · ') }}</p></div></article><p v-if="detail.representative_items_expired" class="text-sm text-amber-600">样本详情已超过保留期，摘要仍可查看。</p></div><button v-if="detail.representative_items.length > 4" type="button" class="btn btn-secondary btn-sm mt-3" @click="showAllSamples = !showAllSamples">{{ showAllSamples ? '收起样本' : `展开其余 ${detail.representative_items.length - 4} 条` }}</button></section>
         <p v-if="detail.insight.business_error_count || detail.insight.failed_sample_count" class="rounded-lg bg-amber-50 p-3 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">当日有 {{ detail.insight.business_error_count }} 个业务错误、{{ detail.insight.failed_sample_count }} 个洞察样本失败，结果可能不完整。</p>
         <p class="rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-dark-800">隐私保护：只展示聚合分类与脱敏摘要，不展示 Redis 临时文本、原始提示词或模型原始响应。</p>
       </div>
@@ -169,11 +169,46 @@
 
     <BaseDialog :show="logsOpen" title="采样与分析日志" width="wide" close-on-click-outside @close="logsOpen = false">
       <div class="space-y-6">
-        <div class="flex items-center justify-between gap-4"><p class="text-xs text-gray-500">仅展示最近 50 条元数据，不展示原始提示词、模型输出或 Redis 临时文本。</p><button type="button" class="btn btn-danger btn-sm shrink-0" data-test="clear-logs" @click="clearLogsConfirm = true">清空历史日志</button></div>
-        <p class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-200">分析批次：等待 {{ batchCount('queued', 'retry') }} · 正在分析 {{ batchCount('processing') }} · 失败 {{ batchCount('failed', 'dropped') }} · 完成 {{ batchCount('done') }}。采样日志中的失败通常是同一分析批次的关联样本，不重复算作新的故障。</p>
-        <p class="text-xs text-gray-500">字符数格式为“脱敏分析文本 / 用户输入”；脱敏占位符可能比原内容更长，因此前一个数字偶尔会更大。相同字符数不代表输入内容相同。</p>
-        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">采样原因</th><th class="p-2">分析文本估算</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-2 whitespace-nowrap">≈ {{ formatNumber(item.estimated_tokens) }} Token<p class="mt-1 text-gray-400">脱敏后 {{ formatNumber(item.analyzed_chars) }} / 原文 {{ formatNumber(item.prompt_chars) }} 字符<span v-if="item.truncated" class="text-amber-600"> · 已截断</span></p></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ sampleErrorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
-        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2"><template v-if="item.status === 'done'">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</template><span v-else class="text-gray-400">—<span v-if="item.status === 'processing'" class="block">完成后统计</span></span></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code && item.status !== 'processing'" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p><button v-if="item.status === 'failed' || item.status === 'dropped'" type="button" class="btn btn-secondary btn-xs mt-2" :disabled="retryingBatchID !== null" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '正在重试…' : '重新分析' }}</button></td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-xs text-gray-500">展示数据库中保留的全部历史元数据并分页，不展示原始提示词、模型输出或 Redis 临时文本。</p>
+          <button type="button" class="btn btn-danger btn-sm" data-test="clear-logs" @click="clearLogsConfirm = true">清空历史日志</button>
+        </div>
+        <div class="grid gap-2 text-xs sm:grid-cols-4">
+          <div class="log-stat"><span>排队等待</span><strong>{{ runtime?.queued_batches ?? 0 }}</strong></div>
+          <div class="log-stat"><span>正在分析</span><strong>{{ runtime?.processing_batches ?? 0 }}</strong></div>
+          <div class="log-stat"><span>等待重试</span><strong>{{ runtime?.retry_batches ?? 0 }}</strong></div>
+          <div class="log-stat"><span>分析失败</span><strong>{{ runtime?.failed_batches ?? 0 }}</strong></div>
+        </div>
+
+        <section class="overflow-hidden rounded-xl border border-red-200 dark:border-red-900/60">
+          <div class="flex flex-wrap items-center justify-between gap-3 bg-red-50 px-4 py-3 dark:bg-red-950/20">
+            <div><h3 class="font-semibold text-red-800 dark:text-red-300">错误日志</h3><p class="mt-1 text-xs text-red-600 dark:text-red-400">共 {{ errorLogPage.total }} 条，可逐条或全部重新分析。</p></div>
+            <button type="button" class="btn btn-primary btn-sm" data-test="retry-all-errors" :disabled="retryingAll || !errorLogPage.total" @click="retryAllBatches">{{ retryingAll ? '正在重新排队…' : '全部重新分析' }}</button>
+          </div>
+          <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b border-red-100 dark:border-red-900/50"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">错误原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
+            <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400">{{ errorLabel(item.error_code) }}</td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-danger btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '停止中…' : '停止' }}</button></div></td></tr>
+            <tr v-if="!logsLoading && !errorLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无错误记录</td></tr>
+          </tbody></table></div>
+          <Pagination :total="errorLogPage.total" :page="errorLogPage.page" :page-size="errorLogPage.page_size" @update:page="value => changeLogPage(errorLogPage, value, loadErrorLogs)" @update:page-size="value => changeLogPageSize(errorLogPage, value, loadErrorLogs)" />
+        </section>
+
+        <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+          <div class="bg-gray-50 px-4 py-3 dark:bg-dark-800"><h3 class="section-title">分析日志</h3><p class="mt-1 text-xs text-gray-500">共 {{ batchLogPage.total }} 条正常任务；排队及正在分析的任务可以停止。</p></div>
+          <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">触发原因</th><th class="p-3">模型</th><th class="p-3">分析 Token</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
+            <tr v-for="item in batchLogPage.items" :key="item.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-3">{{ item.analyzer_model || '—' }}</td><td class="p-3"><template v-if="item.status === 'done'">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</template><span v-else class="text-gray-400">{{ item.status === 'processing' ? '完成后统计' : '—' }}</span></td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3 text-right"><button v-if="item.status === 'queued' || item.status === 'processing'" type="button" class="btn btn-danger btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '停止中…' : '停止' }}</button><span v-else class="text-gray-300">—</span></td></tr>
+            <tr v-if="!logsLoading && !batchLogPage.items.length"><td colspan="8" class="p-8 text-center text-gray-400">暂无分析记录</td></tr>
+          </tbody></table></div>
+          <Pagination :total="batchLogPage.total" :page="batchLogPage.page" :page-size="batchLogPage.page_size" @update:page="value => changeLogPage(batchLogPage, value, loadBatchLogs)" @update:page-size="value => changeLogPageSize(batchLogPage, value, loadBatchLogs)" />
+        </section>
+
+        <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">
+          <div class="bg-gray-50 px-4 py-3 dark:bg-dark-800"><h3 class="section-title">采样日志</h3><p class="mt-1 text-xs text-gray-500">共 {{ sampleLogPage.total }} 条。字符数为“脱敏分析文本 / 用户输入”，相同字符数不代表输入内容相同。</p></div>
+          <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">模型</th><th class="p-3">采样原因</th><th class="p-3">分析文本估算</th><th class="p-3">状态 / 异常</th></tr></thead><tbody>
+            <tr v-for="item in sampleLogPage.items" :key="item.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.requested_model || item.provider }}</td><td class="p-3">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-3 whitespace-nowrap">≈ {{ formatNumber(item.estimated_tokens) }} Token<p class="mt-1 text-gray-400">脱敏后 {{ formatNumber(item.analyzed_chars) }} / 原文 {{ formatNumber(item.prompt_chars) }} 字符<span v-if="item.truncated" class="text-amber-600"> · 历史截断记录</span></p></td><td class="p-3"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ sampleErrorLabel(item.error_code) }}</p></td></tr>
+            <tr v-if="!logsLoading && !sampleLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无采样记录</td></tr>
+          </tbody></table></div>
+          <Pagination :total="sampleLogPage.total" :page="sampleLogPage.page" :page-size="sampleLogPage.page_size" @update:page="value => changeLogPage(sampleLogPage, value, loadSampleLogs)" @update:page-size="value => changeLogPageSize(sampleLogPage, value, loadSampleLogs)" />
+        </section>
         <p v-if="logsLoading" class="py-4 text-center text-sm text-gray-500">正在加载日志…</p>
       </div>
     </BaseDialog>
@@ -193,7 +228,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import type { Column } from '@/components/common/types'
 import api from './api'
 import { TASK_CATEGORIES } from './types'
-import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, SampleSummary, UserInsightRanking, UserInsightRankingPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
+import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, LogPage, SampleSummary, UserInsightRanking, UserInsightRankingPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
 
 const ConfigCard = defineComponent({ props: { title: { type: String, required: true }, description: { type: String, required: true } }, setup: (props, { slots }) => () => h('section', { class: 'card p-5' }, [h('div', { class: 'mb-5' }, [h('h2', { class: 'font-semibold text-gray-950 dark:text-white' }, props.title), h('p', { class: 'mt-1 text-xs text-gray-500' }, props.description)]), slots.default?.()]) })
 const NumberField = defineComponent({ props: { modelValue: { type: Number, default: 0 }, label: { type: String, required: true }, suffix: { type: String, default: '' }, min: { type: Number, default: 0 }, max: { type: Number, default: undefined } }, emits: ['update:modelValue'], setup: (props, { emit }) => () => h('label', { class: 'field' }, [h('span', props.label), h('div', { class: 'relative' }, [h('input', { type: 'number', min: props.min, max: props.max, value: props.modelValue ?? 0, class: 'input w-full pr-16', onInput: (event: Event) => emit('update:modelValue', Number((event.target as HTMLInputElement).value)) }), props.suffix && h('em', { class: 'pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs not-italic text-gray-400' }, props.suffix)])]) })
@@ -207,6 +242,8 @@ const logsLoading = ref(false)
 const clearLogsConfirm = ref(false)
 const clearingLogs = ref(false)
 const retryingBatchID = ref<number | null>(null)
+const stoppingBatchID = ref<number | null>(null)
+const retryingAll = ref(false)
 const message = ref('')
 const messageError = ref(false)
 const runtime = ref<WorkInsightRuntime | null>(null)
@@ -221,8 +258,9 @@ const detailOpen = ref(false)
 const detail = ref<DailyInsightDetail | null>(null)
 const showAllSamples = ref(false)
 const logsOpen = ref(false)
-const sampleLogs = ref<SampleSummary[]>([])
-const batchLogs = ref<BatchSummary[]>([])
+const sampleLogPage = reactive<LogPage<SampleSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const batchLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const errorLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
 const columns: Column[] = [
   { key: 'rank', label: '排名' }, { key: 'user', label: '用户' }, { key: 'usage', label: 'Token 用量' },
   { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'days', label: '洞察天数' },
@@ -252,7 +290,7 @@ const errorLabels: Record<string, string> = {
   summary_write_conflict: '摘要写入版本冲突，自动重试后仍未成功', summary_write_failed: '摘要写入数据库失败', summary_load_failed: '读取已有摘要失败',
   sample_load_failed: '读取样本记录失败', samples_missing: '分析批次没有可用样本', payload_missing: 'Redis 中的临时请求文本已不存在', payload_empty: '请求文本为空，无法分析',
   analyzer_config_invalid: '分析模型配置无效', analyzer_context_length: '输入超过分析模型上下文限制', analyzer_invalid_result: '分析模型返回的结果格式无效', analyzer_unavailable: '分析模型暂时不可用',
-  job_expired: '任务超过最大等待时间', user_deleted: '用户已删除，停止分析', payload_capacity: 'Redis 临时文本容量已满', payload_store_failed: '请求文本写入 Redis 失败', payload_encode_failed: '请求文本编码失败', payload_too_large: '请求文本超过大小限制', queue_publish_failed: '采样任务加入队列失败',
+  job_expired: '任务超过最大等待时间', user_deleted: '用户已删除，停止分析', admin_stopped: '管理员手动停止', payload_capacity: 'Redis 临时文本容量已满', payload_store_failed: '请求文本写入 Redis 失败', payload_encode_failed: '请求文本编码失败', payload_too_large: '请求文本超过大小限制', queue_publish_failed: '采样任务加入队列失败',
 }
 
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
@@ -269,7 +307,6 @@ function successRate(row: DailyInsight): string { const total = row.business_req
 function sampleReasonLabel(value: string): string { return sampleReasonLabels[value] ?? `其他采样原因（${value || '未记录'}）` }
 function triggerReasonLabel(value: string): string { return triggerReasonLabels[value] ?? `其他触发原因（${value || '未记录'}）` }
 function statusLabel(value: string): string { return statusLabels[value] ?? `未知状态（${value || '未记录'}）` }
-function batchCount(...statuses: string[]): number { return batchLogs.value.filter(item => statuses.includes(item.status)).length }
 function logUserLabel(username: string, userID?: number): string { return userID ? (username || `用户 ${userID}`) : (username ? `${username}（用户已删除）` : '用户已删除') }
 function errorLabel(value: string): string {
   if (errorLabels[value]) return errorLabels[value]
@@ -323,11 +360,30 @@ async function analyzeNow() {
   catch (error) { showMessage(error instanceof Error ? error.message : '立即分析失败', true) }
   finally { analyzing.value = false }
 }
+async function loadSampleLogs() { Object.assign(sampleLogPage, await api.listSamples(sampleLogPage.page, sampleLogPage.page_size)) }
+async function loadBatchLogs() { Object.assign(batchLogPage, await api.listBatches(batchLogPage.page, batchLogPage.page_size, 'normal')) }
+async function loadErrorLogs() { Object.assign(errorLogPage, await api.listBatches(errorLogPage.page, errorLogPage.page_size, 'errors')) }
+async function loadLogs() { await Promise.all([loadSampleLogs(), loadBatchLogs(), loadErrorLogs()]) }
 async function openLogs() {
   logsOpen.value = true
   logsLoading.value = true
-  try { [sampleLogs.value, batchLogs.value] = await Promise.all([api.listSamples(), api.listBatches()]) }
+  try { await loadLogs() }
   catch { showMessage('采样与分析日志加载失败', true) }
+  finally { logsLoading.value = false }
+}
+async function changeLogPage(target: LogPage<unknown>, value: number, load: () => Promise<void>) {
+  target.page = value
+  logsLoading.value = true
+  try { await load() }
+  catch { showMessage('日志分页加载失败', true) }
+  finally { logsLoading.value = false }
+}
+async function changeLogPageSize(target: LogPage<unknown>, value: number, load: () => Promise<void>) {
+  target.page_size = value
+  target.page = 1
+  logsLoading.value = true
+  try { await load() }
+  catch { showMessage('日志分页加载失败', true) }
   finally { logsLoading.value = false }
 }
 async function clearLogs() {
@@ -336,6 +392,7 @@ async function clearLogs() {
   try {
     const result = await api.clearLogs()
     clearLogsConfirm.value = false
+    sampleLogPage.page = batchLogPage.page = errorLogPage.page = 1
     await Promise.all([openLogs(), loadRuntime()])
     showMessage(`已清空 ${result.samples} 条采样日志和 ${result.batches} 条分析日志`)
   } catch (error) { showMessage(error instanceof Error ? error.message : '清空日志失败', true) }
@@ -346,10 +403,31 @@ async function retryBatch(item: BatchSummary) {
   retryingBatchID.value = item.id
   try {
     await api.retryBatch(item.id)
-    await Promise.all([openLogs(), loadRuntime()])
+    await Promise.all([loadBatchLogs(), loadErrorLogs(), loadRuntime()])
     showMessage('失败批次已重新进入分析队列')
   } catch (error) { showMessage(error instanceof Error ? error.message : '重新分析失败', true) }
   finally { retryingBatchID.value = null }
+}
+async function retryAllBatches() {
+  if (retryingAll.value) return
+  retryingAll.value = true
+  try {
+    const result = await api.retryAllBatches()
+    errorLogPage.page = 1
+    await Promise.all([loadBatchLogs(), loadErrorLogs(), loadRuntime()])
+    showMessage(`已重新排队 ${result.retried} 条错误任务${result.skipped ? `，另有 ${result.skipped} 条因临时文本已过期而跳过` : ''}`)
+  } catch (error) { showMessage(error instanceof Error ? error.message : '批量重新分析失败', true) }
+  finally { retryingAll.value = false }
+}
+async function stopBatch(item: BatchSummary) {
+  if (stoppingBatchID.value !== null) return
+  stoppingBatchID.value = item.id
+  try {
+    await api.stopBatch(item.id)
+    await Promise.all([loadBatchLogs(), loadErrorLogs(), loadRuntime()])
+    showMessage('分析任务已停止，可在错误日志中重新分析')
+  } catch (error) { showMessage(error instanceof Error ? error.message : '停止分析失败', true) }
+  finally { stoppingBatchID.value = null }
 }
 
 onMounted(refresh)
@@ -364,6 +442,8 @@ onMounted(refresh)
 .mini-stat { @apply rounded-lg border border-gray-200 p-3 dark:border-dark-700; }
 .mini-stat span { @apply block text-xs text-gray-500; }
 .mini-stat strong { @apply mt-1 block text-lg text-gray-950 dark:text-white; }
+.log-stat { @apply flex items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-gray-500 dark:bg-dark-800; }
+.log-stat strong { @apply text-base text-gray-950 dark:text-white; }
 .section-title { @apply text-sm font-semibold text-gray-950 dark:text-white; }
 aside dt { @apply text-xs text-gray-500; }
 aside dd { @apply mt-1 font-semibold text-gray-950 dark:text-white; }

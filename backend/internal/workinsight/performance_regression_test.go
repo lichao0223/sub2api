@@ -44,23 +44,23 @@ func TestCreateDueBatchesFiltersDueSessionsInSQL(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestListSamplesUsesCursorWithoutCountOrOffset(t *testing.T) {
+func TestListSamplesReturnsPageAndTotal(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	repo := NewRepository(db)
-	mock.ExpectQuery(`WHERE id<\$1 ORDER BY id DESC LIMIT \$2`).WithArgs(int64(100), 21).
+	mock.ExpectQuery(`SELECT COUNT\(\*\) FROM ai_work_insight_samples`).WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(41))
+	mock.ExpectQuery(`ORDER BY id DESC LIMIT \$1 OFFSET \$2`).WithArgs(20, 20).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "request_id", "user_id", "username_snapshot", "provider", "protocol", "endpoint", "requested_model",
 			"local_date", "active_session_id", "sample_reason", "estimated_tokens", "prompt_chars", "analyzed_chars",
-			"redacted_preview", "status", "attempts", "error_code", "created_at", "updated_at", "batch_id",
+			"truncated", "redacted_preview", "status", "attempts", "error_code", "created_at", "updated_at", "batch_id",
 		}))
 
-	items, next, hasMore, err := repo.ListSamples(context.Background(), 100, 20)
+	items, total, err := repo.ListSamples(context.Background(), 2, 20)
 	require.NoError(t, err)
 	require.Empty(t, items)
-	require.Zero(t, next)
-	require.False(t, hasMore)
+	require.Equal(t, int64(41), total)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -98,7 +98,7 @@ func TestClearTerminalLogsKeepsActiveWork(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
-func TestRequeueDroppedBatchResetsBatchAndSamples(t *testing.T) {
+func TestRequeueBatchResetsBatchAndSamples(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
@@ -110,7 +110,48 @@ func TestRequeueDroppedBatchResetsBatchAndSamples(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 8))
 	mock.ExpectCommit()
 
-	require.NoError(t, NewRepository(db).RequeueDroppedBatch(context.Background(), 12, now))
+	require.NoError(t, NewRepository(db).RequeueBatch(context.Background(), 12, now))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRequeueBatchesReturnsActualConcurrentResult(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	now := time.Date(2026, 8, 11, 8, 0, 0, 0, time.UTC)
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE ai_work_insight_batches SET status='queued'`).
+		WithArgs(sqlmock.AnyArg(), now).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE ai_work_insight_samples SET status='batched'`).
+		WithArgs(sqlmock.AnyArg(), now).WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
+
+	retried, err := NewRepository(db).RequeueBatches(context.Background(), []int64{12, 13}, now)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), retried)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestStopBatchInvalidatesWorkerClaimAndKeepsPayloadRows(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	mock.ExpectExec(`UPDATE ai_work_insight_batches SET status='dropped'.*claim_version=claim_version\+1`).
+		WithArgs(int64(12), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE ai_work_insight_samples SET status='dropped'`).
+		WithArgs(int64(12), sqlmock.AnyArg()).WillReturnResult(sqlmock.NewResult(0, 3))
+	mock.ExpectCommit()
+
+	service := &Service{repo: NewRepository(db)}
+	workerCtx, cancel := context.WithCancel(context.Background())
+	service.batchCancels.Store(int64(12), cancel)
+	require.NoError(t, service.StopBatchNow(context.Background(), 12))
+	select {
+	case <-workerCtx.Done():
+	default:
+		t.Fatal("stopping a processing batch must cancel its worker")
+	}
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

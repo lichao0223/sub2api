@@ -156,6 +156,14 @@ func TestValidateBatchResultNormalizesUnknownEvidenceLevel(t *testing.T) {
 	require.Equal(t, "unknown", result.EvidenceLevel)
 }
 
+func TestMergeBatchResultsFormatsHumanReadableWorkList(t *testing.T) {
+	result := mergeBatchResults([]BatchResult{
+		{WorkSummary: "- 新增功能：支持日志分页\n- 修复问题：停止任务后仍写回结果"},
+		{WorkSummary: "修复问题：停止任务后仍写回结果；完成事项：补充回归测试"},
+	})
+	require.Equal(t, "- 新增功能：支持日志分页\n- 修复问题：停止任务后仍写回结果\n- 完成事项：补充回归测试", result.WorkSummary)
+}
+
 func TestContextLimitStopsAfterCompensatingSplit(t *testing.T) {
 	err := errors.New("analyzer_context_length")
 	require.Equal(t, "analyzer_context_length", analyzerErrorCode(err))

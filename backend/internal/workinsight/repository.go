@@ -158,44 +158,33 @@ type SampleSummary struct {
 	BatchID         *int64    `json:"batch_id"`
 }
 
-func (r *Repository) ListSamples(ctx context.Context, beforeID int64, size int) ([]SampleSummary, int64, bool, error) {
-	query := `SELECT id,request_id,user_id,username_snapshot,provider,protocol,endpoint,requested_model,
-		local_date,active_session_id,sample_reason,estimated_tokens,prompt_chars,analyzed_chars,truncated,redacted_preview,status,
-		attempts,error_code,created_at,updated_at,batch_id FROM ai_work_insight_samples`
-	args := []any{size + 1}
-	if beforeID > 0 {
-		query += ` WHERE id<$1 ORDER BY id DESC LIMIT $2`
-		args = []any{beforeID, size + 1}
-	} else {
-		query += ` ORDER BY id DESC LIMIT $1`
+func (r *Repository) ListSamples(ctx context.Context, page, size int) ([]SampleSummary, int64, error) {
+	var total int64
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM ai_work_insight_samples`).Scan(&total); err != nil {
+		return nil, 0, err
 	}
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,request_id,user_id,username_snapshot,provider,protocol,endpoint,requested_model,
+		local_date,active_session_id,sample_reason,estimated_tokens,prompt_chars,analyzed_chars,truncated,redacted_preview,status,
+		attempts,error_code,created_at,updated_at,batch_id FROM ai_work_insight_samples
+		ORDER BY id DESC LIMIT $1 OFFSET $2`, size, (page-1)*size)
 	if err != nil {
-		return nil, 0, false, err
+		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
-	items := make([]SampleSummary, 0, size+1)
+	items := make([]SampleSummary, 0, size)
 	for rows.Next() {
 		var item SampleSummary
 		if err := rows.Scan(&item.ID, &item.RequestID, &item.UserID, &item.Username, &item.Provider, &item.Protocol, &item.Endpoint,
 			&item.RequestedModel, &item.LocalDate, &item.ActiveSessionID, &item.SampleReason, &item.EstimatedTokens, &item.PromptChars,
 			&item.AnalyzedChars, &item.Truncated, &item.RedactedPreview, &item.Status, &item.Attempts, &item.ErrorCode, &item.CreatedAt, &item.UpdatedAt, &item.BatchID); err != nil {
-			return nil, 0, false, err
+			return nil, 0, err
 		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, 0, false, err
+		return nil, 0, err
 	}
-	hasMore := len(items) > size
-	if hasMore {
-		items = items[:size]
-	}
-	var nextCursor int64
-	if hasMore && len(items) > 0 {
-		nextCursor = items[len(items)-1].ID
-	}
-	return items, nextCursor, hasMore, nil
+	return items, total, nil
 }
 
 func (r *Repository) GetSample(ctx context.Context, id int64) (*SampleSummary, error) {

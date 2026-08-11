@@ -66,14 +66,36 @@ func (h *AdminHandler) RetryBatch(c *gin.Context) {
 	response.Success(c, gin.H{"batch_id": id})
 }
 
-func (h *AdminHandler) ListBatches(c *gin.Context) {
-	_, size := response.ParsePagination(c)
-	items, err := h.service.repo.ListBatches(c.Request.Context(), size)
+func (h *AdminHandler) RetryAllBatches(c *gin.Context) {
+	result, err := h.service.RetryAllBatchesNow(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"items": items, "page_size": size})
+	response.Success(c, result)
+}
+
+func (h *AdminHandler) StopBatch(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "分析批次 ID 无效")
+		return
+	}
+	if err := h.service.StopBatchNow(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"batch_id": id})
+}
+
+func (h *AdminHandler) ListBatches(c *gin.Context) {
+	page, size := response.ParsePagination(c)
+	items, total, err := h.service.repo.ListBatches(c.Request.Context(), page, size, c.Query("kind") == "errors")
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, size)
 }
 
 func (h *AdminHandler) ClearLogs(c *gin.Context) {
@@ -86,22 +108,13 @@ func (h *AdminHandler) ClearLogs(c *gin.Context) {
 }
 
 func (h *AdminHandler) ListSamples(c *gin.Context) {
-	_, size := response.ParsePagination(c)
-	var beforeID int64
-	if value := strings.TrimSpace(c.Query("before_id")); value != "" {
-		var err error
-		beforeID, err = strconv.ParseInt(value, 10, 64)
-		if err != nil || beforeID <= 0 {
-			response.BadRequest(c, "样本游标无效")
-			return
-		}
-	}
-	items, nextCursor, hasMore, err := h.service.repo.ListSamples(c.Request.Context(), beforeID, size)
+	page, size := response.ParsePagination(c)
+	items, total, err := h.service.repo.ListSamples(c.Request.Context(), page, size)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"items": items, "next_cursor": nextCursor, "has_more": hasMore, "page_size": size})
+	response.Paginated(c, items, total, page, size)
 }
 
 func (h *AdminHandler) GetSample(c *gin.Context) {

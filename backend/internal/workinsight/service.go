@@ -128,6 +128,7 @@ type Service struct {
 	failed             atomic.Int64
 	analyzerPauseUntil atomic.Int64
 	ingressSessions    sync.Map
+	batchCancels       sync.Map
 	cancel             context.CancelFunc
 	wg                 sync.WaitGroup
 }
@@ -517,7 +518,7 @@ func (s *Service) RetryBatchNow(ctx context.Context, batchID int64) error {
 	if cfg == nil || !cfg.Enabled {
 		return infraerrors.BadRequest("ai_work_insight_disabled", "请先启用并保存 AI 使用洞察配置")
 	}
-	samples, err := s.repo.LoadDroppedBatchSamples(ctx, batchID)
+	samples, err := s.repo.LoadRetryableBatchSamples(ctx, batchID)
 	if err != nil {
 		return err
 	}
@@ -535,7 +536,62 @@ func (s *Service) RetryBatchNow(ctx context.Context, batchID int64) error {
 	if available != int64(len(keys)) {
 		return infraerrors.BadRequest("ai_work_insight_payload_expired", "该批次的脱敏分析文本已过期，无法重新分析")
 	}
-	return s.repo.RequeueDroppedBatch(ctx, batchID, time.Now())
+	return s.repo.RequeueBatch(ctx, batchID, time.Now())
+}
+
+type RetryAllResult struct {
+	Retried int `json:"retried"`
+	Skipped int `json:"skipped"`
+}
+
+func (s *Service) RetryAllBatchesNow(ctx context.Context) (RetryAllResult, error) {
+	cfg := s.config.Load()
+	if cfg == nil || !cfg.Enabled {
+		return RetryAllResult{}, infraerrors.BadRequest("ai_work_insight_disabled", "请先启用并保存 AI 使用洞察配置")
+	}
+	candidates, err := s.repo.ListRetryBatchCandidates(ctx)
+	if err != nil || len(candidates) == 0 {
+		return RetryAllResult{}, err
+	}
+	pipe := s.redis.Pipeline()
+	checks := make([]*redis.IntCmd, len(candidates))
+	for index, candidate := range candidates {
+		keys := make([]string, len(candidate.SampleIDs))
+		for sampleIndex, sampleID := range candidate.SampleIDs {
+			keys[sampleIndex] = PayloadKeyPrefix + strconv.FormatInt(sampleID, 10)
+		}
+		checks[index] = pipe.Exists(ctx, keys...)
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return RetryAllResult{}, err
+	}
+	ids := make([]int64, 0, len(candidates))
+	for index, candidate := range candidates {
+		if checks[index].Val() == int64(len(candidate.SampleIDs)) {
+			ids = append(ids, candidate.ID)
+		}
+	}
+	retried, err := s.repo.RequeueBatches(ctx, ids, time.Now())
+	if err != nil {
+		return RetryAllResult{}, err
+	}
+	return RetryAllResult{Retried: int(retried), Skipped: len(candidates) - int(retried)}, nil
+}
+
+func (s *Service) StopBatchNow(ctx context.Context, batchID int64) error {
+	stopped, err := s.repo.StopBatch(ctx, batchID, time.Now())
+	if err != nil {
+		return err
+	}
+	if !stopped {
+		return infraerrors.BadRequest("ai_work_insight_batch_not_stoppable", "该分析任务已经结束，无法停止")
+	}
+	if value, ok := s.batchCancels.Load(batchID); ok {
+		if cancel, valid := value.(context.CancelFunc); valid {
+			cancel()
+		}
+	}
+	return nil
 }
 
 func (s *Service) SaveConfig(ctx context.Context, next Config, actorID int64) (Config, error) {
