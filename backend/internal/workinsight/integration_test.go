@@ -82,12 +82,14 @@ func TestWorkInsightCandidateToDailyInsight(t *testing.T) {
 	created, err := repo.CreateDueBatches(ctx, time.Now(), cfg, false)
 	require.NoError(t, err)
 	require.Equal(t, 1, created)
+	var sampleID int64
+	require.NoError(t, db.QueryRow(`SELECT id FROM ai_work_insight_samples WHERE request_id='request-canary'`).Scan(&sampleID))
 	service.processNextBatch(ctx, stored)
 
-	var status, summary string
-	var sampleID int64
-	require.NoError(t, db.QueryRow(`SELECT id,status FROM ai_work_insight_samples WHERE request_id='request-canary'`).Scan(&sampleID, &status))
-	require.Equal(t, "analyzed", status)
+	var summary string
+	var retained int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM ai_work_insight_samples WHERE request_id='request-canary'`).Scan(&retained))
+	require.Zero(t, retained)
 	require.Equal(t, int64(0), rdb.Exists(ctx, PayloadKeyPrefix+fmt.Sprint(sampleID)).Val())
 	require.NoError(t, db.QueryRow(`SELECT daily_summary FROM ai_user_daily_work_insights WHERE user_id=$1`, userID).Scan(&summary))
 	require.Contains(t, summary, "sub2api")

@@ -30,17 +30,20 @@ func decodePayload(raw string) []string {
 }
 
 const (
-	SettingKey                = "ai_work_insight_config"
-	ConfigInvalidationChannel = "sub2api:ai_work_insight:config:invalidate"
-	PayloadKeyPrefix          = "sub2api:ai_work_insight:payload:"
-	PayloadSlotsKey           = "sub2api:ai_work_insight:payload_slots"
-	DefaultPayloadTTL         = 120 * time.Minute
-	DefaultMaxJobAge          = 90 * time.Minute
-	DefaultIngressLimit       = 10000
-	ingressWorkerCount        = 4
-	maxIngressQueueBytes      = 64 << 20
-	maxPayloadBytes           = 64 << 10
-	maxOutstandingPayloads    = 5000
+	SettingKey                 = "ai_work_insight_config"
+	ConfigInvalidationChannel  = "sub2api:ai_work_insight:config:invalidate"
+	PayloadKeyPrefix           = "sub2api:ai_work_insight:payload:"
+	PayloadSlotsKey            = "sub2api:ai_work_insight:payload_slots"
+	PayloadSizesKey            = "sub2api:ai_work_insight:payload_sizes"
+	PayloadBytesKey            = "sub2api:ai_work_insight:payload_bytes"
+	DefaultPayloadTTL          = 120 * time.Minute
+	DefaultMaxJobAge           = 90 * time.Minute
+	DefaultIngressLimit        = 10000
+	ingressWorkerCount         = 4
+	maxIngressQueueBytes       = 64 << 20
+	maxPayloadBytes            = 64 << 10
+	maxOutstandingPayloads     = 5000
+	maxOutstandingPayloadBytes = 64 << 20
 )
 
 var TaskCategories = []string{
@@ -97,13 +100,13 @@ type storedConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		ConfigVersion: 1, SampleRate: 2, SessionIdleMinutes: 5,
-		UserDailyLimit: 5, GlobalDailyLimit: 50000, Timezone: "Asia/Shanghai",
-		QueueCapacity: 10000, WorkerCount: 4, AnalysisIdleMinutes: 5,
-		AnalysisMaxWaitMinutes: 30, AnalysisTriggerMode: "hybrid", FixedIntervalMinutes: 30,
-		MaxSamplesPerBatch: 20, ContextWindowTokens: 128000, MaxInputTokens: 24000,
-		ReservedOutputTokens: 4000, AnalysisTimeoutSeconds: 30,
+		UserDailyLimit: 5000, GlobalDailyLimit: 200000, Timezone: "Asia/Shanghai",
+		QueueCapacity: 10000, WorkerCount: 4, AnalysisIdleMinutes: 15,
+		AnalysisMaxWaitMinutes: 60, AnalysisTriggerMode: "hybrid", FixedIntervalMinutes: 30,
+		MaxSamplesPerBatch: 50, ContextWindowTokens: 128000, MaxInputTokens: 64000,
+		ReservedOutputTokens: 4000, AnalysisTimeoutSeconds: 60,
 		MaxJobAgeMinutes: 90, PayloadTTLMinutes: 120,
-		DailyFinalizeTime: "00:15", SampleRetentionDays: 90, InsightRetentionDays: 180,
+		DailyFinalizeTime: "00:15", SampleRetentionDays: 30, InsightRetentionDays: 180,
 		CleanupEnabled: true, CleanupTime: "03:30", CleanupBatchSize: 5000,
 		AnalyzerSource: "account", AnalyzerModel: "",
 	}
@@ -161,7 +164,7 @@ func (c Config) validate() error {
 	if c.ConfigVersion < 1 || c.SampleRate < 0 || c.SampleRate > 100 || c.SessionIdleMinutes < 1 || c.SessionIdleMinutes > 120 {
 		return errors.New("invalid sampling configuration")
 	}
-	if c.UserDailyLimit < 1 || c.GlobalDailyLimit < c.UserDailyLimit || c.GlobalDailyLimit > 50000 || c.QueueCapacity < 100 || c.QueueCapacity > DefaultIngressLimit {
+	if c.UserDailyLimit < 1 || c.UserDailyLimit > 100000 || c.GlobalDailyLimit < c.UserDailyLimit || c.GlobalDailyLimit > 500000 || c.QueueCapacity < 100 || c.QueueCapacity > DefaultIngressLimit {
 		return errors.New("invalid sampling limits")
 	}
 	if _, err := time.LoadLocation(c.Timezone); err != nil {

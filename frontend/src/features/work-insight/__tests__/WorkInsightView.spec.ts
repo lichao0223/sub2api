@@ -9,11 +9,11 @@ const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRu
 vi.mock('../api', () => ({ default: api }))
 
 const config = (): WorkInsightConfig => ({
-  enabled: false, config_version: 1, sample_rate: 2, session_idle_minutes: 5, user_daily_limit: 5, global_daily_limit: 50000,
+  enabled: false, config_version: 1, sample_rate: 2, session_idle_minutes: 5, user_daily_limit: 5000, global_daily_limit: 200000,
   timezone: 'Asia/Shanghai', excluded_user_ids: [], excluded_user_emails: [], queue_capacity: 10000, worker_count: 4,
-  analysis_idle_minutes: 5, analysis_max_wait_minutes: 30, analysis_trigger_mode: 'hybrid', analysis_fixed_interval_minutes: 30,
-  analysis_fixed_times: [], max_samples_per_batch: 20, context_window_tokens: 128000, max_input_tokens: 24000,
-  reserved_output_tokens: 4000, analysis_timeout_seconds: 30, max_job_age_minutes: 90, payload_ttl_minutes: 120,
+  analysis_idle_minutes: 15, analysis_max_wait_minutes: 60, analysis_trigger_mode: 'hybrid', analysis_fixed_interval_minutes: 30,
+  analysis_fixed_times: [], max_samples_per_batch: 50, context_window_tokens: 128000, max_input_tokens: 64000,
+  reserved_output_tokens: 4000, analysis_timeout_seconds: 60, max_job_age_minutes: 90, payload_ttl_minutes: 120,
   daily_finalize_time: '00:15', store_redacted_preview: false, sample_retention_days: 90, insight_retention_days: 180,
   cleanup_enabled: true, cleanup_time: '03:30', cleanup_batch_size: 5000, analyzer_source: 'account', analyzer_account_id: 1,
   analyzer_model: 'model-canary', analyzer_token_set: false, updated_at: '', updated_by: 0,
@@ -60,7 +60,7 @@ describe('WorkInsightView', () => {
     await nextTick()
     expect(wrapper.text()).toContain('后续请求采样率 2%')
     const values = wrapper.findAll('input[type="number"]').map(input => input.element.value)
-    expect(values).toContain('50000')
+    expect(values).toContain('200000')
     expect(values).toContain('10000')
     expect(wrapper.text()).toContain('样本/批次保留')
     expect(wrapper.text()).toContain('每日洞察保留')

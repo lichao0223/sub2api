@@ -22,3 +22,12 @@ func TestMigrationStoresMetadataAndStructuredResultsOnly(t *testing.T) {
 		require.NotContains(t, sql, unusedIndex)
 	}
 }
+
+func TestPerformanceMigrationUpgradesExistingCapacity(t *testing.T) {
+	raw, err := os.ReadFile("../../migrations/914_ai_work_insight_performance.sql")
+	require.NoError(t, err)
+	sql := string(raw)
+	for _, required := range []string{"'user_daily_limit'", "5000", "'global_daily_limit'", "200000", "'analysis_idle_minutes'", "15", "'analysis_max_wait_minutes'", "60", "'max_input_tokens'", "64000"} {
+		require.Contains(t, sql, required)
+	}
+}

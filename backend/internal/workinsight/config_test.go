@@ -10,10 +10,15 @@ func TestDefaultConfigMatchesProductContract(t *testing.T) {
 	cfg := DefaultConfig()
 	require.NoError(t, cfg.validate())
 	require.Equal(t, 2, cfg.SampleRate)
-	require.Equal(t, 5, cfg.UserDailyLimit)
-	require.Equal(t, 50000, cfg.GlobalDailyLimit)
+	require.Equal(t, 5000, cfg.UserDailyLimit)
+	require.Equal(t, 200000, cfg.GlobalDailyLimit)
+	require.Equal(t, 50, cfg.MaxSamplesPerBatch)
+	require.Equal(t, 64000, cfg.MaxInputTokens)
+	require.Equal(t, 60, cfg.AnalysisTimeoutSeconds)
+	require.Equal(t, 15, cfg.AnalysisIdleMinutes)
+	require.Equal(t, 60, cfg.AnalysisMaxWaitMinutes)
 	require.Equal(t, 10000, cfg.QueueCapacity)
-	require.Equal(t, 90, cfg.SampleRetentionDays)
+	require.Equal(t, 30, cfg.SampleRetentionDays)
 	require.Equal(t, 180, cfg.InsightRetentionDays)
 	require.Equal(t, "hybrid", cfg.AnalysisTriggerMode)
 	require.Equal(t, []string{
@@ -24,7 +29,7 @@ func TestDefaultConfigMatchesProductContract(t *testing.T) {
 
 func TestConfigRejectsUnsafeContextAndLifecycle(t *testing.T) {
 	cfg := DefaultConfig()
-	cfg.GlobalDailyLimit++
+	cfg.GlobalDailyLimit = 500001
 	require.ErrorContains(t, cfg.validate(), "sampling limits")
 
 	cfg = DefaultConfig()

@@ -65,29 +65,59 @@ return 1
 `
 
 const reservePayloadScript = `
-redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
-if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) then return 0 end
-redis.call('ZADD', KEYS[1], ARGV[2], ARGV[4])
-redis.call('EXPIRE', KEYS[1], tonumber(ARGV[5]) + 3600)
+local expired = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', ARGV[1])
+local released = 0
+for _, id in ipairs(expired) do
+  released = released + tonumber(redis.call('HGET', KEYS[2], id) or '0')
+  redis.call('HDEL', KEYS[2], id)
+end
+if #expired > 0 then redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', ARGV[1]) end
+local used = math.max(0, tonumber(redis.call('GET', KEYS[3]) or '0') - released)
+redis.call('SET', KEYS[3], used)
+redis.call('EXPIRE', KEYS[3], tonumber(ARGV[7]) + 3600)
+if redis.call('ZCARD', KEYS[1]) >= tonumber(ARGV[3]) or used + tonumber(ARGV[6]) > tonumber(ARGV[4]) then return 0 end
+redis.call('ZADD', KEYS[1], ARGV[2], ARGV[5])
+redis.call('HSET', KEYS[2], ARGV[5], ARGV[6])
+redis.call('INCRBY', KEYS[3], ARGV[6])
+for i=1,3 do redis.call('EXPIRE', KEYS[i], tonumber(ARGV[7]) + 3600) end
 return 1
 `
 
+const releasePayloadScript = `
+local released = 0
+for i=1,#ARGV do
+  released = released + tonumber(redis.call('HGET', KEYS[2], ARGV[i]) or '0')
+  redis.call('HDEL', KEYS[2], ARGV[i])
+  redis.call('ZREM', KEYS[1], ARGV[i])
+end
+local used = math.max(0, tonumber(redis.call('GET', KEYS[3]) or '0') - released)
+if used == 0 then
+  redis.call('DEL', KEYS[3])
+else
+  local ttl = redis.call('TTL', KEYS[1])
+  redis.call('SET', KEYS[3], used)
+  if ttl > 0 then redis.call('EXPIRE', KEYS[3], ttl) end
+end
+return used
+`
+
 type Service struct {
-	repo        *Repository
-	redis       *redis.Client
-	settings    service.SettingRepository
-	encryptor   service.SecretEncryptor
-	accounts    service.AccountRepository
-	ops         service.OpsRepository
-	queue       chan queuedRequest
-	config      atomic.Pointer[storedConfig]
-	queuedCount atomic.Int64
-	queuedBytes atomic.Int64
-	dropped     atomic.Int64
-	processed   atomic.Int64
-	failed      atomic.Int64
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
+	repo               *Repository
+	redis              *redis.Client
+	settings           service.SettingRepository
+	encryptor          service.SecretEncryptor
+	accounts           service.AccountRepository
+	ops                service.OpsRepository
+	queue              chan queuedRequest
+	config             atomic.Pointer[storedConfig]
+	queuedCount        atomic.Int64
+	queuedBytes        atomic.Int64
+	dropped            atomic.Int64
+	processed          atomic.Int64
+	failed             atomic.Int64
+	analyzerPauseUntil atomic.Int64
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
 }
 
 type queuedRequest struct {
@@ -124,6 +154,9 @@ func (s *Service) TrySubmit(req securityaudit.Request) {
 	}
 	cfg := s.config.Load()
 	if cfg == nil || !cfg.Enabled || cfg.excludes(req.UserID, req.UserEmail) || len(req.Body) == 0 || len(req.Body) > 2<<20 {
+		return
+	}
+	if !rateSelected(*cfg, req) {
 		return
 	}
 	queueCapacity := min(cfg.QueueCapacity, cap(s.queue))
@@ -227,7 +260,7 @@ func (s *Service) processCandidate(ctx context.Context, req securityaudit.Reques
 		_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
 		return errors.New("work insight payload exceeds size limit")
 	}
-	reserved, err := s.reservePayloadSlot(ctx, id, payloadTTL, maxOutstandingPayloads)
+	reserved, err := s.reservePayloadSlot(ctx, id, len(payload), payloadTTL)
 	if err != nil || !reserved {
 		_ = s.repo.Drop(ctx, id, "payload_capacity")
 		_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
@@ -251,16 +284,17 @@ func (s *Service) processCandidate(ctx context.Context, req securityaudit.Reques
 	return s.finishSample(ctx, req.UserID, localDate, decision, true)
 }
 
-func (s *Service) reservePayloadSlot(ctx context.Context, id int64, ttl time.Duration, limit int) (bool, error) {
+func (s *Service) reservePayloadSlot(ctx context.Context, id int64, bytes int, ttl time.Duration) (bool, error) {
 	now := time.Now()
-	result, err := s.redis.Eval(ctx, reservePayloadScript, []string{PayloadSlotsKey},
-		now.Unix(), now.Add(ttl).Unix(), limit, strconv.FormatInt(id, 10), int(ttl/time.Second)).Int()
+	result, err := s.redis.Eval(ctx, reservePayloadScript, []string{PayloadSlotsKey, PayloadSizesKey, PayloadBytesKey},
+		now.Unix(), now.Add(ttl).Unix(), maxOutstandingPayloads, maxOutstandingPayloadBytes,
+		strconv.FormatInt(id, 10), bytes, int(ttl/time.Second)).Int()
 	return result == 1, err
 }
 
 func (s *Service) releasePayloadSlots(ctx context.Context, ids []string) {
 	if len(ids) > 0 {
-		_ = s.redis.ZRem(ctx, PayloadSlotsKey, stringSliceToAny(ids)...).Err()
+		_ = s.redis.Eval(ctx, releasePayloadScript, []string{PayloadSlotsKey, PayloadSizesKey, PayloadBytesKey}, stringSliceToAny(ids)...).Err()
 	}
 }
 
@@ -277,6 +311,30 @@ func stringSliceToAny(values []string) []any {
 		result[i] = values[i]
 	}
 	return result
+}
+
+func rateSelected(cfg storedConfig, req securityaudit.Request) bool {
+	if cfg.SampleRate >= 100 {
+		return true
+	}
+	if cfg.SampleRate <= 0 {
+		return false
+	}
+	entropy := req.RequestID
+	if entropy == "" {
+		digest := sha256.Sum256(req.Body)
+		entropy = hex.EncodeToString(digest[:])
+	}
+	location, err := time.LoadLocation(cfg.Timezone)
+	if err != nil {
+		return false
+	}
+	return selectedByRate(req.UserID, time.Now().In(location).Format("2006-01-02"), entropy, cfg.SampleRate)
+}
+
+func selectedByRate(userID int64, date, entropy string, rate int) bool {
+	digest := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s\x00%s", userID, date, entropy)))
+	return int(uint16(digest[0])<<8|uint16(digest[1]))%100 < rate
 }
 
 type sampleDecision struct {
@@ -299,9 +357,8 @@ func (s *Service) sample(ctx context.Context, cfg storedConfig, userID int64, da
 	}
 	claimRaw := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s\x00%d\x00%s", userID, date, now.UnixNano(), entropy)))
 	claimToken := hex.EncodeToString(claimRaw[:16])
-	rateRaw := sha256.Sum256([]byte(fmt.Sprintf("%d\x00%s\x00%s", userID, date, entropy)))
 	rateSelected := "0"
-	if int(uint64(rateRaw[0])<<8|uint64(rateRaw[1]))%100 < cfg.SampleRate {
+	if selectedByRate(userID, date, entropy, cfg.SampleRate) {
 		rateSelected = "1"
 	}
 	result, err := s.redis.Eval(ctx, samplingScript, keys,

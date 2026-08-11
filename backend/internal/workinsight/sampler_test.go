@@ -40,16 +40,21 @@ func TestPayloadSlotsAreBoundedAndReleased(t *testing.T) {
 	service := &Service{redis: client}
 	ctx := context.Background()
 
-	reserved, err := service.reservePayloadSlot(ctx, 1, time.Hour, 1)
+	reserved, err := service.reservePayloadSlot(ctx, 1, maxOutstandingPayloadBytes, time.Hour)
 	require.NoError(t, err)
 	require.True(t, reserved)
-	reserved, err = service.reservePayloadSlot(ctx, 2, time.Hour, 1)
+	reserved, err = service.reservePayloadSlot(ctx, 2, 1, time.Hour)
 	require.NoError(t, err)
 	require.False(t, reserved)
 	service.releasePayloadSlots(ctx, []string{"1"})
-	reserved, err = service.reservePayloadSlot(ctx, 2, time.Hour, 1)
+	reserved, err = service.reservePayloadSlot(ctx, 2, 1, time.Hour)
 	require.NoError(t, err)
 	require.True(t, reserved)
+	used, err := server.Get(PayloadBytesKey)
+	require.NoError(t, err)
+	require.Equal(t, "1", used)
+	service.releasePayloadSlots(ctx, []string{"2"})
+	require.False(t, server.Exists(PayloadBytesKey))
 }
 
 func TestSamplingSessionCoverageReleaseLimitsAndStableRate(t *testing.T) {

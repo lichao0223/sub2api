@@ -66,8 +66,8 @@
             <div class="form-grid">
               <label class="field"><span>后续请求采样率 {{ draft.sample_rate }}%</span><input v-model.number="draft.sample_rate" type="range" min="0" max="100" /></label>
               <NumberField v-model="draft.session_idle_minutes" label="会话空闲阈值" suffix="分钟" :min="1" />
-              <NumberField v-model="draft.user_daily_limit" label="单用户每日上限" suffix="次" :min="1" />
-              <NumberField v-model="draft.global_daily_limit" label="全局每日上限" suffix="次" :min="1" />
+              <NumberField v-model="draft.user_daily_limit" label="单用户每日上限" suffix="次" :min="1" :max="100000" />
+              <NumberField v-model="draft.global_daily_limit" label="全局每日上限" suffix="次" :min="1" :max="500000" />
               <label class="field"><span>统计时区</span><select v-model="draft.timezone" class="input"><option>Asia/Shanghai</option><option>UTC</option><option>Asia/Tokyo</option></select></label>
               <label class="field"><span>排除用户 ID</span><input :value="draft.excluded_user_ids.join(',')" class="input" placeholder="1,2,3" @input="draft.excluded_user_ids = parseIDs(($event.target as HTMLInputElement).value)" /></label>
               <label class="field sm:col-span-2"><span>排除用户邮箱</span><input :value="draft.excluded_user_emails.join(',')" class="input" placeholder="user@example.com" @input="draft.excluded_user_emails = splitList(($event.target as HTMLInputElement).value)" /></label>

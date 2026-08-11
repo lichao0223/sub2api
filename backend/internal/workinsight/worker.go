@@ -21,7 +21,7 @@ const (
 
 func (s *Service) scheduler(ctx context.Context) {
 	defer s.wg.Done()
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -86,7 +86,7 @@ func (s *Service) maintenance(ctx context.Context) {
 				continue
 			}
 			local := now.In(location)
-			if key := local.Format("2006-01-02 15:04"); local.Minute()%30 == 0 && lastReconcile != key {
+			if key := local.Format("2006-01-02 15"); local.Minute() == 0 && lastReconcile != key {
 				lastReconcile = key
 				s.runReconciliation(ctx, now)
 				lastFinalize = s.tryFinalizePrevious(ctx, now, lastFinalize)
@@ -256,7 +256,7 @@ func (s *Service) reportJob(name string, started time.Time, result string, runEr
 
 func (s *Service) batchWorker(ctx context.Context, workerID int) {
 	defer s.wg.Done()
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -264,7 +264,7 @@ func (s *Service) batchWorker(ctx context.Context, workerID int) {
 			return
 		case <-ticker.C:
 			cfg := s.config.Load()
-			if cfg == nil || !cfg.Enabled || workerID >= cfg.WorkerCount {
+			if cfg == nil || !cfg.Enabled || workerID >= cfg.WorkerCount || s.analyzerPaused(time.Now()) {
 				continue
 			}
 			workCtx, cancel := context.WithTimeout(ctx, time.Duration(cfg.AnalysisTimeoutSeconds+10)*time.Second)
@@ -329,7 +329,11 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 		}
 		result, in, out, calls, err := s.analyzeChunkResilient(ctx, endpoint, previous, chunk, true)
 		if err != nil {
-			s.finishBatchFailure(ctx, cfg, *batch, samples, analyzerErrorCode(err), analyzerRetryable(err))
+			retryable := analyzerRetryable(err)
+			if retryable {
+				s.pauseAnalyzer(time.Now())
+			}
+			s.finishBatchFailure(ctx, cfg, *batch, samples, analyzerErrorCode(err), retryable)
 			return
 		}
 		results, inputTokens, outputTokens, callCount = append(results, result), inputTokens+in, outputTokens+out, callCount+calls
@@ -364,6 +368,14 @@ func (s *Service) finishBatchFailure(ctx context.Context, cfg storedConfig, batc
 		}
 		s.deletePayloads(ctx, samples)
 	}
+}
+
+func (s *Service) pauseAnalyzer(now time.Time) {
+	s.analyzerPauseUntil.Store(now.Add(30 * time.Second).UnixMilli())
+}
+
+func (s *Service) analyzerPaused(now time.Time) bool {
+	return now.UnixMilli() < s.analyzerPauseUntil.Load()
 }
 
 func (s *Service) deletePayloads(ctx context.Context, samples []BatchSample) {

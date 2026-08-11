@@ -15,6 +15,8 @@ type dailyState struct {
 	changeTypes    []string
 	businessTopics []string
 	version        int64
+	sampleCount    int
+	failedCount    int
 }
 
 func (r *Repository) DailySummary(ctx context.Context, userID int64, date time.Time) (string, int64, error) {
@@ -42,10 +44,6 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 	if err := requireAffected(update, err); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_samples SET status='analyzed',error_code='',updated_at=NOW() WHERE batch_id=$1 AND status='batched'`, batch.ID); err != nil {
-		return err
-	}
-
 	state, err := loadDailyState(ctx, tx, batch.UserID, batch.LocalDate)
 	if err != nil {
 		return err
@@ -69,11 +67,13 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 		FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at < $3`, batch.UserID, start, end).Scan(&requests, &tokens); err != nil {
 		return err
 	}
-	var samples, failures, covered int
-	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FILTER (WHERE status='analyzed'),COUNT(*) FILTER (WHERE status IN ('failed','dropped'))
-		FROM ai_work_insight_samples WHERE user_id=$1 AND local_date=$2`, batch.UserID, batch.LocalDate).Scan(&samples, &failures); err != nil {
+	samples := state.sampleCount + batch.SampleCount
+	var failures, covered int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM ai_work_insight_samples
+		WHERE user_id=$1 AND local_date=$2 AND status IN ('failed','dropped')`, batch.UserID, batch.LocalDate).Scan(&failures); err != nil {
 		return err
 	}
+	failures = max(failures, state.failedCount)
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(DISTINCT active_session_id) FROM ai_work_insight_batches WHERE user_id=$1 AND local_date=$2 AND status='done'`, batch.UserID, batch.LocalDate).Scan(&covered); err != nil {
 		return err
 	}
@@ -100,14 +100,17 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 	if err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_samples WHERE batch_id=$1 AND status='batched'`, batch.ID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 
 func loadDailyState(ctx context.Context, tx *sql.Tx, userID int64, date time.Time) (dailyState, error) {
 	state := dailyState{categoryStats: map[string]int{}}
 	var categoryRaw, projectsRaw, modulesRaw, changesRaw, topicsRaw []byte
-	err := tx.QueryRowContext(ctx, `SELECT task_category_stats,explicit_projects,explicit_modules,change_types,business_topics,summary_version
-		FROM ai_user_daily_work_insights WHERE user_id=$1 AND insight_date=$2 FOR UPDATE`, userID, date).Scan(&categoryRaw, &projectsRaw, &modulesRaw, &changesRaw, &topicsRaw, &state.version)
+	err := tx.QueryRowContext(ctx, `SELECT task_category_stats,explicit_projects,explicit_modules,change_types,business_topics,summary_version,sample_count,failed_sample_count
+		FROM ai_user_daily_work_insights WHERE user_id=$1 AND insight_date=$2 FOR UPDATE`, userID, date).Scan(&categoryRaw, &projectsRaw, &modulesRaw, &changesRaw, &topicsRaw, &state.version, &state.sampleCount, &state.failedCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, nil
 	}

@@ -12,13 +12,21 @@ func TestCleanupHasMoreWhenAnyTableFillsBatch(t *testing.T) {
 	require.True(t, cleanupHasMore(CleanupResult{Samples: 5000}, 5000))
 }
 
+func TestAnalyzerPauseExpires(t *testing.T) {
+	service := &Service{}
+	now := time.Now()
+	service.pauseAnalyzer(now)
+	require.True(t, service.analyzerPaused(now))
+	require.False(t, service.analyzerPaused(now.Add(31*time.Second)))
+}
+
 func TestBatchTriggerModesAndBoundaries(t *testing.T) {
 	cfg := DefaultConfig()
 	now := time.Date(2026, 8, 11, 2, 0, 0, 0, time.UTC)
-	samples := []Sample{{ID: 1, EstimatedTokens: 100, CreatedAt: now.Add(-5 * time.Minute)}}
+	samples := []Sample{{ID: 1, EstimatedTokens: 100, CreatedAt: now.Add(-15 * time.Minute)}}
 	require.Equal(t, "idle", batchTrigger(samples, now, cfg, false))
 
-	samples = []Sample{{ID: 1, EstimatedTokens: 100, CreatedAt: now.Add(-30 * time.Minute)}, {ID: 2, EstimatedTokens: 100, CreatedAt: now}}
+	samples = []Sample{{ID: 1, EstimatedTokens: 100, CreatedAt: now.Add(-60 * time.Minute)}, {ID: 2, EstimatedTokens: 100, CreatedAt: now}}
 	require.Equal(t, "max_wait", batchTrigger(samples, now, cfg, false))
 
 	cfg.AnalysisTriggerMode = "fixed_interval"
