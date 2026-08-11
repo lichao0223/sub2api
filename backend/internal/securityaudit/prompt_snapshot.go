@@ -89,9 +89,9 @@ const DefaultFullPromptMaxRunes = 65536
 
 const DefaultWorkInsightMaxRunes = 16000
 
-// ExtractWorkInsightSnapshot reuses protocol parsing but deliberately applies
-// a stricter role whitelist than prompt audit: assistant/model/tool/function
-// output is never part of work-insight input, even when clients resend it.
+// ExtractWorkInsightSnapshot reuses protocol parsing but keeps only user input.
+// Client boilerplate and replayed model/tool output do not describe user work
+// and must not consume the bounded work-insight analysis budget.
 func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot, error) {
 	protocol := strings.ToLower(strings.TrimSpace(req.Protocol))
 	switch protocol {
@@ -105,8 +105,7 @@ func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot,
 	segments := extractProtocolSegments(req.Protocol, document)
 	allowed := segments[:0]
 	for _, segment := range segments {
-		switch strings.ToLower(strings.TrimSpace(segment.role)) {
-		case "", "user", "system", "developer":
+		if isUserSegment(segment) {
 			allowed = append(allowed, segment)
 		}
 	}

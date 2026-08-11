@@ -64,6 +64,40 @@ func TestListSamplesUsesCursorWithoutCountOrOffset(t *testing.T) {
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestClaimBatchClearsPreviousRetryError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	now := time.Date(2026, 8, 11, 2, 0, 0, 0, time.UTC)
+	mock.ExpectQuery(`(?s)UPDATE ai_work_insight_batches b SET status='processing'.*error_code=''`).
+		WithArgs(now.UTC(), now.Add(-time.Minute).UTC()).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "username_snapshot", "local_date", "active_session_id", "first_sample_id", "last_sample_id",
+			"sample_count", "estimated_input_tokens", "trigger_reason", "attempts", "claim_version", "base_summary_version", "created_at",
+		}).AddRow(1, 2, "用户", now, "session", 3, 4, 2, 100, "manual", 2, 2, 0, now))
+
+	batch, claimed, err := NewRepository(db).ClaimBatch(context.Background(), now, time.Minute)
+	require.NoError(t, err)
+	require.True(t, claimed)
+	require.Equal(t, int64(1), batch.ID)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestClearTerminalLogsKeepsActiveWork(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	mock.ExpectExec(`DELETE FROM ai_work_insight_samples WHERE status IN`).WillReturnResult(sqlmock.NewResult(0, 9))
+	mock.ExpectExec(`DELETE FROM ai_work_insight_batches WHERE status IN`).WillReturnResult(sqlmock.NewResult(0, 4))
+	mock.ExpectCommit()
+
+	result, err := NewRepository(db).ClearTerminalLogs(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, ClearLogsResult{Samples: 9, Batches: 4}, result)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestListUserRankingAggregatesBeforePagination(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

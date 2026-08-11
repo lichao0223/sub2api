@@ -216,7 +216,7 @@ func (r *Repository) ClaimBatch(ctx context.Context, now time.Time, lease time.D
 		AND NOT EXISTS (SELECT 1 FROM ai_work_insight_batches active WHERE active.user_id=b.user_id AND active.local_date=b.local_date
 			AND active.status='processing' AND active.updated_at > $2 AND active.id<>b.id)
 		ORDER BY b.next_attempt_at,b.id FOR UPDATE SKIP LOCKED LIMIT 1)
-		UPDATE ai_work_insight_batches b SET status='processing',attempts=b.attempts+1,claim_version=b.claim_version+1,
+		UPDATE ai_work_insight_batches b SET status='processing',attempts=b.attempts+1,claim_version=b.claim_version+1,error_code='',
 		base_summary_version=COALESCE((SELECT d.summary_version FROM ai_user_daily_work_insights d WHERE d.user_id=b.user_id AND d.insight_date=b.local_date),0),updated_at=$1
 		FROM candidate WHERE b.id=candidate.id RETURNING b.id,COALESCE(b.user_id,0),b.username_snapshot,b.local_date,b.active_session_id,
 		b.first_sample_id,b.last_sample_id,b.sample_count,b.estimated_input_tokens,b.trigger_reason,b.attempts,b.claim_version,b.base_summary_version,b.created_at`, now.UTC(), leaseCutoff)

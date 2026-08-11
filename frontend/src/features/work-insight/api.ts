@@ -45,6 +45,11 @@ export async function listBatches(pageSize = 50): Promise<BatchSummary[]> {
   return data.items
 }
 
+export async function clearLogs(): Promise<{ samples: number; batches: number }> {
+  const { data } = await apiClient.delete<{ samples: number; batches: number }>(`${basePath}/logs`)
+  return data
+}
+
 export async function listAnalyzerAccounts(): Promise<AnalyzerAccount[]> {
   const { data } = await apiClient.get<AnalyzerAccount[]>(`${basePath}/analyzer-accounts`)
   return data
@@ -77,4 +82,4 @@ export async function listRepresentativeItems(id: number, page: number, pageSize
   return data
 }
 
-export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }
+export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const client = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn() }))
+const client = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), delete: vi.fn() }))
 vi.mock('@/api/client', () => ({ apiClient: client }))
 
 import api from '../api'
@@ -11,6 +11,7 @@ describe('work insight api', () => {
     client.get.mockResolvedValue({ data: {} })
     client.put.mockResolvedValue({ data: {} })
     client.post.mockResolvedValue({ data: {} })
+    client.delete.mockResolvedValue({ data: {} })
   })
 
   it('uses the isolated admin endpoints and omits empty filters', async () => {
@@ -19,6 +20,7 @@ describe('work insight api', () => {
     await api.analyzeNow()
     await api.listSamples()
     await api.listBatches()
+    await api.clearLogs()
     await api.listAnalyzerAccounts()
     await api.probe({} as never)
     const filters = { start_date: '2026-08-01', end_date: '', user_name: '', task_category: '问题排查', project_name: '' }
@@ -32,6 +34,7 @@ describe('work insight api', () => {
     expect(client.get).toHaveBeenNthCalledWith(3, '/admin/ai-work-insights/samples', { params: { page_size: 50 } })
     expect(client.get).toHaveBeenNthCalledWith(4, '/admin/ai-work-insights/batches', { params: { page_size: 50 } })
     expect(client.get).toHaveBeenNthCalledWith(5, '/admin/ai-work-insights/analyzer-accounts')
+    expect(client.delete).toHaveBeenCalledWith('/admin/ai-work-insights/logs')
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/endpoint/probe', {})
     expect(client.get).toHaveBeenNthCalledWith(6, '/admin/ai-work-insights/ranking', { params: { start_date: '2026-08-01', task_category: '问题排查', page: 2, page_size: 20 } })
     expect(client.get).toHaveBeenNthCalledWith(7, '/admin/ai-work-insights/overview', { params: { start_date: '2026-08-01', task_category: '问题排查' } })

@@ -75,6 +75,8 @@ export interface SampleSummary {
   requested_model: string
   sample_reason: string
   estimated_tokens: number
+  prompt_chars: number
+  analyzed_chars: number
   status: string
   error_code: string
   created_at: string

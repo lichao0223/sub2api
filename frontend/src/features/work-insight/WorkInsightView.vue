@@ -169,13 +169,14 @@
 
     <BaseDialog :show="logsOpen" title="采样与分析日志" width="wide" close-on-click-outside @close="logsOpen = false">
       <div class="space-y-6">
-        <p class="text-xs text-gray-500">仅展示最近 50 条元数据，不展示原始提示词、模型输出或 Redis 临时文本。</p>
+        <div class="flex items-center justify-between gap-4"><p class="text-xs text-gray-500">仅展示最近 50 条元数据，不展示原始提示词、模型输出或 Redis 临时文本。</p><button type="button" class="btn btn-danger btn-sm shrink-0" data-test="clear-logs" @click="clearLogsConfirm = true">清空历史日志</button></div>
         <p class="rounded-lg bg-gray-50 p-3 text-xs text-gray-600 dark:bg-dark-800 dark:text-dark-200">分析批次：等待 {{ batchCount('queued', 'retry') }} · 正在分析 {{ batchCount('processing') }} · 失败 {{ batchCount('failed', 'dropped') }} · 完成 {{ batchCount('done') }}。采样日志中的失败通常是同一分析批次的关联样本，不重复算作新的故障。</p>
-        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">采样原因</th><th class="p-2">Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-2">{{ formatNumber(item.estimated_tokens) }}</td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
-        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
+        <section><h3 class="section-title">采样日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">模型</th><th class="p-2">采样原因</th><th class="p-2">分析文本估算</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in sampleLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.requested_model || item.provider }}</td><td class="p-2">{{ sampleReasonLabel(item.sample_reason) }}</td><td class="p-2 whitespace-nowrap">≈ {{ formatNumber(item.estimated_tokens) }} Token<p class="mt-1 text-gray-400">{{ formatNumber(item.analyzed_chars) }} / {{ formatNumber(item.prompt_chars) }} 字符<span v-if="item.analyzed_chars < item.prompt_chars" class="text-amber-600"> · 已截断</span></p></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code" class="mt-1 text-red-600">{{ sampleErrorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !sampleLogs.length"><td colspan="6" class="p-6 text-center text-gray-400">暂无采样记录</td></tr></tbody></table></div></section>
+        <section><h3 class="section-title">分析日志</h3><div class="mt-2 overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-2">时间</th><th class="p-2">用户</th><th class="p-2">样本数</th><th class="p-2">触发原因</th><th class="p-2">模型</th><th class="p-2">分析 Token</th><th class="p-2">状态 / 异常</th></tr></thead><tbody><tr v-for="item in batchLogs" :key="item.id" class="border-b dark:border-dark-800"><td class="p-2 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-2">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-2">{{ item.sample_count }}</td><td class="p-2">{{ triggerReasonLabel(item.trigger_reason) }}</td><td class="p-2">{{ item.analyzer_model || '—' }}</td><td class="p-2"><template v-if="item.status === 'done'">{{ formatNumber(item.analyzer_input_tokens + item.analyzer_output_tokens) }}</template><span v-else class="text-gray-400">—<span v-if="item.status === 'processing'" class="block">完成后统计</span></span></td><td class="p-2"><span>{{ statusLabel(item.status) }}</span><p v-if="item.error_code && item.status !== 'processing'" class="mt-1 text-red-600">{{ errorLabel(item.error_code) }}</p></td></tr><tr v-if="!logsLoading && !batchLogs.length"><td colspan="7" class="p-6 text-center text-gray-400">暂无分析记录</td></tr></tbody></table></div></section>
         <p v-if="logsLoading" class="py-4 text-center text-sm text-gray-500">正在加载日志…</p>
       </div>
     </BaseDialog>
+    <ConfirmDialog :show="clearLogsConfirm" title="清空历史日志" message="确认清空已完成和已停止的采样、分析日志？每日洞察结果和仍在处理的任务会保留，此操作不可恢复。" confirm-text="确认清空" :loading="clearingLogs" danger @confirm="clearLogs" @cancel="clearLogsConfirm = false" />
   </AppLayout>
 </template>
 
@@ -183,6 +184,7 @@
 import { computed, defineComponent, h, onMounted, reactive, ref } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
@@ -201,6 +203,8 @@ const saving = ref(false)
 const probing = ref(false)
 const analyzing = ref(false)
 const logsLoading = ref(false)
+const clearLogsConfirm = ref(false)
+const clearingLogs = ref(false)
 const message = ref('')
 const messageError = ref(false)
 const runtime = ref<WorkInsightRuntime | null>(null)
@@ -275,6 +279,11 @@ function errorLabel(value: string): string {
   if (value.startsWith('analyzer_http_5')) return `分析模型服务端异常（${value.replace('analyzer_http_', 'HTTP ')}）`
   return `处理异常（错误码：${value}）`
 }
+function sampleErrorLabel(value: string): string {
+  if (value === 'summary_write_failed') return '所属分析批次摘要写入数据库失败'
+  if (value === 'summary_write_conflict') return '所属分析批次摘要写入版本冲突'
+  return errorLabel(value)
+}
 function showMessage(text: string, error = false) { message.value = text; messageError.value = error }
 
 async function loadConfig() { const value = await api.getConfig(); savedConfig.value = clone(value); draft.value = clone(value) }
@@ -318,6 +327,17 @@ async function openLogs() {
   try { [sampleLogs.value, batchLogs.value] = await Promise.all([api.listSamples(), api.listBatches()]) }
   catch { showMessage('采样与分析日志加载失败', true) }
   finally { logsLoading.value = false }
+}
+async function clearLogs() {
+  if (clearingLogs.value) return
+  clearingLogs.value = true
+  try {
+    const result = await api.clearLogs()
+    clearLogsConfirm.value = false
+    await Promise.all([openLogs(), loadRuntime()])
+    showMessage(`已清空 ${result.samples} 条采样日志和 ${result.batches} 条分析日志`)
+  } catch (error) { showMessage(error instanceof Error ? error.message : '清空日志失败', true) }
+  finally { clearingLogs.value = false }
 }
 
 onMounted(refresh)

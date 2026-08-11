@@ -63,6 +63,15 @@ func (h *AdminHandler) ListBatches(c *gin.Context) {
 	response.Success(c, gin.H{"items": items, "page_size": size})
 }
 
+func (h *AdminHandler) ClearLogs(c *gin.Context) {
+	result, err := h.service.repo.ClearTerminalLogs(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *AdminHandler) ListSamples(c *gin.Context) {
 	_, size := response.ParsePagination(c)
 	var beforeID int64

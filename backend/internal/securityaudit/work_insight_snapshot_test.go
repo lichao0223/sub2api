@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExtractWorkInsightSnapshot_WhitelistsRequestRoles(t *testing.T) {
+func TestExtractWorkInsightSnapshot_KeepsOnlyUserInput(t *testing.T) {
 	tests := []struct {
 		name     string
 		protocol string
@@ -24,7 +24,8 @@ func TestExtractWorkInsightSnapshot_WhitelistsRequestRoles(t *testing.T) {
 			snapshot, err := ExtractWorkInsightSnapshot(Request{Protocol: tt.protocol, Body: []byte(tt.body)}, 16000)
 			require.NoError(t, err)
 			require.Contains(t, snapshot.Text, "user keep")
-			require.Contains(t, snapshot.Text, "system keep")
+			require.NotContains(t, snapshot.Text, "system keep")
+			require.NotContains(t, snapshot.Text, "developer keep")
 			require.NotContains(t, snapshot.Text, "assistant drop")
 			require.NotContains(t, snapshot.Text, "tool drop")
 			require.NotContains(t, strings.ToLower(snapshot.Text), "abcd1234")
@@ -32,6 +33,18 @@ func TestExtractWorkInsightSnapshot_WhitelistsRequestRoles(t *testing.T) {
 			require.Len(t, snapshot.PromptHash, 64)
 		})
 	}
+}
+
+func TestExtractWorkInsightSnapshot_SystemPromptDoesNotConsumeUserBudget(t *testing.T) {
+	body, err := json.Marshal(map[string]any{"messages": []any{
+		map[string]any{"role": "system", "content": strings.Repeat("system ", 100)},
+		map[string]any{"role": "user", "content": "用户真实任务"},
+	}})
+	require.NoError(t, err)
+	snapshot, err := ExtractWorkInsightSnapshot(Request{Protocol: "openai_chat", Body: body}, 20)
+	require.NoError(t, err)
+	require.Equal(t, "用户真实任务", snapshot.Text)
+	require.Equal(t, snapshot.PromptChars, snapshot.AnalyzedChars)
 }
 
 func TestExtractWorkInsightSnapshot_RejectsMediaAndAssistantOnly(t *testing.T) {

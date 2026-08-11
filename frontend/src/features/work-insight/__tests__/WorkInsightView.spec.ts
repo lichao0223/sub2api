@@ -5,7 +5,7 @@ import WorkInsightView from '../WorkInsightView.vue'
 import { TASK_CATEGORIES } from '../types'
 import type { WorkInsightConfig } from '../types'
 
-const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
+const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
 vi.mock('../api', () => ({ default: api }))
 
 const config = (): WorkInsightConfig => ({
@@ -27,12 +27,13 @@ const DataTableStub = defineComponent({
   template: '<div><button v-for="row in data" :key="row.latest_insight_id" data-test="row" @click="$emit(\'rowClick\', row)">{{ row.username }}</button></div>'
 })
 const BaseDialogStub = defineComponent({ props: ['show', 'title'], emits: ['close'], template: '<div v-if="show" role="dialog"><h2>{{ title }}</h2><slot /></div>' })
+const ConfirmDialogStub = defineComponent({ props: ['show'], emits: ['confirm', 'cancel'], template: '<div v-if="show" data-test="clear-confirm"><button data-test="clear-confirm-action" @click="$emit(\'confirm\')">confirm</button></div>' })
 
 function mountView() {
   return mount(WorkInsightView, {
     global: { stubs: {
       AppLayout: { template: '<main><slot /></main>' }, DataTable: DataTableStub, Pagination: true,
-      StatusBadge: true, Toggle: true, BaseDialog: BaseDialogStub,
+      StatusBadge: true, Toggle: true, BaseDialog: BaseDialogStub, ConfirmDialog: ConfirmDialogStub,
     } }
   })
 }
@@ -43,8 +44,12 @@ describe('WorkInsightView', () => {
     api.getConfig.mockResolvedValue(config())
     api.getRuntime.mockResolvedValue({ enabled: false, queue_depth: 0, queue_capacity: 10000, dropped: 0, processed: 0, failed: 0 })
     api.analyzeNow.mockResolvedValue({ created_batches: 2 })
-    api.listSamples.mockResolvedValue([{ id: 11, user_id: 9, username: '测试用户', provider: 'openai', requested_model: 'model-canary', sample_reason: 'session_coverage', estimated_tokens: 100, status: 'pending_batch', error_code: '', created_at: '2026-08-11T02:00:00Z' }])
-    api.listBatches.mockResolvedValue([{ id: 12, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'failed', attempts: 3, error_code: 'summary_write_conflict', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:01:00Z' }])
+    api.clearLogs.mockResolvedValue({ samples: 9, batches: 1 })
+    api.listSamples.mockResolvedValue([{ id: 11, user_id: 9, username: '测试用户', provider: 'openai', requested_model: 'model-canary', sample_reason: 'session_coverage', estimated_tokens: 100, prompt_chars: 900, analyzed_chars: 300, status: 'pending_batch', error_code: '', created_at: '2026-08-11T02:00:00Z' }])
+    api.listBatches.mockResolvedValue([
+      { id: 13, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'processing', attempts: 2, error_code: 'summary_write_failed', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:02:00Z' },
+      { id: 12, user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', status: 'failed', attempts: 3, error_code: 'summary_write_conflict', analyzer_model: '', analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:01:00Z' },
+    ])
     api.listAnalyzerAccounts.mockResolvedValue([{ id: 1, name: '分析账号', platform: 'openai', models: ['model-canary'] }])
     api.probe.mockResolvedValue({ ok: true, status: 'ok', message: '连接正常', latency_ms: 12, checked_at: '' })
     api.listRanking.mockResolvedValue({ items: [rankingRow], total: 1, page: 1, page_size: 20, pages: 1 })
@@ -105,9 +110,17 @@ describe('WorkInsightView', () => {
     expect(api.listSamples).toHaveBeenCalled()
     expect(api.listBatches).toHaveBeenCalled()
     expect(wrapper.get('[role="dialog"]').text()).toContain('新会话首请求必采')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('分析文本估算')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('已截断')
     expect(wrapper.get('[role="dialog"]').text()).toContain('管理员手动触发')
     expect(wrapper.get('[role="dialog"]').text()).toContain('分析失败')
     expect(wrapper.get('[role="dialog"]').text()).toContain('失败 1')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('完成后统计')
+    expect(wrapper.get('[role="dialog"]').text()).not.toContain('摘要写入数据库失败')
+    await wrapper.get('[data-test="clear-logs"]').trigger('click')
+    await wrapper.get('[data-test="clear-confirm-action"]').trigger('click')
+    await flushPromises()
+    expect(api.clearLogs).toHaveBeenCalled()
     expect(wrapper.get('[role="dialog"]').text()).toContain('摘要写入版本冲突，自动重试后仍未成功')
     expect(wrapper.get('[role="dialog"]').text()).not.toContain('summary_write_conflict')
     await wrapper.findAll('[role="tab"]')[1].trigger('click')

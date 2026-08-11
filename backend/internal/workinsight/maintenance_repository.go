@@ -7,6 +7,31 @@ import (
 
 type CleanupResult struct{ Samples, Batches, Daily int64 }
 
+type ClearLogsResult struct {
+	Samples int64 `json:"samples"`
+	Batches int64 `json:"batches"`
+}
+
+func (r *Repository) ClearTerminalLogs(ctx context.Context) (ClearLogsResult, error) {
+	result := ClearLogsResult{}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return result, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	deleted, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_samples WHERE status IN ('analyzed','failed','dropped')`)
+	if err != nil {
+		return result, err
+	}
+	result.Samples, _ = deleted.RowsAffected()
+	deleted, err = tx.ExecContext(ctx, `DELETE FROM ai_work_insight_batches WHERE status IN ('done','failed','dropped')`)
+	if err != nil {
+		return result, err
+	}
+	result.Batches, _ = deleted.RowsAffected()
+	return result, tx.Commit()
+}
+
 func (r *Repository) RuntimeStats(ctx context.Context, date time.Time) (Runtime, error) {
 	var result Runtime
 	err := r.db.QueryRowContext(ctx, `SELECT
