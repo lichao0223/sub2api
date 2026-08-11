@@ -86,6 +86,8 @@ describe('WorkInsightView', () => {
     expect(wrapper.text()).toContain('每日洞察保留')
     expect(wrapper.text()).toContain('分析超时')
     expect(wrapper.text()).toContain('保存脱敏预览')
+    expect(wrapper.text()).toContain('仅支持 OpenAI 兼容接口')
+    expect(wrapper.text()).toContain('OpenAI 平台分析账号')
     wrapper.unmount()
   })
 

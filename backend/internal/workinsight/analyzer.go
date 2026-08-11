@@ -33,6 +33,23 @@ type analysisEndpoint struct {
 	account               *service.Account
 }
 
+func (s *Service) openAIAnalyzerAccount(ctx context.Context, id int64) (*service.Account, error) {
+	if s.accounts == nil {
+		return nil, errors.New("account repository unavailable")
+	}
+	account, err := s.accounts.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if account == nil || !account.IsActive() {
+		return nil, errors.New("analyzer account unavailable")
+	}
+	if account.Platform != service.PlatformOpenAI {
+		return nil, errors.New("analyzer account must use openai platform")
+	}
+	return account, nil
+}
+
 func (s *Service) resolveAnalyzer(ctx context.Context, cfg storedConfig) (analysisEndpoint, error) {
 	endpoint := analysisEndpoint{baseURL: cfg.AnalyzerBaseURL, model: cfg.AnalyzerModel, timeoutSeconds: cfg.AnalysisTimeoutSeconds}
 	if cfg.AnalyzerSource == "custom" {
@@ -45,26 +62,18 @@ func (s *Service) resolveAnalyzer(ctx context.Context, cfg storedConfig) (analys
 			endpoint.token = token
 		}
 	} else {
-		if s.accounts == nil {
-			return endpoint, errors.New("analyzer account repository unavailable")
-		}
-		account, err := s.accounts.GetByID(ctx, cfg.AnalyzerAccountID)
+		account, err := s.openAIAnalyzerAccount(ctx, cfg.AnalyzerAccountID)
 		if err != nil {
 			return endpoint, err
-		}
-		if account == nil || !account.IsActive() {
-			return endpoint, errors.New("analyzer account unavailable")
 		}
 		endpoint.account = account
 		endpoint.baseURL = strings.TrimSpace(account.GetCredential("base_url"))
 		endpoint.token = strings.TrimSpace(account.GetCredential("api_key"))
-		if account.Platform == service.PlatformOpenAI {
-			if endpoint.baseURL == "" {
-				endpoint.baseURL = account.GetOpenAIBaseURL()
-			}
-			if endpoint.token == "" {
-				endpoint.token = account.GetOpenAIAccessToken()
-			}
+		if endpoint.baseURL == "" {
+			endpoint.baseURL = account.GetOpenAIBaseURL()
+		}
+		if endpoint.token == "" {
+			endpoint.token = account.GetOpenAIAccessToken()
 		}
 	}
 	if _, err := securityaudit.ChatCompletionsURL(endpoint.baseURL); err != nil {
@@ -82,7 +91,7 @@ func (s *Service) Probe(ctx context.Context, request Config) ProbeResult {
 	stored := storedConfig{Config: request}
 	endpoint, err := s.resolveAnalyzer(ctx, stored)
 	if err == nil {
-		_, _, _, err = s.analyzeChunk(ctx, endpoint, "", []analysisInput{{ID: 1, Text: "连接检测样本：整理一份简短会议纪要。", EstimatedTokens: 16}})
+		_, _, _, _, err = s.analyzeChunkResilient(ctx, endpoint, "", []analysisInput{{ID: 1, Text: "连接检测样本：整理一份简短会议纪要。", EstimatedTokens: 16}}, false)
 	}
 	result := ProbeResult{OK: err == nil, Status: "ok", Message: "分析节点连接正常", LatencyMS: time.Since(started).Milliseconds(), CheckedAt: time.Now().UTC()}
 	if err != nil {
@@ -102,15 +111,16 @@ func (s *Service) AnalyzerAccounts(ctx context.Context) ([]AnalyzerAccount, erro
 	result := make([]AnalyzerAccount, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
+		if account.Platform != service.PlatformOpenAI {
+			continue
+		}
 		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
 		token := strings.TrimSpace(account.GetCredential("api_key"))
-		if account.Platform == service.PlatformOpenAI {
-			if baseURL == "" {
-				baseURL = account.GetOpenAIBaseURL()
-			}
-			if token == "" {
-				token = account.GetOpenAIAccessToken()
-			}
+		if baseURL == "" {
+			baseURL = account.GetOpenAIBaseURL()
+		}
+		if token == "" {
+			token = account.GetOpenAIAccessToken()
 		}
 		if baseURL == "" || token == "" {
 			continue
@@ -156,6 +166,8 @@ func analyzerProbeMessage(err error) string {
 	switch {
 	case strings.Contains(message, "analyzer_http_400"):
 		return "模型或请求格式不受支持（HTTP 400）"
+	case strings.Contains(message, "analyzer_http_422"):
+		return "模型无法处理当前请求格式（HTTP 422）"
 	case strings.Contains(message, "analyzer_http_401"):
 		return "分析账号鉴权失败（HTTP 401）"
 	case strings.Contains(message, "analyzer_http_403"):
@@ -170,6 +182,8 @@ func analyzerProbeMessage(err error) string {
 		return "分析节点响应格式不兼容"
 	case strings.Contains(message, "credentials incomplete"):
 		return "分析账号配置不完整"
+	case strings.Contains(message, "must use openai platform"):
+		return "请选择 OpenAI 平台的分析账号"
 	default:
 		return "分析节点连接失败"
 	}
@@ -233,6 +247,10 @@ func chunkTokens(chunk []analysisInput) int {
 }
 
 func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput) (BatchResult, int64, int64, error) {
+	return s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, false)
+}
+
+func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput, jsonMode bool) (BatchResult, int64, int64, error) {
 	url, err := securityaudit.ChatCompletionsURL(endpoint.baseURL)
 	if err != nil {
 		return BatchResult{}, 0, 0, err
@@ -254,6 +272,9 @@ func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, p
 	payload := map[string]any{
 		"model":    endpoint.model,
 		"messages": []map[string]string{{"role": "system", "content": analyzerInstruction}, {"role": "user", "content": input.String()}},
+	}
+	if jsonMode {
+		payload["response_format"] = map[string]string{"type": "json_object"}
 	}
 	body, _ := json.Marshal(payload)
 	if endpoint.account != nil {
@@ -316,17 +337,8 @@ func parseAnalyzerResponse(raw []byte, samples []analysisInput) (BatchResult, in
 	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) != 1 {
 		return BatchResult{}, 0, 0, errors.New("invalid analyzer response")
 	}
-	content := strings.TrimSpace(envelope.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	decoder := json.NewDecoder(strings.NewReader(strings.TrimSpace(content)))
-	decoder.DisallowUnknownFields()
-	var result BatchResult
-	if err := decoder.Decode(&result); err != nil {
-		return BatchResult{}, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, errors.New("invalid analyzer JSON")
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+	result, err := decodeAnalyzerResult(envelope.Choices[0].Message.Content)
+	if err != nil {
 		return BatchResult{}, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, errors.New("invalid analyzer JSON")
 	}
 	if err := validateBatchResult(&result, samples); err != nil {
@@ -335,12 +347,31 @@ func parseAnalyzerResponse(raw []byte, samples []analysisInput) (BatchResult, in
 	return result, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, nil
 }
 
+func decodeAnalyzerResult(content string) (BatchResult, error) {
+	content = strings.TrimSpace(content)
+	for offset := 0; offset < len(content); {
+		index := strings.IndexByte(content[offset:], '{')
+		if index < 0 {
+			break
+		}
+		offset += index
+		decoder := json.NewDecoder(strings.NewReader(content[offset:]))
+		decoder.DisallowUnknownFields()
+		var result BatchResult
+		if err := decoder.Decode(&result); err == nil {
+			return result, nil
+		}
+		offset++
+	}
+	return BatchResult{}, errors.New("invalid analyzer JSON")
+}
+
 func (s *Service) analyzeChunkResilient(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput, allowSplit bool) (BatchResult, int64, int64, int, error) {
-	result, input, output, err := s.analyzeChunk(ctx, endpoint, previousSummary, samples)
+	result, input, output, err := s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, true)
 	if err == nil {
 		return result, input, output, 1, nil
 	}
-	if isInvalidAnalyzerResult(err) {
+	if isInvalidAnalyzerResult(err) || isJSONModeUnsupported(err) {
 		repaired, retryInput, retryOutput, retryErr := s.analyzeChunk(ctx, endpoint, previousSummary, samples)
 		return repaired, input + retryInput, output + retryOutput, 2, retryErr
 	}
@@ -360,6 +391,10 @@ func (s *Service) analyzeChunkResilient(ctx context.Context, endpoint analysisEn
 		return BatchResult{}, input + in1 + in2, output + out1 + out2, 1 + calls1 + calls2, err
 	}
 	return mergeBatchResults([]BatchResult{first, second}), input + in1 + in2, output + out1 + out2, 1 + calls1 + calls2, nil
+}
+
+func isJSONModeUnsupported(err error) bool {
+	return err != nil && (err.Error() == "analyzer_http_400" || err.Error() == "analyzer_http_422")
 }
 
 func splitAnalysisInputs(samples []analysisInput) ([]analysisInput, []analysisInput) {

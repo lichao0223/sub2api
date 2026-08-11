@@ -606,6 +606,11 @@ func (s *Service) SaveConfig(ctx context.Context, next Config, actorID int64) (C
 	if err := next.validate(); err != nil {
 		return Config{}, infraerrors.BadRequest("ai_work_insight_invalid_config", err.Error())
 	}
+	if next.AnalyzerSource == "account" && next.AnalyzerAccountID > 0 {
+		if _, err := s.openAIAnalyzerAccount(ctx, next.AnalyzerAccountID); err != nil {
+			return Config{}, infraerrors.BadRequest("ai_work_insight_invalid_analyzer_account", "分析账号必须是账号管理中可用的 OpenAI 平台账号")
+		}
+	}
 	stored := storedConfig{Config: next, AnalyzerTokenCiphertext: current.AnalyzerTokenCiphertext}
 	if next.AnalyzerToken != "" {
 		if s.encryptor == nil {

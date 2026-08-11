@@ -14,6 +14,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type analyzerAccountRepoStub struct {
+	service.AccountRepository
+	accounts []service.Account
+	account  *service.Account
+}
+
+func (r analyzerAccountRepoStub) ListActive(context.Context) ([]service.Account, error) {
+	return r.accounts, nil
+}
+func (r analyzerAccountRepoStub) GetByID(context.Context, int64) (*service.Account, error) {
+	return r.account, nil
+}
+
 func TestAnalyzerModelsUsesMappingAndOAuthDefaults(t *testing.T) {
 	mapped := &service.Account{Credentials: map[string]any{"model_mapping": map[string]any{"alias-b": "upstream-b", "wild-*": "upstream", "alias-a": "upstream-a"}}}
 	require.Equal(t, []string{"alias-a", "alias-b"}, analyzerModels(mapped))
@@ -22,8 +35,32 @@ func TestAnalyzerModelsUsesMappingAndOAuthDefaults(t *testing.T) {
 	require.Contains(t, analyzerModels(oauth), "gpt-5.5")
 }
 
+func TestAnalyzerAccountsOnlyReturnsOpenAIPlatform(t *testing.T) {
+	credentials := map[string]any{"base_url": "https://example.com/v1", "api_key": "token", "models": []any{"model"}}
+	serviceUnderTest := &Service{accounts: analyzerAccountRepoStub{accounts: []service.Account{
+		{ID: 1, Name: "OpenAI", Platform: service.PlatformOpenAI, Credentials: credentials},
+		{ID: 2, Name: "Anthropic", Platform: service.PlatformAnthropic, Credentials: credentials},
+	}}}
+
+	accounts, err := serviceUnderTest.AnalyzerAccounts(context.Background())
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, int64(1), accounts[0].ID)
+}
+
+func TestResolveAnalyzerRejectsNonOpenAIManagedAccount(t *testing.T) {
+	account := &service.Account{ID: 2, Platform: service.PlatformAnthropic, Status: service.StatusActive}
+	serviceUnderTest := &Service{accounts: analyzerAccountRepoStub{account: account}}
+	cfg := storedConfig{Config: DefaultConfig()}
+	cfg.AnalyzerSource, cfg.AnalyzerAccountID, cfg.AnalyzerModel = "account", account.ID, "model"
+
+	_, err := serviceUnderTest.resolveAnalyzer(context.Background(), cfg)
+	require.ErrorContains(t, err, "must use openai platform")
+}
+
 func TestAnalyzerProbeMessageSanitizesFailures(t *testing.T) {
 	require.Equal(t, "分析账号鉴权失败（HTTP 401）", analyzerProbeMessage(errors.New("analyzer_http_401")))
+	require.Equal(t, "模型无法处理当前请求格式（HTTP 422）", analyzerProbeMessage(errors.New("analyzer_http_422")))
 	require.Equal(t, "分析节点连接失败", analyzerProbeMessage(errors.New("dial tcp 10.0.0.1: secret failure")))
 }
 
@@ -69,11 +106,16 @@ func TestBuildAnalysisChunksDeduplicatesAndHonorsBudget(t *testing.T) {
 
 func TestAnalyzeChunkRepairsInvalidJSONOnce(t *testing.T) {
 	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if calls.Add(1) == 1 {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		call := calls.Add(1)
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		if call == 1 {
+			require.Equal(t, map[string]any{"type": "json_object"}, payload["response_format"])
 			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": "not-json"}}}, "usage": map[string]int{"prompt_tokens": 3, "completion_tokens": 1}})
 			return
 		}
+		require.NotContains(t, payload, "response_format")
 		writeAnalyzerResult(w, "修复结构化输出。")
 	}))
 	defer server.Close()
@@ -83,6 +125,34 @@ func TestAnalyzeChunkRepairsInvalidJSONOnce(t *testing.T) {
 	require.Equal(t, 2, count)
 	require.Equal(t, int64(8), input)
 	require.Equal(t, int64(3), output)
+}
+
+func TestAnalyzeChunkFallsBackWhenJSONModeIsUnsupported(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		if calls.Add(1) == 1 {
+			require.Contains(t, payload, "response_format")
+			http.Error(w, `{"error":"response_format unsupported"}`, http.StatusBadRequest)
+			return
+		}
+		require.NotContains(t, payload, "response_format")
+		writeAnalyzerResult(w, "降级后完成分析。")
+	}))
+	defer server.Close()
+
+	result, _, _, count, err := (&Service{}).analyzeChunkResilient(context.Background(), analysisEndpoint{baseURL: server.URL, token: "token-canary", model: "model-canary", timeoutSeconds: 2}, "", []analysisInput{{ID: 1, Text: "canary", EstimatedTokens: 2}}, false)
+	require.NoError(t, err)
+	require.Equal(t, 2, count)
+	require.Equal(t, "降级后完成分析。", result.WorkSummary)
+}
+
+func TestDecodeAnalyzerResultAcceptsWrappedJSON(t *testing.T) {
+	content := "模型说明文字\n```json\n{\"work_summary\":\"整理会议纪要。\",\"task_categories\":[\"会议纪要\"],\"explicit_projects\":[],\"explicit_modules\":[],\"change_types\":[],\"business_topics\":[],\"representative_items\":[],\"evidence_level\":\"explicit\"}\n```"
+	result, err := decodeAnalyzerResult(content)
+	require.NoError(t, err)
+	require.Equal(t, "整理会议纪要。", result.WorkSummary)
 }
 
 func TestAnalyzeChunkSplitsContextFailureOnce(t *testing.T) {

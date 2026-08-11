@@ -77,14 +77,14 @@
             </div>
           </ConfigCard>
 
-          <ConfigCard title="分析器连接" description="选择账号管理中的账号，或配置独立 OpenAI 兼容节点">
+          <ConfigCard title="分析器连接" description="仅支持 OpenAI 兼容接口；账号管理模式只显示 OpenAI 平台账号">
             <div class="mb-4 flex gap-2" role="radiogroup" aria-label="分析器来源">
               <button type="button" role="radio" :aria-checked="draft.analyzer_source === 'account'" class="btn" :class="draft.analyzer_source === 'account' ? 'btn-primary' : 'btn-secondary'" @click="draft.analyzer_source = 'account'">账号管理</button>
               <button type="button" role="radio" :aria-checked="draft.analyzer_source === 'custom'" class="btn" :class="draft.analyzer_source === 'custom' ? 'btn-primary' : 'btn-secondary'" @click="draft.analyzer_source = 'custom'">自定义节点</button>
             </div>
             <div class="form-grid">
-              <label v-if="draft.analyzer_source === 'account'" class="field"><span>分析账号</span><select v-model.number="draft.analyzer_account_id" class="input"><option :value="0" disabled>请选择账号</option><option v-for="account in analyzerAccounts" :key="account.id" :value="account.id">{{ account.platform }} · {{ account.name }}</option></select></label>
-              <label v-else class="field sm:col-span-2"><span>API Endpoint</span><input v-model.trim="draft.analyzer_base_url" class="input" placeholder="https://example.com" /></label>
+              <label v-if="draft.analyzer_source === 'account'" class="field"><span>OpenAI 平台分析账号</span><select v-model.number="draft.analyzer_account_id" class="input"><option :value="0" disabled>请选择 OpenAI 平台账号</option><option v-for="account in analyzerAccounts" :key="account.id" :value="account.id">{{ account.name }}</option></select><small v-if="!analyzerAccounts.length">账号管理中暂无可用的 OpenAI 平台账号</small></label>
+              <label v-else class="field sm:col-span-2"><span>OpenAI 兼容 API Endpoint</span><input v-model.trim="draft.analyzer_base_url" class="input" placeholder="https://example.com/v1" /></label>
               <label v-if="draft.analyzer_source === 'custom'" class="field"><span>API Key</span><input v-model.trim="draft.analyzer_token" type="password" class="input" :placeholder="draft.analyzer_token_set ? '已配置，留空保持不变' : '输入 API Key'" autocomplete="new-password" /></label>
               <label class="field"><span>分析模型</span><select v-if="selectedAccount?.models.length" v-model="draft.analyzer_model" class="input"><option v-for="model in selectedAccount.models" :key="model">{{ model }}</option></select><input v-else v-model.trim="draft.analyzer_model" class="input" placeholder="qwen3.6-35b" /></label>
               <button type="button" class="btn btn-secondary self-end" :disabled="probing" @click="probeAnalyzer">{{ probing ? '检测中…' : '测试连接' }}</button>
