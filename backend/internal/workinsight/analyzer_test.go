@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -112,10 +113,12 @@ func TestAnalyzeChunkRepairsInvalidJSONOnce(t *testing.T) {
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
 		if call == 1 {
 			require.Equal(t, map[string]any{"type": "json_object"}, payload["response_format"])
+			require.Equal(t, false, payload["enable_thinking"])
 			_ = json.NewEncoder(w).Encode(map[string]any{"choices": []any{map[string]any{"message": map[string]string{"content": "not-json"}}}, "usage": map[string]int{"prompt_tokens": 3, "completion_tokens": 1}})
 			return
 		}
 		require.NotContains(t, payload, "response_format")
+		require.Equal(t, false, payload["enable_thinking"])
 		writeAnalyzerResult(w, "修复结构化输出。")
 	}))
 	defer server.Close()
@@ -138,6 +141,7 @@ func TestAnalyzeChunkFallsBackWhenJSONModeIsUnsupported(t *testing.T) {
 			return
 		}
 		require.NotContains(t, payload, "response_format")
+		require.Equal(t, false, payload["enable_thinking"])
 		writeAnalyzerResult(w, "降级后完成分析。")
 	}))
 	defer server.Close()
@@ -148,11 +152,53 @@ func TestAnalyzeChunkFallsBackWhenJSONModeIsUnsupported(t *testing.T) {
 	require.Equal(t, "降级后完成分析。", result.WorkSummary)
 }
 
+func TestAnalyzeChunkRemovesThinkingOptionWhenNodeRejectsIt(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+		call := calls.Add(1)
+		if call < 3 {
+			require.Equal(t, false, payload["enable_thinking"])
+			http.Error(w, `{"error":"unknown field enable_thinking"}`, http.StatusUnprocessableEntity)
+			return
+		}
+		require.NotContains(t, payload, "enable_thinking")
+		writeAnalyzerResult(w, "移除扩展参数后完成分析。")
+	}))
+	defer server.Close()
+
+	result, _, _, count, err := (&Service{}).analyzeChunkResilient(context.Background(), analysisEndpoint{baseURL: server.URL, token: "token-canary", model: "model-canary", timeoutSeconds: 2}, "", []analysisInput{{ID: 1, Text: "canary", EstimatedTokens: 2}}, false)
+	require.NoError(t, err)
+	require.Equal(t, 3, count)
+	require.Equal(t, "移除扩展参数后完成分析。", result.WorkSummary)
+}
+
 func TestDecodeAnalyzerResultAcceptsWrappedJSON(t *testing.T) {
 	content := "模型说明文字\n```json\n{\"work_summary\":\"整理会议纪要。\",\"task_categories\":[\"会议纪要\"],\"explicit_projects\":[],\"explicit_modules\":[],\"change_types\":[],\"business_topics\":[],\"representative_items\":[],\"evidence_level\":\"explicit\"}\n```"
 	result, err := decodeAnalyzerResult(content)
 	require.NoError(t, err)
 	require.Equal(t, "整理会议纪要。", result.WorkSummary)
+}
+
+func TestParseAnalyzerResponseAcceptsReasoningAndArrayContent(t *testing.T) {
+	valid := `{"work_summary":"整理会议纪要。","task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":[],"representative_items":[],"evidence_level":"explicit"}`
+	samples := []analysisInput{{ID: 1, Text: "整理会议纪要"}}
+
+	reasoningOnly := []byte(`{"choices":[{"message":{"content":"","reasoning_content":` + strconv.Quote("分析过程\n"+valid) + `},"finish_reason":"stop"}]}`)
+	result, _, _, err := parseAnalyzerResponse(reasoningOnly, samples)
+	require.NoError(t, err)
+	require.Equal(t, "整理会议纪要。", result.WorkSummary)
+
+	arrayContent := []byte(`{"choices":[{"message":{"content":[{"type":"text","text":` + strconv.Quote(valid) + `}]},"finish_reason":"stop"}]}`)
+	result, _, _, err = parseAnalyzerResponse(arrayContent, samples)
+	require.NoError(t, err)
+	require.Equal(t, "整理会议纪要。", result.WorkSummary)
+}
+
+func TestParseAnalyzerResponseReportsTruncatedOutput(t *testing.T) {
+	_, _, _, err := parseAnalyzerResponse([]byte(`{"choices":[{"message":{"content":"{\\\"work_summary\\\":"},"finish_reason":"length"}]}`), nil)
+	require.EqualError(t, err, "analyzer output truncated")
 }
 
 func TestAnalyzeChunkSplitsContextFailureOnce(t *testing.T) {

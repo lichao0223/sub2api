@@ -15,10 +15,12 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	openaiapi "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type analysisInput struct {
@@ -95,6 +97,7 @@ func (s *Service) Probe(ctx context.Context, request Config) ProbeResult {
 	}
 	result := ProbeResult{OK: err == nil, Status: "ok", Message: "分析节点连接正常", LatencyMS: time.Since(started).Milliseconds(), CheckedAt: time.Now().UTC()}
 	if err != nil {
+		logger.L().Error("work insight analyzer probe failed", zap.String("source", request.AnalyzerSource), zap.Int64("account_id", request.AnalyzerAccountID), zap.String("model", request.AnalyzerModel), zap.Error(err))
 		result.Status, result.Message = "error", analyzerProbeMessage(err)
 	}
 	return result
@@ -178,6 +181,10 @@ func analyzerProbeMessage(err error) string {
 		return "分析接口地址不存在（HTTP 404）"
 	case strings.Contains(message, "analyzer_http_5"):
 		return "分析节点服务异常"
+	case strings.Contains(message, "output truncated"):
+		return "模型输出过长且未返回完整结果"
+	case strings.Contains(message, "response too large"):
+		return "模型响应超过 256 KiB，请确认 thinking 已关闭"
 	case isInvalidAnalyzerResult(err):
 		return "分析节点响应格式不兼容"
 	case strings.Contains(message, "credentials incomplete"):
@@ -247,10 +254,10 @@ func chunkTokens(chunk []analysisInput) int {
 }
 
 func (s *Service) analyzeChunk(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput) (BatchResult, int64, int64, error) {
-	return s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, false)
+	return s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, false, false)
 }
 
-func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput, jsonMode bool) (BatchResult, int64, int64, error) {
+func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput, jsonMode, disableThinking bool) (BatchResult, int64, int64, error) {
 	url, err := securityaudit.ChatCompletionsURL(endpoint.baseURL)
 	if err != nil {
 		return BatchResult{}, 0, 0, err
@@ -271,10 +278,14 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 	}
 	payload := map[string]any{
 		"model":    endpoint.model,
+		"stream":   false,
 		"messages": []map[string]string{{"role": "system", "content": analyzerInstruction}, {"role": "user", "content": input.String()}},
 	}
 	if jsonMode {
 		payload["response_format"] = map[string]string{"type": "json_object"}
+	}
+	if disableThinking {
+		payload["enable_thinking"] = false
 	}
 	body, _ := json.Marshal(payload)
 	if endpoint.account != nil {
@@ -287,12 +298,17 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 		ginContext.Request.Header.Set("Content-Type", "application/json")
 		_, gatewayErr := s.openAIGateway.ForwardAsChatCompletions(ctx, ginContext, endpoint.account, body, "", endpoint.model)
 		if gatewayErr != nil {
+			logAnalyzerFailure(endpoint, "gateway", jsonMode, disableThinking, recorder.Body.Bytes(), gatewayErr)
 			if recorder.Code >= 400 {
 				return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", recorder.Code)
 			}
 			return BatchResult{}, 0, 0, gatewayErr
 		}
-		return parseAnalyzerResponse(recorder.Body.Bytes(), samples)
+		result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(recorder.Body.Bytes(), samples)
+		if parseErr != nil {
+			logAnalyzerFailure(endpoint, "parse", jsonMode, disableThinking, recorder.Body.Bytes(), parseErr)
+		}
+		return result, promptTokens, completionTokens, parseErr
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
@@ -302,6 +318,7 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 	req.Header.Set("Authorization", "Bearer "+endpoint.token)
 	resp, err := client.Do(req)
 	if err != nil {
+		logAnalyzerFailure(endpoint, "request", jsonMode, disableThinking, nil, err)
 		return BatchResult{}, 0, 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -310,24 +327,50 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 		return BatchResult{}, 0, 0, err
 	}
 	if len(raw) > 256*1024 {
-		return BatchResult{}, 0, 0, errors.New("analyzer response too large")
+		err := errors.New("analyzer response too large")
+		logAnalyzerFailure(endpoint, "response_limit", jsonMode, disableThinking, raw, err)
+		return BatchResult{}, 0, 0, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		logAnalyzerFailure(endpoint, fmt.Sprintf("http_%d", resp.StatusCode), jsonMode, disableThinking, raw, fmt.Errorf("analyzer_http_%d", resp.StatusCode))
 		lower := strings.ToLower(string(raw))
 		if resp.StatusCode == http.StatusRequestEntityTooLarge || strings.Contains(lower, "context_length") || strings.Contains(lower, "context length") || strings.Contains(lower, "maximum context") {
 			return BatchResult{}, 0, 0, errors.New("analyzer_context_length")
 		}
 		return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", resp.StatusCode)
 	}
-	return parseAnalyzerResponse(raw, samples)
+	result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(raw, samples)
+	if parseErr != nil {
+		logAnalyzerFailure(endpoint, "parse", jsonMode, disableThinking, raw, parseErr)
+	}
+	return result, promptTokens, completionTokens, parseErr
+}
+
+func logAnalyzerFailure(endpoint analysisEndpoint, stage string, jsonMode, disableThinking bool, raw []byte, err error) {
+	const previewLimit = 16 * 1024
+	preview := raw
+	if len(preview) > previewLimit {
+		preview = preview[:previewLimit]
+	}
+	accountID := int64(0)
+	if endpoint.account != nil {
+		accountID = endpoint.account.ID
+	}
+	logger.L().Warn("work insight analyzer attempt failed",
+		zap.String("stage", stage), zap.Int64("account_id", accountID), zap.String("model", endpoint.model),
+		zap.Bool("json_mode", jsonMode), zap.Bool("thinking_disabled", disableThinking), zap.Int("response_bytes", len(raw)),
+		zap.Bool("response_truncated", len(raw) > len(preview)), zap.ByteString("response_preview", preview), zap.Error(err))
 }
 
 func parseAnalyzerResponse(raw []byte, samples []analysisInput) (BatchResult, int64, int64, error) {
 	var envelope struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content          json.RawMessage `json:"content"`
+				ReasoningContent string          `json:"reasoning_content"`
+				Reasoning        string          `json:"reasoning"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int64 `json:"prompt_tokens"`
@@ -337,14 +380,43 @@ func parseAnalyzerResponse(raw []byte, samples []analysisInput) (BatchResult, in
 	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) != 1 {
 		return BatchResult{}, 0, 0, errors.New("invalid analyzer response")
 	}
-	result, err := decodeAnalyzerResult(envelope.Choices[0].Message.Content)
+	choice := envelope.Choices[0]
+	result, err := decodeAnalyzerResult(analyzerMessageText(choice.Message.Content))
 	if err != nil {
+		reasoning := choice.Message.ReasoningContent
+		if reasoning == "" {
+			reasoning = choice.Message.Reasoning
+		}
+		result, err = decodeAnalyzerResult(reasoning)
+	}
+	if err != nil {
+		if choice.FinishReason == "length" {
+			return BatchResult{}, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, errors.New("analyzer output truncated")
+		}
 		return BatchResult{}, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, errors.New("invalid analyzer JSON")
 	}
 	if err := validateBatchResult(&result, samples); err != nil {
 		return BatchResult{}, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, err
 	}
 	return result, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens, nil
+}
+
+func analyzerMessageText(raw json.RawMessage) string {
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text
+	}
+	var parts []struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &parts) != nil {
+		return ""
+	}
+	var joined strings.Builder
+	for _, part := range parts {
+		_, _ = joined.WriteString(part.Text)
+	}
+	return joined.String()
 }
 
 func decodeAnalyzerResult(content string) (BatchResult, error) {
@@ -367,13 +439,18 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 }
 
 func (s *Service) analyzeChunkResilient(ctx context.Context, endpoint analysisEndpoint, previousSummary string, samples []analysisInput, allowSplit bool) (BatchResult, int64, int64, int, error) {
-	result, input, output, err := s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, true)
+	result, input, output, err := s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, true, true)
 	if err == nil {
 		return result, input, output, 1, nil
 	}
 	if isInvalidAnalyzerResult(err) || isJSONModeUnsupported(err) {
-		repaired, retryInput, retryOutput, retryErr := s.analyzeChunk(ctx, endpoint, previousSummary, samples)
-		return repaired, input + retryInput, output + retryOutput, 2, retryErr
+		repaired, retryInput, retryOutput, retryErr := s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, false, true)
+		input, output = input+retryInput, output+retryOutput
+		if retryErr == nil || !isJSONModeUnsupported(retryErr) {
+			return repaired, input, output, 2, retryErr
+		}
+		repaired, retryInput, retryOutput, retryErr = s.analyzeChunk(ctx, endpoint, previousSummary, samples)
+		return repaired, input + retryInput, output + retryOutput, 3, retryErr
 	}
 	if err.Error() != "analyzer_context_length" || !allowSplit {
 		return BatchResult{}, input, output, 1, err
@@ -421,7 +498,7 @@ func isInvalidAnalyzerResult(err error) bool {
 		return false
 	}
 	value := err.Error()
-	return strings.Contains(value, "invalid") || strings.Contains(value, "evidence") || strings.Contains(value, "too many")
+	return strings.Contains(value, "invalid") || strings.Contains(value, "truncated") || strings.Contains(value, "evidence") || strings.Contains(value, "too many")
 }
 
 func validateBatchResult(result *BatchResult, samples []analysisInput) error {
