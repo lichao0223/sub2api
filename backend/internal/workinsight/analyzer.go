@@ -706,11 +706,18 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 			merged.EvidenceLevel = "explicit"
 		}
 	}
-	merged.WorkSummary = truncateRunes("- "+strings.Join(summaries, "\n- "), 300)
+	merged.WorkSummary = "- " + strings.Join(summaries, "\n- ")
 	if len(merged.RepresentativeItems) > 10 {
 		merged.RepresentativeItems = merged.RepresentativeItems[:10]
 	}
 	return merged
+}
+
+func mergeDailySummary(previous string, results []BatchResult) BatchResult {
+	if strings.TrimSpace(previous) != "" {
+		results = append([]BatchResult{{WorkSummary: previous}}, results...)
+	}
+	return mergeBatchResults(results)
 }
 
 func truncateRunes(value string, limit int) string {

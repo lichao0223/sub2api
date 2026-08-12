@@ -299,6 +299,14 @@ func TestMergeBatchResultsFormatsHumanReadableWorkList(t *testing.T) {
 	require.Equal(t, "- 新增功能：支持日志分页\n- 修复问题：停止任务后仍写回结果\n- 完成事项：补充回归测试", result.WorkSummary)
 }
 
+func TestMergeDailySummaryKeepsEveryPreviousAndCurrentItem(t *testing.T) {
+	previous := "- " + strings.Repeat("已有工作", 80) + "\n- 排查无法启动的问题"
+	result := mergeDailySummary(previous, []BatchResult{{WorkSummary: "- 修复摘要覆盖问题"}})
+	require.Contains(t, result.WorkSummary, "排查无法启动的问题")
+	require.Contains(t, result.WorkSummary, "修复摘要覆盖问题")
+	require.Greater(t, len([]rune(result.WorkSummary)), 300)
+}
+
 func TestContextLimitStopsAfterCompensatingSplit(t *testing.T) {
 	err := errors.New("analyzer_context_length")
 	require.Equal(t, "analyzer_context_length", analyzerErrorCode(err))
