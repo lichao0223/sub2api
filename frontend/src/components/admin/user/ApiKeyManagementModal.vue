@@ -97,8 +97,8 @@
 
         <section class="border-t border-gray-200 pt-3 dark:border-dark-700">
           <h4 class="mb-2 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.users.apiKeyManagement.changes') }}</h4>
-          <div class="grid divide-y divide-gray-200 border-y border-gray-200 dark:divide-dark-700 dark:border-dark-700 md:grid-cols-3 md:divide-x md:divide-y-0">
-            <div class="space-y-3 py-3 md:pr-4">
+          <div class="grid divide-y divide-gray-200 border-y border-gray-200 dark:divide-dark-700 dark:border-dark-700 lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+            <div class="space-y-3 py-3 lg:pr-4">
               <div class="flex items-center gap-3">
                 <Toggle v-model="editRates" :aria-label="t('admin.users.apiKeyManagement.rateLimits')" />
                 <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.rateLimits') }}</label>
@@ -109,19 +109,30 @@
                 <label class="text-xs text-gray-500">7d<input v-model="rate7d" type="number" min="0" step="0.01" class="input mt-1" /></label>
               </div>
             </div>
-            <div class="space-y-3 py-3 md:px-4">
+            <div class="space-y-3 py-3 lg:px-4">
               <div class="flex items-center gap-3">
                 <Toggle v-model="editConcurrency" :aria-label="t('admin.users.apiKeyManagement.concurrency')" />
                 <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.concurrency') }}</label>
               </div>
               <input v-if="editConcurrency" v-model="concurrency" type="number" min="0" step="1" class="input" />
             </div>
-            <div class="space-y-3 py-3 md:pl-4">
+            <div class="space-y-3 py-3 lg:px-4">
               <div class="flex items-center gap-3">
                 <Toggle v-model="editStatus" :aria-label="t('common.status')" />
                 <label class="input-label mb-0">{{ t('common.status') }}</label>
               </div>
               <Select v-if="editStatus" v-model="status" :options="statusOptions" />
+            </div>
+            <div class="space-y-3 py-3 lg:pl-4">
+              <div class="flex items-center gap-3">
+                <Toggle v-model="editGroup" data-test="edit-group" :aria-label="t('admin.users.apiKeyManagement.targetGroup')" />
+                <label class="input-label mb-0">{{ t('admin.users.apiKeyManagement.targetGroup') }}</label>
+              </div>
+              <Select v-if="editGroup" v-model="targetGroupId" data-test="target-group" :options="targetGroupOptions" searchable />
+              <label v-if="editGroup && targetGroupId !== null && targetGroupId !== groupId" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                <input v-model="recreateInSourceGroup" data-test="recreate-in-source" type="checkbox" class="checkbox" />
+                {{ t('admin.users.apiKeyManagement.recreateInSourceGroup') }}
+              </label>
             </div>
           </div>
         </section>
@@ -175,11 +186,14 @@ const { selectedIds, selectedCount, setSelectedIds, clear } = useTableSelection<
 const editRates = ref(false)
 const editConcurrency = ref(false)
 const editStatus = ref(false)
+const editGroup = ref(false)
 const rate5h = ref<string | number>(0)
 const rate1d = ref<string | number>(0)
 const rate7d = ref<string | number>(0)
 const concurrency = ref<string | number>(0)
 const status = ref<'active' | 'inactive'>('active')
+const targetGroupId = ref<number | null>(null)
+const recreateInSourceGroup = ref(false)
 
 const columns: Column[] = [
   { key: 'user', label: t('admin.users.apiKeyManagement.user'), sortable: false },
@@ -192,6 +206,12 @@ const columns: Column[] = [
   { key: 'rate_limit_7d', label: '7d', sortable: false }
 ]
 const groupOptions = computed(() => groups.value.map(group => ({ value: group.id, label: group.name })))
+const targetGroupOptions = computed(() => [
+  { value: 0, label: t('admin.users.apiKeyManagement.noGroup') },
+  ...groups.value
+    .filter(group => group.status === 'active' && !group.is_exclusive && group.subscription_type !== 'subscription' && group.id !== groupId.value)
+    .map(group => ({ value: group.id, label: group.name }))
+])
 const statusOptions = computed(() => [
   { value: 'active', label: t('common.active') },
   { value: 'inactive', label: t('common.inactive') }
@@ -208,7 +228,9 @@ const invalidValues = computed(() =>
 )
 const canSubmit = computed(() =>
   !!groupId.value && (allInGroupSelected.value || (selectedCount.value > 0 && selectedCount.value <= 500)) &&
-  (editRates.value || editConcurrency.value || editStatus.value) && !invalidValues.value && !submitting.value
+  (editRates.value || editConcurrency.value || editStatus.value || editGroup.value) &&
+  (!editGroup.value || (targetGroupId.value !== null && targetGroupId.value !== groupId.value)) &&
+  !invalidValues.value && !submitting.value
 )
 
 const maskKey = (key: string) => key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key
@@ -241,7 +263,8 @@ watch(() => props.show, async show => {
     appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.loadFailed'))
   }
 })
-watch(groupId, () => { pagination.page = 1; clearSelection(); loadKeys() })
+watch(groupId, () => { pagination.page = 1; targetGroupId.value = null; recreateInSourceGroup.value = false; clearSelection(); loadKeys() })
+watch(targetGroupId, () => { recreateInSourceGroup.value = false })
 
 const submit = async () => {
   if (!canSubmit.value || !groupId.value) return
@@ -255,10 +278,15 @@ const submit = async () => {
   if (editRates.value) [request.rate_limit_5h, request.rate_limit_1d, request.rate_limit_7d] = parsedRates.value as [number, number, number]
   if (editConcurrency.value) request.concurrency_limit = parsedConcurrency.value!
   if (editStatus.value) request.status = status.value
+  if (editGroup.value) request.target_group_id = targetGroupId.value!
+  if (editGroup.value && recreateInSourceGroup.value) request.recreate_in_source_group = true
   submitting.value = true
   try {
     const result = await adminAPI.apiKeys.batchUpdate(request)
-    appStore.showSuccess(t('admin.users.apiKeyManagement.success', { count: result.affected }))
+    appStore.showSuccess(t(
+      result.created > 0 ? 'admin.users.apiKeyManagement.moveAndRecreateSuccess' : 'admin.users.apiKeyManagement.success',
+      { count: result.affected, created: result.created }
+    ))
     clearSelection()
     await loadKeys()
   } catch (error: any) {

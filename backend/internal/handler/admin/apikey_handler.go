@@ -68,6 +68,8 @@ type AdminBatchUpdateAPIKeysRequest struct {
 	RateLimit7d      *float64 `json:"rate_limit_7d"`
 	ConcurrencyLimit *int     `json:"concurrency_limit"`
 	Status           *string  `json:"status"`
+	TargetGroupID    *int64   `json:"target_group_id"`
+	RecreateInSource bool     `json:"recreate_in_source_group"`
 }
 
 // BatchUpdate updates API keys selected from one group.
@@ -102,7 +104,8 @@ func (h *AdminAPIKeyHandler) BatchUpdate(c *gin.Context) {
 	}
 	fields := service.APIKeyBatchUpdateFields{
 		RateLimit5h: req.RateLimit5h, RateLimit1d: req.RateLimit1d, RateLimit7d: req.RateLimit7d,
-		ConcurrencyLimit: req.ConcurrencyLimit, Status: req.Status,
+		ConcurrencyLimit: req.ConcurrencyLimit, Status: req.Status, GroupID: req.TargetGroupID,
+		RecreateInSourceGroup: req.RecreateInSource,
 	}
 	affected, err := h.apiKeyService.AdminBatchUpdate(c.Request.Context(), service.AdminBatchUpdateAPIKeysRequest{
 		GroupID: req.GroupID, IDs: req.APIKeyIDs, All: req.All, Fields: fields,
@@ -111,7 +114,11 @@ func (h *AdminAPIKeyHandler) BatchUpdate(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Success(c, gin.H{"affected": affected})
+	created := 0
+	if req.RecreateInSource {
+		created = affected
+	}
+	response.Success(c, gin.H{"affected": affected, "created": created})
 }
 
 // Create handles creating an API key for a user.

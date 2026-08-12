@@ -133,15 +133,17 @@ type apiKeyAllByUserIDLister interface {
 }
 
 type apiKeyAdminBatchUpdater interface {
-	BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields APIKeyBatchUpdateFields) (int, []string, error)
+	BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields APIKeyBatchUpdateFields, generateKey func() (string, error)) (int, []string, error)
 }
 
 type APIKeyBatchUpdateFields struct {
-	RateLimit5h      *float64
-	RateLimit1d      *float64
-	RateLimit7d      *float64
-	ConcurrencyLimit *int
-	Status           *string
+	RateLimit5h           *float64
+	RateLimit1d           *float64
+	RateLimit7d           *float64
+	ConcurrencyLimit      *int
+	Status                *string
+	GroupID               *int64
+	RecreateInSourceGroup bool
 }
 
 type AdminBatchUpdateAPIKeysRequest struct {
@@ -463,8 +465,31 @@ func (s *APIKeyService) AdminBatchUpdate(ctx context.Context, req AdminBatchUpda
 		return 0, infraerrors.BadRequest("TOO_MANY_API_KEYS", "at most 500 api keys can be updated")
 	}
 	if req.Fields.RateLimit5h == nil && req.Fields.RateLimit1d == nil && req.Fields.RateLimit7d == nil &&
-		req.Fields.ConcurrencyLimit == nil && req.Fields.Status == nil {
+		req.Fields.ConcurrencyLimit == nil && req.Fields.Status == nil && req.Fields.GroupID == nil {
 		return 0, infraerrors.BadRequest("NO_UPDATES", "at least one field is required")
+	}
+	if req.Fields.GroupID != nil {
+		if *req.Fields.GroupID < 0 {
+			return 0, infraerrors.BadRequest("INVALID_GROUP_ID", "target_group_id must be non-negative")
+		}
+		if *req.Fields.GroupID == req.GroupID {
+			return 0, infraerrors.BadRequest("SAME_GROUP_ID", "target group must differ from source group")
+		}
+		if *req.Fields.GroupID > 0 {
+			group, err := s.groupRepo.GetByID(ctx, *req.Fields.GroupID)
+			if err != nil {
+				return 0, err
+			}
+			if group.Status != StatusActive {
+				return 0, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
+			}
+			if group.IsExclusive || group.IsSubscriptionType() {
+				return 0, infraerrors.BadRequest("BATCH_GROUP_NOT_SUPPORTED", "batch moving to exclusive or subscription groups is not supported")
+			}
+		}
+	}
+	if req.Fields.RecreateInSourceGroup && req.Fields.GroupID == nil {
+		return 0, infraerrors.BadRequest("TARGET_GROUP_REQUIRED", "target_group_id is required to recreate source keys")
 	}
 
 	seen := make(map[int64]struct{}, len(req.IDs))
@@ -482,7 +507,7 @@ func (s *APIKeyService) AdminBatchUpdate(ctx context.Context, req AdminBatchUpda
 	if !ok {
 		return 0, errors.New("api key batch update unavailable")
 	}
-	affected, keys, err := updater.BatchUpdateByGroup(ctx, req.GroupID, ids, req.All, req.Fields)
+	affected, keys, err := updater.BatchUpdateByGroup(ctx, req.GroupID, ids, req.All, req.Fields, s.GenerateKey)
 	if err != nil {
 		return 0, fmt.Errorf("batch update api keys: %w", err)
 	}

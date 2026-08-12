@@ -22,10 +22,12 @@ export interface BatchUpdateApiKeysRequest {
   rate_limit_7d?: number
   concurrency_limit?: number
   status?: 'active' | 'inactive'
+  target_group_id?: number
+  recreate_in_source_group?: boolean
 }
 
-export async function batchUpdate(request: BatchUpdateApiKeysRequest): Promise<{ affected: number }> {
-  const { data } = await apiClient.post<{ affected: number }>('/admin/api-keys/batch-update', request)
+export async function batchUpdate(request: BatchUpdateApiKeysRequest): Promise<{ affected: number; created: number }> {
+  const { data } = await apiClient.post<{ affected: number; created: number }>('/admin/api-keys/batch-update', request)
   return data
 }
 

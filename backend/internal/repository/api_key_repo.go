@@ -689,7 +689,7 @@ func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, par
 	return outKeys, paginationResultFromTotal(int64(total), params), nil
 }
 
-func (r *apiKeyRepository) BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields service.APIKeyBatchUpdateFields) (int, []string, error) {
+func (r *apiKeyRepository) BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields service.APIKeyBatchUpdateFields, generateKey func() (string, error)) (int, []string, error) {
 	tx, err := r.client.Tx(ctx)
 	if err != nil {
 		return 0, nil, err
@@ -700,9 +700,13 @@ func (r *apiKeyRepository) BatchUpdateByGroup(ctx context.Context, groupID int64
 	if !all {
 		predicates = append(predicates, apikey.IDIn(ids...))
 	}
-	keys, err := tx.APIKey.Query().Where(predicates...).Select(apikey.FieldKey).Strings(ctx)
+	selected, err := tx.APIKey.Query().Where(predicates...).ForUpdate().All(ctx)
 	if err != nil {
 		return 0, nil, err
+	}
+	keys := make([]string, 0, len(selected))
+	for _, key := range selected {
+		keys = append(keys, key.Key)
 	}
 	update := tx.APIKey.Update().Where(predicates...).SetUpdatedAt(time.Now())
 	if fields.RateLimit5h != nil {
@@ -720,9 +724,36 @@ func (r *apiKeyRepository) BatchUpdateByGroup(ctx context.Context, groupID int64
 	if fields.Status != nil {
 		update.SetStatus(*fields.Status)
 	}
+	if fields.GroupID != nil {
+		if *fields.GroupID == 0 {
+			update.ClearGroupID()
+		} else {
+			update.SetGroupID(*fields.GroupID)
+		}
+	}
 	affected, err := update.Save(ctx)
 	if err != nil {
 		return 0, nil, err
+	}
+	if fields.RecreateInSourceGroup {
+		creates := make([]*dbent.APIKeyCreate, 0, len(selected))
+		for _, source := range selected {
+			key, err := generateKey()
+			if err != nil {
+				return 0, nil, err
+			}
+			creates = append(creates, tx.APIKey.Create().
+				SetUserID(source.UserID).SetKey(key).SetName(source.Name).SetGroupID(groupID).
+				SetStatus(source.Status).SetIPWhitelist(source.IPWhitelist).SetIPBlacklist(source.IPBlacklist).
+				SetQuota(source.Quota).SetConcurrencyLimit(source.ConcurrencyLimit).
+				SetRateLimit5h(source.RateLimit5h).SetRateLimit1d(source.RateLimit1d).SetRateLimit7d(source.RateLimit7d).
+				SetNillableExpiresAt(source.ExpiresAt))
+		}
+		if len(creates) > 0 {
+			if _, err := tx.APIKey.CreateBulk(creates...).Save(ctx); err != nil {
+				return 0, nil, err
+			}
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, nil, err
