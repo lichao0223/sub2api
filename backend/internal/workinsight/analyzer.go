@@ -695,13 +695,24 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 	merged := BatchResult{EvidenceLevel: "unknown"}
 	var summaries []string
 	seenSummaries := map[string]struct{}{}
+	addSummary := func(value string) {
+		value = strings.TrimSpace(strings.TrimLeft(value, "-•* "))
+		key := strings.ToLower(strings.Map(func(r rune) rune {
+			if unicode.IsSpace(r) {
+				return -1
+			}
+			return r
+		}, value))
+		if key != "" {
+			if _, seen := seenSummaries[key]; !seen {
+				summaries = append(summaries, value)
+				seenSummaries[key] = struct{}{}
+			}
+		}
+	}
 	for _, result := range results {
 		for _, summary := range strings.FieldsFunc(result.WorkSummary, func(r rune) bool { return r == '\n' || r == '；' }) {
-			summary = strings.TrimSpace(strings.TrimLeft(summary, "-•* "))
-			if _, seen := seenSummaries[summary]; summary != "" && !seen {
-				summaries = append(summaries, summary)
-				seenSummaries[summary] = struct{}{}
-			}
+			addSummary(summary)
 		}
 		merged.TaskCategories = mergeUnique(merged.TaskCategories, result.TaskCategories)
 		merged.ExplicitProjects = mergeUnique(merged.ExplicitProjects, result.ExplicitProjects)
@@ -717,8 +728,9 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 					break
 				}
 			}
-			if !found {
+			if !found && len(merged.RepresentativeItems) < 10 {
 				merged.RepresentativeItems = append(merged.RepresentativeItems, item)
+				addSummary(item.Summary)
 			}
 		}
 		if result.EvidenceLevel == "explicit" {

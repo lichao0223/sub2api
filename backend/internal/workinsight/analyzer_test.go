@@ -305,6 +305,13 @@ func TestMergeBatchResultsFormatsHumanReadableWorkList(t *testing.T) {
 	require.Equal(t, "- 新增功能：支持日志分页\n- 修复问题：停止任务后仍写回结果\n- 完成事项：补充回归测试", result.WorkSummary)
 }
 
+func TestMergeBatchResultsKeepsRepresentativeItemsInDailySummary(t *testing.T) {
+	result := mergeBatchResults([]BatchResult{
+		{WorkSummary: "- 整理安全规范流程", RepresentativeItems: []RepresentativeItem{{Summary: "整理安全规范流程"}, {Summary: "排查账户锁定问题"}}},
+	})
+	require.Equal(t, "- 整理安全规范流程\n- 排查账户锁定问题", result.WorkSummary)
+}
+
 func TestMergeDailySummaryKeepsEveryPreviousAndCurrentItem(t *testing.T) {
 	previous := "- " + strings.Repeat("已有工作", 80) + "\n- 排查无法启动的问题"
 	result := mergeDailySummary(previous, []BatchResult{{WorkSummary: "- 修复摘要覆盖问题"}})
