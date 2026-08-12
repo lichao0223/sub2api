@@ -271,8 +271,10 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 	}
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	var input strings.Builder
+	validationSamples := samples
 	if previousSummary != "" {
 		_, _ = input.WriteString("上一版结构化摘要：\n" + previousSummary + "\n\n")
+		validationSamples = append([]analysisInput{{Text: previousSummary}}, samples...)
 	}
 	_, _ = input.WriteString("本批脱敏样本：\n")
 	for _, sample := range samples {
@@ -306,7 +308,7 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 			}
 			return BatchResult{}, 0, 0, gatewayErr
 		}
-		result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(recorder.Body.Bytes(), samples)
+		result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(recorder.Body.Bytes(), validationSamples)
 		if parseErr != nil {
 			logAnalyzerFailure(endpoint, "parse", jsonMode, disableThinking, recorder.Body.Bytes(), parseErr)
 		}
@@ -341,7 +343,7 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 		}
 		return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", resp.StatusCode)
 	}
-	result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(raw, samples)
+	result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(raw, validationSamples)
 	if parseErr != nil {
 		logAnalyzerFailure(endpoint, "parse", jsonMode, disableThinking, raw, parseErr)
 	}
@@ -572,6 +574,9 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 	if result.WorkSummary == "" {
 		return errors.New("invalid work summary")
 	}
+	if len(strings.FieldsFunc(result.WorkSummary, func(r rune) bool { return r == '\n' || r == '；' })) > 5 {
+		return errors.New("too many work summary items")
+	}
 	result.WorkSummary = truncateRunes(result.WorkSummary, 300)
 	validIDs := map[int64]struct{}{}
 	var evidence strings.Builder
@@ -583,6 +588,12 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 	var err error
 	if result.TaskCategories, err = validateList(result.TaskCategories, true); err != nil {
 		return err
+	}
+	if slices.Contains(result.TaskCategories, "问题排查") && !supportsTroubleshooting(evidence.String()) {
+		return errors.New("invalid inferred troubleshooting category")
+	}
+	if hasUnsupportedWorkClaim(result.WorkSummary, evidence.String()) {
+		return errors.New("invalid inferred work action")
 	}
 	if result.ExplicitProjects, err = validateEvidenceList(result.ExplicitProjects, evidence.String()); err != nil {
 		return err
@@ -612,17 +623,27 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 		sort.Slice(item.SourceSampleIDs, func(i, j int) bool { return item.SourceSampleIDs[i] < item.SourceSampleIDs[j] })
 		item.SourceSampleIDs = slices.Compact(item.SourceSampleIDs)
 		valid := true
+		var itemEvidence strings.Builder
 		for _, id := range item.SourceSampleIDs {
 			if _, ok := validIDs[id]; !ok {
 				valid = false
 				break
 			}
+			for _, sample := range samples {
+				if sample.ID == id {
+					_, _ = itemEvidence.WriteString(sample.Text)
+					_ = itemEvidence.WriteByte('\n')
+				}
+			}
 		}
-		if !valid {
+		if !valid || hasUnsupportedWorkClaim(item.Summary, itemEvidence.String()) {
 			continue
 		}
 		item.TaskCategories, err = validateList(item.TaskCategories, true)
 		if err != nil {
+			continue
+		}
+		if slices.Contains(item.TaskCategories, "问题排查") && !supportsTroubleshooting(itemEvidence.String()) {
 			continue
 		}
 		item.ExplicitProjects, err = validateEvidenceList(item.ExplicitProjects, evidence.String())
@@ -642,6 +663,36 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 	}
 	result.RepresentativeItems = validItems
 	return nil
+}
+
+func hasUnsupportedWorkClaim(summary, evidence string) bool {
+	summary, evidence = strings.ToLower(summary), strings.ToLower(evidence)
+	inquiry := false
+	for _, cue := range []string{"查询", "咨询", "了解", "解释", "是什么", "怎么", "如何", "请问", "获取", "查看"} {
+		if strings.Contains(evidence, cue) {
+			inquiry = true
+			break
+		}
+	}
+	if !inquiry || supportsTroubleshooting(evidence) {
+		return false
+	}
+	for _, claim := range []string{"新增", "开发", "实现", "修复", "排查", "设计", "部署", "完成", "修改", "优化"} {
+		if strings.Contains(summary, claim) && !strings.Contains(evidence, claim) {
+			return true
+		}
+	}
+	return false
+}
+
+func supportsTroubleshooting(evidence string) bool {
+	evidence = strings.ToLower(evidence)
+	for _, cue := range []string{"排查", "问题", "报错", "错误", "异常", "故障", "失败", "无法", "不能", "不生效", "bug"} {
+		if strings.Contains(evidence, cue) {
+			return true
+		}
+	}
+	return false
 }
 
 func containsVerbatimSample(summary string, samples []analysisInput) bool {
@@ -763,13 +814,6 @@ func representativeItemKey(item RepresentativeItem) string {
 	return "summary:"
 }
 
-func mergeDailySummary(previous string, results []BatchResult) BatchResult {
-	if strings.TrimSpace(previous) != "" {
-		results = append([]BatchResult{{WorkSummary: previous}}, results...)
-	}
-	return mergeBatchResults(results)
-}
-
 func truncateRunes(value string, limit int) string {
 	runes := []rune(value)
 	if len(runes) <= limit {
@@ -778,4 +822,4 @@ func truncateRunes(value string, limit int) string {
 	return string(runes[:limit])
 }
 
-const analyzerInstruction = `你是企业 AI 使用洞察分析器。只分析脱敏后的用户请求，不做绩效、合规或是否工作的判断。项目和模块只能收录输入中明确出现的名称，不得推断。返回且仅返回 JSON 对象，字段严格为 work_summary、task_categories、explicit_projects、explicit_modules、change_types、business_topics、representative_items、evidence_level。task_categories 只能从以下枚举选择：代码开发、问题排查、测试用例、接口文档、需求分析、方案设计、数据分析、SQL/报表、运维部署、日志分析、文档写作、翻译润色、会议纪要、客服支持、培训学习、其他。evidence_level 只能是 "explicit" 或 "unknown"。work_summary 必须用自然、简洁的中文分条概括具体工作，每行以 "- " 开头，最多 6 条；按事实使用“新增功能：”“修复问题：”“完成事项：”，证据不足以确认完成时使用“排查：”“设计：”“整理：”，不要写“用户询问”“提出要求”“希望”“请求”等对话描述。representative_items 每项包含 source_sample_ids、summary、task_categories、explicit_projects、explicit_modules；summary 每项只写一件具体工作，使用“新增、修复、排查、设计、整理、编写、部署”等动词开头，不复述提问过程，相同事项合并。未明确出现的项目和模块返回空数组。`
+const analyzerInstruction = `你是企业 AI 使用洞察分析器。只分析脱敏后的用户请求，不做绩效、合规或是否工作的判断。必须忠实保留用户表达的意图和事实，不得把查询、咨询、了解、解释等请求升级为开发、实现、排查、修复、设计、部署或已完成事项；例如“查询南昌天气”只能概括为“查询南昌天气”，不能写成“排查天气查询接口调用逻辑”。不得添加输入中未出现的接口、功能、逻辑、系统、故障或完成状态。项目和模块只能收录输入中明确出现的名称，不得推断。返回且仅返回 JSON 对象，字段严格为 work_summary、task_categories、explicit_projects、explicit_modules、change_types、business_topics、representative_items、evidence_level。task_categories 只能从以下枚举选择：代码开发、问题排查、测试用例、接口文档、需求分析、方案设计、数据分析、SQL/报表、运维部署、日志分析、文档写作、翻译润色、会议纪要、客服支持、培训学习、其他；只有输入明确描述问题、错误、异常、失败或排查行为时才能使用“问题排查”。evidence_level 只能是 "explicit" 或 "unknown"。work_summary 是截至当前的当日汇总：如果输入包含“上一版结构化摘要”，必须把上一版与本批样本按相同主题重新归纳，合并重复、近似、上下游步骤和同一问题的排查/修复，不得逐项追加细节；始终输出最多 5 条主题级总结，每行以 "- " 开头。查询就写“查询…”，咨询就写“咨询…”，了解就写“了解…”，只有输入明确表达相应动作时才可写“新增、开发、实现、修复、排查、设计、部署、完成、修改、优化”。不要写“用户询问”“提出要求”“希望”“请求”等对话描述。representative_items 每项包含 source_sample_ids、summary、task_categories、explicit_projects、explicit_modules；summary 每项只写一件具体事项，动作和对象都必须能由对应 source_sample_ids 的输入直接支持，同批相同事项合并。未明确出现的项目和模块返回空数组。`

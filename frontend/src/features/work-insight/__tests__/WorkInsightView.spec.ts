@@ -24,7 +24,7 @@ const rankingRow = { latest_insight_id: 7, user_id: 9, username: '测试用户',
 
 const DataTableStub = defineComponent({
   props: ['data'], emits: ['rowClick'],
-  template: '<div><button v-for="row in data" :key="row.latest_insight_id" data-test="row" @click="$emit(\'rowClick\', row)">{{ row.username }}</button></div>'
+  template: '<div><div v-for="row in data" :key="row.latest_insight_id"><button data-test="row" @click="$emit(\'rowClick\', row)">{{ row.username }}</button><slot name="cell-summary" :row="row" /></div></div>'
 })
 const BaseDialogStub = defineComponent({ props: ['show', 'title'], emits: ['close'], template: '<div v-if="show" role="dialog"><h2>{{ title }}</h2><slot /></div>' })
 const ConfirmDialogStub = defineComponent({ props: ['show'], emits: ['confirm', 'cancel'], template: '<div v-if="show" data-test="clear-confirm"><button data-test="clear-confirm-action" @click="$emit(\'confirm\')">confirm</button></div>' })
@@ -108,6 +108,18 @@ describe('WorkInsightView', () => {
     expect(wrapper.get('[role="dialog"]').text()).toContain('最后分析')
     expect(wrapper.get('[role="dialog"]').text()).toContain('路由')
     expect(wrapper.get('[role="dialog"]').text()).toContain('不展示 Redis 临时文本')
+    wrapper.unmount()
+  })
+
+  it('collapses work summaries after five lines', async () => {
+    api.listRanking.mockResolvedValue({ items: [{ ...rankingRow, latest_summary: ['一', '二', '三', '四', '五', '六'].join('\n') }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.text()).toContain('五')
+    expect(wrapper.text()).not.toContain('六')
+    await wrapper.get('[data-test="summary-toggle"]').trigger('click')
+    expect(wrapper.text()).toContain('六')
+    expect(api.getDaily).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

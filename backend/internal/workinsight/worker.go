@@ -335,6 +335,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 		return
 	}
 	results := make([]BatchResult, 0, len(chunks))
+	rollingSummary := previous
 	var inputTokens, outputTokens int64
 	callCount := 0
 	for _, chunk := range chunks {
@@ -342,7 +343,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 			s.finishBatchFailure(ctx, cfg, *batch, samples, "job_expired", false)
 			return
 		}
-		result, in, out, calls, err := s.analyzeChunkResilient(ctx, endpoint, "", chunk, true)
+		result, in, out, calls, err := s.analyzeChunkResilient(ctx, endpoint, rollingSummary, chunk, true)
 		if err != nil {
 			retryable := analyzerRetryable(err)
 			if retryable {
@@ -351,10 +352,12 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 			s.finishBatchFailure(ctx, cfg, *batch, samples, analyzerErrorCode(err), retryable)
 			return
 		}
-		results, inputTokens, outputTokens, callCount = append(results, result), inputTokens+in, outputTokens+out, callCount+calls
+		results, rollingSummary = append(results, result), result.WorkSummary
+		inputTokens, outputTokens, callCount = inputTokens+in, outputTokens+out, callCount+calls
 	}
 	eligible, _ := s.redis.Get(ctx, "sub2api:ai_work_insight:"+batch.LocalDate.Format("2006-01-02")+":eligible:"+strconv.FormatInt(batch.UserID, 10)).Int()
-	result := mergeDailySummary(previous, results)
+	result := mergeBatchResults(results)
+	result.WorkSummary = rollingSummary
 	if err := s.repo.CompleteBatch(ctx, *batch, result, cfg.AnalyzerModel, inputTokens, outputTokens, callCount, eligible, cfg.Timezone); err != nil {
 		logger.L().Error("work insight summary write failed", zap.Int64("batch_id", batch.ID), zap.Int64("user_id", batch.UserID), zap.String("local_date", batch.LocalDate.Format("2006-01-02")), zap.Error(err))
 		s.finishBatchFailure(ctx, cfg, *batch, samples, summaryWriteErrorCode(err), true)

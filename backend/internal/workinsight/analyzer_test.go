@@ -279,6 +279,19 @@ func TestValidateBatchResultRejectsUnknownCategoryAndFiltersUnsupportedProject(t
 	require.Empty(t, base.ExplicitProjects)
 }
 
+func TestValidateBatchResultDoesNotTurnAQueryIntoTroubleshooting(t *testing.T) {
+	samples := []analysisInput{{ID: 1, Text: "查询南昌天气"}}
+	wrong := BatchResult{WorkSummary: "- 排查天气查询接口调用逻辑", TaskCategories: []string{"问题排查"}, EvidenceLevel: "explicit"}
+	require.ErrorContains(t, validateBatchResult(&wrong, samples), "inferred troubleshooting")
+
+	accurate := BatchResult{
+		WorkSummary: "- 查询南昌天气", TaskCategories: []string{"其他"}, EvidenceLevel: "explicit",
+		RepresentativeItems: []RepresentativeItem{{SourceSampleIDs: []int64{1}, Summary: "查询南昌天气", TaskCategories: []string{"其他"}}},
+	}
+	require.NoError(t, validateBatchResult(&accurate, samples))
+	require.Equal(t, "查询南昌天气", accurate.RepresentativeItems[0].Summary)
+}
+
 func TestMergeBatchResultsDeduplicatesRepresentativeItems(t *testing.T) {
 	item := RepresentativeItem{SourceSampleIDs: []int64{1}, Summary: "整理安全规范流程", TaskCategories: []string{"文档写作"}}
 	merged := mergeBatchResults([]BatchResult{{RepresentativeItems: []RepresentativeItem{item}}, {RepresentativeItems: []RepresentativeItem{{SourceSampleIDs: []int64{2}, Summary: "整理  安全规范流程", TaskCategories: []string{"其他"}}}}})
@@ -312,12 +325,9 @@ func TestMergeBatchResultsKeepsRepresentativeItemsInDailySummary(t *testing.T) {
 	require.Equal(t, "- 整理安全规范流程\n- 排查账户锁定问题", result.WorkSummary)
 }
 
-func TestMergeDailySummaryKeepsEveryPreviousAndCurrentItem(t *testing.T) {
-	previous := "- " + strings.Repeat("已有工作", 80) + "\n- 排查无法启动的问题"
-	result := mergeDailySummary(previous, []BatchResult{{WorkSummary: "- 修复摘要覆盖问题"}})
-	require.Contains(t, result.WorkSummary, "排查无法启动的问题")
-	require.Contains(t, result.WorkSummary, "修复摘要覆盖问题")
-	require.Greater(t, len([]rune(result.WorkSummary)), 300)
+func TestValidateBatchResultLimitsDailySummaryToFiveThemes(t *testing.T) {
+	result := BatchResult{WorkSummary: "- 一\n- 二\n- 三\n- 四\n- 五\n- 六", TaskCategories: []string{"其他"}}
+	require.ErrorContains(t, validateBatchResult(&result, []analysisInput{{ID: 1, Text: "一二三四五六"}}), "too many work summary items")
 }
 
 func TestContextLimitStopsAfterCompensatingSplit(t *testing.T) {

@@ -42,7 +42,7 @@
             <template #cell-sample_count="{ row }">{{ formatNumber(row.sample_count) }}</template>
             <template #cell-coverage="{ row }">{{ row.covered_active_session_count }} / {{ row.eligible_active_session_count }}</template>
             <template #cell-days="{ row }"><strong>{{ formatDate(row.start_date) }}</strong><p class="text-xs text-gray-400">当天洞察</p></template>
-            <template #cell-summary="{ row }"><p class="max-w-md whitespace-pre-line text-sm">{{ row.latest_summary || '等待分析结果' }}</p></template>
+            <template #cell-summary="{ row }"><div class="max-w-md text-sm"><p class="whitespace-pre-line">{{ visibleSummary(row) }}</p><button v-if="summaryLines(row.latest_summary).length > 5" type="button" class="mt-1 text-xs text-primary-600 hover:text-primary-700" data-test="summary-toggle" @click.stop="toggleSummary(row.latest_insight_id)">{{ expandedSummaries.has(row.latest_insight_id) ? '收起' : '展开' }}</button></div></template>
             <template #cell-status="{ row }"><StatusBadge :status="row.failed_sample_count ? 'warning' : row.analyzed ? 'success' : 'inactive'" :label="row.failed_sample_count ? '部分失败' : row.analyzed ? '已完成' : '分析中'" /></template>
           </DataTable>
           <Pagination :total="page.total" :page="page.page" :page-size="page.page_size" @update:page="changePage" @update:page-size="changePageSize" />
@@ -282,6 +282,7 @@ const selectedDate = computed({
 const appliedFilters = ref<DailyInsightFilters>({ ...filters })
 const detailOpen = ref(false)
 const detail = ref<DailyInsightDetail | null>(null)
+const expandedSummaries = reactive(new Set<number>())
 const showAllSamples = ref(false)
 const logsOpen = ref(false)
 const batchLogTab = ref<'pending' | 'processing' | 'errors'>('pending')
@@ -326,6 +327,9 @@ const errorLabels: Record<string, string> = {
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 function splitList(value: string): string[] { return [...new Set(value.split(',').map(item => item.trim()).filter(Boolean))] }
 function parseIDs(value: string): number[] { return splitList(value).map(Number).filter(value => Number.isInteger(value) && value > 0) }
+function summaryLines(value: string): string[] { return value.split('\n').map(line => line.trim()).filter(Boolean) }
+function visibleSummary(row: UserInsightRanking): string { const lines = summaryLines(row.latest_summary); return lines.length ? (expandedSummaries.has(row.latest_insight_id) ? lines : lines.slice(0, 5)).join('\n') : '等待分析结果' }
+function toggleSummary(id: number) { expandedSummaries.has(id) ? expandedSummaries.delete(id) : expandedSummaries.add(id) }
 function formatNumber(value: number): string { return new Intl.NumberFormat('zh-CN', { notation: value >= 100000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value) }
 function formatBytes(value: number): string { return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${Math.ceil(value / 1024)} KiB` }
 function formatDate(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value)) : '—' }
