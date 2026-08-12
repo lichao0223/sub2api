@@ -25,6 +25,7 @@ describe('work insight api', () => {
     await api.retryBatch(12)
     await api.retryAllBatches()
     await api.stopBatch(13)
+    await api.deleteBatch(14)
     await api.listAnalyzerAccounts()
     await api.probe({} as never)
     const filters = { start_date: '2026-08-01', end_date: '', user_name: '', task_category: '问题排查', project_name: '' }
@@ -43,6 +44,7 @@ describe('work insight api', () => {
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/batches/12/retry')
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/batches/retry-all')
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/batches/13/stop')
+    expect(client.delete).toHaveBeenCalledWith('/admin/ai-work-insights/batches/14')
     expect(client.post).toHaveBeenCalledWith('/admin/ai-work-insights/endpoint/probe', {})
     expect(client.get).toHaveBeenNthCalledWith(7, '/admin/ai-work-insights/ranking', { params: { start_date: '2026-08-01', task_category: '问题排查', page: 2, page_size: 20 } })
     expect(client.get).toHaveBeenNthCalledWith(8, '/admin/ai-work-insights/overview', { params: { start_date: '2026-08-01', task_category: '问题排查' } })

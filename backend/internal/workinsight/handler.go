@@ -88,6 +88,19 @@ func (h *AdminHandler) StopBatch(c *gin.Context) {
 	response.Success(c, gin.H{"batch_id": id})
 }
 
+func (h *AdminHandler) DeleteFailedBatch(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "分析批次 ID 无效")
+		return
+	}
+	if err := h.service.DeleteFailedBatchNow(c.Request.Context(), id); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"batch_id": id})
+}
+
 func (h *AdminHandler) ListBatches(c *gin.Context) {
 	page, size := response.ParsePagination(c)
 	items, total, err := h.service.repo.ListBatches(c.Request.Context(), page, size, c.DefaultQuery("kind", "done"))

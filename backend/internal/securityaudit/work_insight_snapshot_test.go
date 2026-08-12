@@ -47,6 +47,13 @@ func TestExtractWorkInsightSnapshot_SystemPromptDoesNotConsumeUserBudget(t *test
 	require.Equal(t, snapshot.PromptChars, snapshot.AnalyzedChars)
 }
 
+func TestExtractLatestWorkInsightSnapshotUsesNewestUserInput(t *testing.T) {
+	snapshot, err := ExtractLatestWorkInsightSnapshot(Request{Protocol: "openai_chat", Body: []byte(`{"messages":[{"role":"user","content":"历史对话"},{"role":"assistant","content":"完成"},{"role":"user","content":"今天的新任务"}]}`)}, 16000)
+	require.NoError(t, err)
+	require.Equal(t, "今天的新任务", snapshot.Text)
+	require.Len(t, snapshot.Segments, 1)
+}
+
 func TestExtractWorkInsightSnapshot_RejectsMediaAndAssistantOnly(t *testing.T) {
 	_, err := ExtractWorkInsightSnapshot(Request{Protocol: "images", Body: []byte(`{"prompt":"image prompt"}`)}, 100)
 	require.ErrorIs(t, err, ErrNoPromptText)

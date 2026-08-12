@@ -93,6 +93,15 @@ const DefaultWorkInsightMaxRunes = 16000
 // Client boilerplate and replayed model/tool output do not describe user work
 // and must not consume the bounded work-insight analysis budget.
 func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot, error) {
+	return extractWorkInsightSnapshot(req, maxRunes, false)
+}
+
+// ExtractLatestWorkInsightSnapshot keeps only the newest user input for daily work analysis.
+func ExtractLatestWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot, error) {
+	return extractWorkInsightSnapshot(req, maxRunes, true)
+}
+
+func extractWorkInsightSnapshot(req Request, maxRunes int, latestOnly bool) (WorkInsightSnapshot, error) {
 	protocol := strings.ToLower(strings.TrimSpace(req.Protocol))
 	switch protocol {
 	case "openai_images", "grok_media", "media", "images":
@@ -112,6 +121,9 @@ func ExtractWorkInsightSnapshot(req Request, maxRunes int) (WorkInsightSnapshot,
 	ordered := promptSegmentTexts(normalizedPromptSegments(allowed))
 	if len(ordered) == 0 {
 		return WorkInsightSnapshot{}, ErrNoPromptText
+	}
+	if latestOnly {
+		ordered = ordered[len(ordered)-1:]
 	}
 	text := strings.Join(ordered, "\n\n")
 	segmentHashes := make([][32]byte, len(ordered))

@@ -1,12 +1,7 @@
 <template>
   <AppLayout>
     <div class="mx-auto max-w-[1600px] pb-24">
-      <header class="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.16em] text-primary-600 dark:text-primary-400">管理控制台</p>
-          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-gray-950 dark:text-white">AI 使用洞察</h1>
-          <p class="mt-2 max-w-3xl text-sm text-gray-500 dark:text-dark-300">通过脱敏采样了解团队如何使用 AI，结果基于抽样且可能不完整或误判。</p>
-        </div>
+      <header class="mb-6 flex justify-end">
         <div class="flex gap-2"><button type="button" class="btn btn-secondary" data-test="open-logs" :disabled="logsLoading" @click="openLogs">采样与分析日志</button><button type="button" class="btn btn-secondary" :disabled="loading" @click="refresh">刷新数据</button></div>
       </header>
 
@@ -28,8 +23,7 @@
 
         <section class="card p-4">
           <form class="flex flex-wrap items-end gap-3" @submit.prevent="search">
-            <label class="field"><span>开始日期</span><input v-model="filters.start_date" type="date" class="input" /></label>
-            <label class="field"><span>结束日期</span><input v-model="filters.end_date" type="date" class="input" /></label>
+            <label class="field"><span>日期</span><input v-model="selectedDate" type="date" class="input" /></label>
             <label class="field min-w-44 flex-1"><span>用户名</span><input v-model.trim="filters.user_name" class="input w-full" placeholder="用户名" /></label>
             <label class="field min-w-44 flex-1"><span>明确项目</span><input v-model.trim="filters.project_name" class="input w-full" placeholder="项目名称" /></label>
             <label class="field min-w-44"><span>任务类型</span><select v-model="filters.task_category" class="input"><option value="">全部类型</option><option v-for="category in TASK_CATEGORIES" :key="category">{{ category }}</option></select></label>
@@ -40,7 +34,7 @@
         <section class="card overflow-hidden">
           <div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700">
             <h2 class="font-semibold text-gray-950 dark:text-white">用户洞察排名</h2>
-            <p class="mt-1 text-xs text-gray-500">当前筛选时间范围内按 Token 用量排名，共 {{ page.total }} 位用户；点击查看最新一日详情。</p>
+            <p class="mt-1 text-xs text-gray-500">当前筛选日期内按 Token 用量排名，共 {{ page.total }} 位用户；点击查看当天工作摘要。</p>
           </div>
           <DataTable :columns="columns" :data="page.items" :loading="loading" row-key="latest_insight_id" clickable-rows @row-click="openDetail">
             <template #cell-rank="{ row }"><strong>#{{ rankingPosition(row) }}</strong></template>
@@ -48,7 +42,7 @@
             <template #cell-usage="{ row }"><strong>{{ formatNumber(row.business_total_tokens) }}</strong><p class="text-xs text-gray-400">{{ row.business_request_count }} 次请求</p></template>
             <template #cell-sample_count="{ row }">{{ formatNumber(row.sample_count) }}</template>
             <template #cell-coverage="{ row }">{{ row.covered_active_session_count }} / {{ row.eligible_active_session_count }}</template>
-            <template #cell-days="{ row }"><strong>{{ row.insight_days }}</strong><p class="text-xs text-gray-400">{{ formatRange(row.start_date, row.end_date) }}</p></template>
+            <template #cell-days="{ row }"><strong>{{ formatDate(row.start_date) }}</strong><p class="text-xs text-gray-400">当天洞察</p></template>
             <template #cell-summary="{ row }"><p class="max-w-md whitespace-pre-line text-sm">{{ row.latest_summary || '等待分析结果' }}</p></template>
             <template #cell-status="{ row }"><StatusBadge :status="row.failed_sample_count ? 'warning' : row.analyzed ? 'success' : 'inactive'" :label="row.failed_sample_count ? '部分失败' : row.analyzed ? '已完成' : '分析中'" /></template>
           </DataTable>
@@ -207,7 +201,7 @@
           <div v-show="batchLogTab === 'errors'" role="tabpanel">
             <div class="flex items-center justify-between border-y border-red-100 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/20"><p class="text-xs text-red-600 dark:text-red-400">失败任务可逐条或全部重新分析。</p><button type="button" class="btn btn-primary btn-sm" data-test="retry-all-errors" :disabled="retryingAll || !errorLogPage.total" @click="retryAllBatches">{{ retryingAll ? '正在重新排队…' : '全部重新分析' }}</button></div>
             <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b border-red-100 dark:border-red-900/50"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">错误原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
-              <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400">{{ errorLabel(item.error_code) }}</td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-secondary btn-xs" :disabled="stoppingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '暂停中…' : '暂停重试' }}</button></div></td></tr>
+            <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400">{{ errorLabel(item.error_code) }}</td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll || deletingBatchID !== null" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-secondary btn-xs" :disabled="stoppingBatchID !== null || deletingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '暂停中…' : '暂停重试' }}</button><button type="button" class="btn btn-danger btn-xs" :disabled="deletingBatchID !== null" @click="deleteBatch(item)">{{ deletingBatchID === item.id ? '删除中…' : '删除' }}</button></div></td></tr>
               <tr v-if="!logsLoading && !errorLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无错误任务</td></tr>
             </tbody></table></div>
             <Pagination :total="errorLogPage.total" :page="errorLogPage.page" :page-size="errorLogPage.page_size" @update:page="value => changeLogPage(errorLogPage, value, loadErrorLogs)" @update:page-size="value => changeLogPageSize(errorLogPage, value, loadErrorLogs)" />
@@ -265,6 +259,7 @@ const clearLogsConfirm = ref(false)
 const clearingLogs = ref(false)
 const retryingBatchID = ref<number | null>(null)
 const stoppingBatchID = ref<number | null>(null)
+const deletingBatchID = ref<number | null>(null)
 const retryingAll = ref(false)
 const message = ref('')
 const messageError = ref(false)
@@ -274,7 +269,16 @@ const analyzerAccounts = ref<AnalyzerAccount[]>([])
 const savedConfig = ref<WorkInsightConfig | null>(null)
 const draft = ref<WorkInsightConfig | null>(null)
 const page = reactive<UserInsightRankingPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
-const filters = reactive<DailyInsightFilters>({ start_date: '', end_date: '', user_name: '', task_category: '', project_name: '' })
+function todayISO(): string {
+  const date = new Date()
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+const today = todayISO()
+const filters = reactive<DailyInsightFilters>({ start_date: today, end_date: today, user_name: '', task_category: '', project_name: '' })
+const selectedDate = computed({
+  get: () => filters.start_date,
+  set: (value: string) => { filters.start_date = value; filters.end_date = value },
+})
 const appliedFilters = ref<DailyInsightFilters>({ ...filters })
 const detailOpen = ref(false)
 const detail = ref<DailyInsightDetail | null>(null)
@@ -289,7 +293,7 @@ const errorLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page
 let logRefreshTimer: ReturnType<typeof setTimeout> | undefined
 const columns: Column[] = [
   { key: 'rank', label: '排名' }, { key: 'user', label: '用户' }, { key: 'usage', label: 'Token 用量' },
-  { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'days', label: '洞察天数' },
+  { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'days', label: '洞察日期' },
   { key: 'summary', label: '最新工作摘要' }, { key: 'status', label: '状态' },
 ]
 const metrics = computed(() => {
@@ -325,7 +329,6 @@ function parseIDs(value: string): number[] { return splitList(value).map(Number)
 function formatNumber(value: number): string { return new Intl.NumberFormat('zh-CN', { notation: value >= 100000 ? 'compact' : 'standard', maximumFractionDigits: 1 }).format(value) }
 function formatBytes(value: number): string { return value >= 1048576 ? `${(value / 1048576).toFixed(1)} MiB` : `${Math.ceil(value / 1024)} KiB` }
 function formatDate(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value)) : '—' }
-function formatRange(start: string, end: string): string { return start === end ? formatDate(start) : `${formatDate(start)}—${formatDate(end)}` }
 function rankingPosition(row: UserInsightRanking): number { return (page.page - 1) * page.page_size + page.items.indexOf(row) + 1 }
 function formatDateTime(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '—' }
 function formatDuration(value: number): string { return value > 0 ? `${formatNumber(value)} ms` : '—' }
@@ -474,6 +477,17 @@ async function stopBatch(item: BatchSummary) {
     showMessage('分析任务已暂停并移至待分析')
   } catch (error) { showMessage(error instanceof Error ? error.message : '停止分析失败', true) }
   finally { stoppingBatchID.value = null }
+}
+async function deleteBatch(item: BatchSummary) {
+  if (deletingBatchID.value !== null) return
+  deletingBatchID.value = item.id
+  try {
+    await api.deleteBatch(item.id)
+    errorLogPage.page = 1
+    await Promise.all([loadBatchLogs(), loadSampleLogs(), loadRuntime()])
+    showMessage('错误任务及关联采样数据已删除')
+  } catch (error) { showMessage(error instanceof Error ? error.message : '删除错误任务失败', true) }
+  finally { deletingBatchID.value = null }
 }
 
 onMounted(refresh)

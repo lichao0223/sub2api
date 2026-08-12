@@ -152,6 +152,7 @@ func registerWorkInsightRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		insights.POST("/batches/:id/retry", h.Admin.WorkInsight.RetryBatch)
 		insights.POST("/batches/retry-all", h.Admin.WorkInsight.RetryAllBatches)
 		insights.POST("/batches/:id/stop", h.Admin.WorkInsight.StopBatch)
+		insights.DELETE("/batches/:id", h.Admin.WorkInsight.DeleteFailedBatch)
 		insights.DELETE("/logs", h.Admin.WorkInsight.ClearLogs)
 		insights.GET("/overview", h.Admin.WorkInsight.GetOverview)
 		insights.GET("/ranking", h.Admin.WorkInsight.ListRanking)

@@ -236,7 +236,7 @@ func (s *Service) processCandidate(ctx context.Context, req securityaudit.Reques
 	if err != nil || !decision.selected {
 		return err
 	}
-	snapshot, err := securityaudit.ExtractWorkInsightSnapshot(req, maxCapturedRequestBytes)
+	snapshot, err := securityaudit.ExtractLatestWorkInsightSnapshot(req, maxCapturedRequestBytes)
 	if err != nil {
 		_ = s.finishSample(ctx, req.UserID, localDate, decision, false)
 		if errors.Is(err, securityaudit.ErrNoPromptText) {
@@ -591,6 +591,15 @@ func (s *Service) StopBatchNow(ctx context.Context, batchID int64) error {
 			cancel()
 		}
 	}
+	return nil
+}
+
+func (s *Service) DeleteFailedBatchNow(ctx context.Context, batchID int64) error {
+	samples, err := s.repo.DeleteFailedBatch(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	s.deletePayloads(ctx, samples)
 	return nil
 }
 

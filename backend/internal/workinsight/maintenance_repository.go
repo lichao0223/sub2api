@@ -2,6 +2,7 @@ package workinsight
 
 import (
 	"context"
+	"errors"
 	"time"
 )
 
@@ -10,6 +11,46 @@ type CleanupResult struct{ Samples, Batches, Daily int64 }
 type ClearLogsResult struct {
 	Samples int64 `json:"samples"`
 	Batches int64 `json:"batches"`
+}
+
+func (r *Repository) DeleteFailedBatch(ctx context.Context, batchID int64) ([]BatchSample, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `SELECT id,estimated_tokens,created_at FROM ai_work_insight_samples WHERE batch_id=$1 ORDER BY id`, batchID)
+	if err != nil {
+		return nil, err
+	}
+	var samples []BatchSample
+	for rows.Next() {
+		var sample BatchSample
+		if err := rows.Scan(&sample.ID, &sample.EstimatedTokens, &sample.CreatedAt); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		samples = append(samples, sample)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_samples WHERE batch_id=$1`, batchID); err != nil {
+		return nil, err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_batches WHERE id=$1 AND status IN ('retry','failed','dropped') AND NOT (status='dropped' AND error_code='admin_stopped')`, batchID)
+	if err != nil {
+		return nil, err
+	}
+	affected, _ := result.RowsAffected()
+	if affected != 1 {
+		return nil, errors.New("work insight batch is not deletable")
+	}
+	return samples, tx.Commit()
 }
 
 func (r *Repository) ClearTerminalLogs(ctx context.Context) (ClearLogsResult, error) {
