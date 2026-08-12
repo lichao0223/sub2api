@@ -38,7 +38,7 @@
           <DataTable :columns="columns" :data="page.items" :loading="loading" row-key="latest_insight_id" clickable-rows @row-click="openDetail">
             <template #cell-rank="{ row }"><strong>#{{ rankingPosition(row) }}</strong></template>
             <template #cell-user="{ row }"><div><strong>{{ row.username || `用户 ${row.user_id ?? '-'}` }}</strong><p class="text-xs text-gray-400">ID {{ row.user_id ?? '已删除' }}</p></div></template>
-            <template #cell-usage="{ row }"><strong>{{ formatNumber(row.business_total_tokens) }}</strong><p class="text-xs text-gray-400">{{ row.business_request_count }} 次请求</p></template>
+            <template #cell-usage="{ row }"><strong>{{ formatCompactNumber(row.business_total_tokens) }}</strong><p class="text-xs text-gray-400">{{ row.business_request_count }} 次请求</p></template>
             <template #cell-sample_count="{ row }">{{ formatNumber(row.sample_count) }}</template>
             <template #cell-coverage="{ row }">{{ row.covered_active_session_count }} / {{ row.eligible_active_session_count }}</template>
             <template #cell-days="{ row }"><strong>{{ formatDate(row.start_date) }}</strong><p class="text-xs text-gray-400">当天洞察</p></template>
@@ -241,6 +241,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import type { Column } from '@/components/common/types'
+import { formatCompactNumber } from '@/utils/format'
 import api from './api'
 import { TASK_CATEGORIES } from './types'
 import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, LogPage, SampleSummary, UserInsightRanking, UserInsightRankingPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
