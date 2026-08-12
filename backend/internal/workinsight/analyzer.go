@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -602,6 +603,7 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 		return errors.New("too many representative items")
 	}
 	validItems := result.RepresentativeItems[:0]
+	seenItems := map[string]struct{}{}
 	for _, item := range result.RepresentativeItems {
 		item.Summary = strings.TrimSpace(item.Summary)
 		if item.Summary == "" || utf8.RuneCountInString(item.Summary) > 120 || containsVerbatimSample(item.Summary, samples) || len(item.SourceSampleIDs) == 0 || len(item.SourceSampleIDs) > 20 {
@@ -631,6 +633,11 @@ func validateBatchResult(result *BatchResult, samples []analysisInput) error {
 		if err != nil {
 			continue
 		}
+		key := representativeItemKey(item)
+		if _, exists := seenItems[key]; exists {
+			continue
+		}
+		seenItems[key] = struct{}{}
 		validItems = append(validItems, item)
 	}
 	result.RepresentativeItems = validItems
@@ -701,7 +708,19 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 		merged.ExplicitModules = mergeUnique(merged.ExplicitModules, result.ExplicitModules)
 		merged.ChangeTypes = mergeUnique(merged.ChangeTypes, result.ChangeTypes)
 		merged.BusinessTopics = mergeUnique(merged.BusinessTopics, result.BusinessTopics)
-		merged.RepresentativeItems = append(merged.RepresentativeItems, result.RepresentativeItems...)
+		for _, item := range result.RepresentativeItems {
+			key := representativeItemKey(item)
+			found := false
+			for _, existing := range merged.RepresentativeItems {
+				if representativeItemKey(existing) == key {
+					found = true
+					break
+				}
+			}
+			if !found {
+				merged.RepresentativeItems = append(merged.RepresentativeItems, item)
+			}
+		}
 		if result.EvidenceLevel == "explicit" {
 			merged.EvidenceLevel = "explicit"
 		}
@@ -711,6 +730,25 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 		merged.RepresentativeItems = merged.RepresentativeItems[:10]
 	}
 	return merged
+}
+
+func representativeItemKey(item RepresentativeItem) string {
+	if summary := strings.ToLower(strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, item.Summary)); summary != "" {
+		return "summary:" + summary
+	}
+	if len(item.SourceSampleIDs) > 0 {
+		ids := make([]string, len(item.SourceSampleIDs))
+		for i, id := range item.SourceSampleIDs {
+			ids[i] = strconv.FormatInt(id, 10)
+		}
+		return "id:" + strings.Join(ids, ",")
+	}
+	return "summary:"
 }
 
 func mergeDailySummary(previous string, results []BatchResult) BatchResult {

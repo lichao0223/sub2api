@@ -408,21 +408,16 @@ func (r *Repository) GetDaily(ctx context.Context, id int64) (*DailyInsight, err
 }
 
 func (r *Repository) ListRepresentativeItems(ctx context.Context, userID *int64, date time.Time, limit, offset int) ([]RepresentativeItem, int64, error) {
-	var total int64
-	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(jsonb_array_length(representative_items)),0)
-		FROM ai_work_insight_batches WHERE user_id IS NOT DISTINCT FROM $1 AND local_date=$2 AND status='done'`, userID, date).Scan(&total)
-	if err != nil {
-		return nil, 0, err
-	}
 	rows, err := r.db.QueryContext(ctx, `SELECT item FROM ai_work_insight_batches b
 		CROSS JOIN LATERAL jsonb_array_elements(b.representative_items) item
 		WHERE b.user_id IS NOT DISTINCT FROM $1 AND b.local_date=$2 AND b.status='done'
-		ORDER BY b.last_sample_id DESC LIMIT $3 OFFSET $4`, userID, date, limit, offset)
+		ORDER BY b.last_sample_id DESC`, userID, date)
 	if err != nil {
 		return nil, 0, err
 	}
 	defer func() { _ = rows.Close() }()
 	items := make([]RepresentativeItem, 0, limit)
+	seen := map[string]struct{}{}
 	for rows.Next() {
 		var raw []byte
 		if err := rows.Scan(&raw); err != nil {
@@ -432,9 +427,21 @@ func (r *Repository) ListRepresentativeItems(ctx context.Context, userID *int64,
 		if err := json.Unmarshal(raw, &item); err != nil {
 			return nil, 0, err
 		}
+		if _, exists := seen[representativeItemKey(item)]; exists {
+			continue
+		}
+		seen[representativeItemKey(item)] = struct{}{}
 		items = append(items, item)
 	}
-	return items, total, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	total := int64(len(items))
+	if offset >= len(items) {
+		return []RepresentativeItem{}, total, nil
+	}
+	end := min(offset+limit, len(items))
+	return items[offset:end], total, nil
 }
 
 func (r *Repository) PersistCoverage(ctx context.Context, userID int64, username string, date time.Time, eligible, covered int) error {

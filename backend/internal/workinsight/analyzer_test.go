@@ -279,6 +279,12 @@ func TestValidateBatchResultRejectsUnknownCategoryAndFiltersUnsupportedProject(t
 	require.Empty(t, base.ExplicitProjects)
 }
 
+func TestMergeBatchResultsDeduplicatesRepresentativeItems(t *testing.T) {
+	item := RepresentativeItem{SourceSampleIDs: []int64{1}, Summary: "整理安全规范流程", TaskCategories: []string{"文档写作"}}
+	merged := mergeBatchResults([]BatchResult{{RepresentativeItems: []RepresentativeItem{item}}, {RepresentativeItems: []RepresentativeItem{{SourceSampleIDs: []int64{2}, Summary: "整理  安全规范流程", TaskCategories: []string{"其他"}}}}})
+	require.Len(t, merged.RepresentativeItems, 1)
+}
+
 func TestValidateBatchResultNormalizesUnknownEvidenceLevel(t *testing.T) {
 	result := BatchResult{WorkSummary: "整理会议纪要。", TaskCategories: []string{"会议纪要"}, EvidenceLevel: "低"}
 	require.NoError(t, validateBatchResult(&result, []analysisInput{{ID: 1, Text: "整理会议纪要"}}))
