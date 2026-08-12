@@ -1,14 +1,13 @@
 <template>
   <AppLayout>
     <div class="mx-auto max-w-[1600px] pb-24">
-      <header class="mb-6 flex justify-end">
+      <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div role="tablist" aria-label="AI 使用洞察" class="tabs inline-flex">
+          <button id="work-insight-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'insights' }" :aria-selected="tab === 'insights'" :tabindex="tab === 'insights' ? 0 : -1" aria-controls="work-insight-panel" @click="tab = 'insights'">洞察分析</button>
+          <button id="work-config-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'config' }" :aria-selected="tab === 'config'" :tabindex="tab === 'config' ? 0 : -1" aria-controls="work-config-panel" @click="tab = 'config'">运行配置</button>
+        </div>
         <div class="flex gap-2"><button type="button" class="btn btn-secondary" data-test="open-logs" :disabled="logsLoading" @click="openLogs">采样与分析日志</button><button type="button" class="btn btn-secondary" :disabled="loading" @click="refresh">刷新数据</button></div>
       </header>
-
-      <div role="tablist" aria-label="AI 使用洞察" class="mb-4 tabs inline-flex">
-        <button id="work-insight-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'insights' }" :aria-selected="tab === 'insights'" :tabindex="tab === 'insights' ? 0 : -1" aria-controls="work-insight-panel" @click="tab = 'insights'">洞察分析</button>
-        <button id="work-config-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'config' }" :aria-selected="tab === 'config'" :tabindex="tab === 'config' ? 0 : -1" aria-controls="work-config-panel" @click="tab = 'config'">运行配置</button>
-      </div>
 
       <div v-if="message" role="status" aria-live="polite" class="mb-4 rounded-lg border px-4 py-3 text-sm" :class="messageError ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300' : 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300'">{{ message }}</div>
 
