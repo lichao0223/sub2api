@@ -9,6 +9,7 @@ import (
 )
 
 type dailyState struct {
+	summary        string
 	categoryStats  map[string]int
 	projects       []string
 	modules        []string
@@ -48,6 +49,7 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 	if err != nil {
 		return err
 	}
+	result.WorkSummary = mergeWorkSummaries(result.WorkSummary, state.summary)
 	for _, category := range result.TaskCategories {
 		state.categoryStats[category]++
 	}
@@ -106,8 +108,8 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 func loadDailyState(ctx context.Context, tx *sql.Tx, userID int64, date time.Time) (dailyState, error) {
 	state := dailyState{categoryStats: map[string]int{}}
 	var categoryRaw, projectsRaw, modulesRaw, changesRaw, topicsRaw []byte
-	err := tx.QueryRowContext(ctx, `SELECT task_category_stats,explicit_projects,explicit_modules,change_types,business_topics,summary_version,sample_count,failed_sample_count
-		FROM ai_user_daily_work_insights WHERE user_id=$1 AND insight_date=$2 FOR UPDATE`, userID, date).Scan(&categoryRaw, &projectsRaw, &modulesRaw, &changesRaw, &topicsRaw, &state.version, &state.sampleCount, &state.failedCount)
+	err := tx.QueryRowContext(ctx, `SELECT daily_summary,task_category_stats,explicit_projects,explicit_modules,change_types,business_topics,summary_version,sample_count,failed_sample_count
+		FROM ai_user_daily_work_insights WHERE user_id=$1 AND insight_date=$2 FOR UPDATE`, userID, date).Scan(&state.summary, &categoryRaw, &projectsRaw, &modulesRaw, &changesRaw, &topicsRaw, &state.version, &state.sampleCount, &state.failedCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, nil
 	}

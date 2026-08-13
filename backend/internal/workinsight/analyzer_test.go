@@ -333,6 +333,12 @@ func TestMergeBatchResultsKeepsRepresentativeItemsInDailySummary(t *testing.T) {
 	require.Equal(t, "- 整理安全规范流程\n- 排查账户锁定问题", result.WorkSummary)
 }
 
+func TestMergeWorkSummariesKeepsLatestAndPreviousItems(t *testing.T) {
+	previous := "- 排查迁移启动错误\n- 优化分析结果校验\n- 咨询 Docker 监控\n- 咨询数据源配置\n- 设计模块迁移方案"
+	merged := mergeWorkSummaries("- 查询南昌天气", previous)
+	require.Equal(t, "- 查询南昌天气\n- 排查迁移启动错误\n- 优化分析结果校验\n- 咨询 Docker 监控\n- 咨询数据源配置", merged)
+}
+
 func TestValidateBatchResultLimitsDailySummaryToFiveThemes(t *testing.T) {
 	result := BatchResult{WorkSummary: "- 一\n- 二\n- 三\n- 四\n- 五\n- 六", TaskCategories: []string{"其他"}}
 	require.ErrorContains(t, validateBatchResult(&result, []analysisInput{{ID: 1, Text: "一二三四五六"}}), "too many work summary items")

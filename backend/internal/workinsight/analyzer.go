@@ -753,6 +753,9 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 	var summaries []string
 	seenSummaries := map[string]struct{}{}
 	addSummary := func(value string) {
+		if len(summaries) >= 5 {
+			return
+		}
 		value = strings.TrimSpace(strings.TrimLeft(value, "-•* "))
 		key := strings.ToLower(strings.Map(func(r rune) rune {
 			if unicode.IsSpace(r) {
@@ -799,6 +802,10 @@ func mergeBatchResults(results []BatchResult) BatchResult {
 		merged.RepresentativeItems = merged.RepresentativeItems[:10]
 	}
 	return merged
+}
+
+func mergeWorkSummaries(latest, previous string) string {
+	return mergeBatchResults([]BatchResult{{WorkSummary: latest}, {WorkSummary: previous}}).WorkSummary
 }
 
 func representativeItemKey(item RepresentativeItem) string {
