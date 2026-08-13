@@ -665,7 +665,17 @@ func (r *apiKeyRepository) ExistsByKey(ctx context.Context, key string) (bool, e
 }
 
 func (r *apiKeyRepository) ListByGroupID(ctx context.Context, groupID int64, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
-	q := r.activeQuery().Where(apikey.GroupIDEQ(groupID))
+	return r.ListByGroupIDSearch(ctx, groupID, params, "")
+}
+
+func (r *apiKeyRepository) ListByGroupIDSearch(ctx context.Context, groupID int64, params pagination.PaginationParams, search string) ([]service.APIKey, *pagination.PaginationResult, error) {
+	predicates := []predicate.APIKey{apikey.GroupIDEQ(groupID)}
+	if search = strings.TrimSpace(search); search != "" {
+		predicates = append(predicates, apikey.HasUserWith(
+			user.Or(user.EmailContainsFold(search), user.UsernameContainsFold(search)),
+		))
+	}
+	q := r.activeQuery().Where(predicates...)
 
 	total, err := q.Count(ctx)
 	if err != nil {

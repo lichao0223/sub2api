@@ -271,10 +271,11 @@ export async function getStats(id: number): Promise<{
 export async function getGroupApiKeys(
   id: number,
   page: number = 1,
-  pageSize: number = 20
+  pageSize: number = 20,
+  search = ''
 ): Promise<PaginatedResponse<ApiKey>> {
   const { data } = await apiClient.get<PaginatedResponse<ApiKey>>(`/admin/groups/${id}/api-keys`, {
-    params: { page, page_size: pageSize }
+    params: { page, page_size: pageSize, search: search || undefined }
   })
   return data
 }

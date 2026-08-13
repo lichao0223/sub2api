@@ -475,6 +475,7 @@ export default {
         concurrency: 'Concurrency limit',
         targetGroup: 'Move to group',
         noGroup: 'No group',
+        searchUser: 'Search by name or email',
         recreateInSourceGroup: 'Create replacement keys in the source group',
         invalidValues: 'Limits must be non-negative; concurrency must be a whole number.',
         selectionLimit: 'ID selection is limited to 500 keys; select the whole group instead.',

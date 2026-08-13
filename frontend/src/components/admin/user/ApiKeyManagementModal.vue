@@ -37,6 +37,10 @@
         {{ t('admin.users.apiKeyManagement.selectGroupHint') }}
       </div>
       <template v-else>
+        <div class="flex items-center gap-2">
+          <input v-model="search" type="search" class="input flex-1" :placeholder="t('admin.users.apiKeyManagement.searchUser')" @keyup.enter="applySearch" />
+          <button type="button" class="btn btn-secondary" :disabled="loading" @click="applySearch">{{ t('common.search') }}</button>
+        </div>
         <div class="flex min-h-10 flex-wrap items-center justify-between gap-2 border-y border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900/40">
           <div class="flex items-center gap-2">
             <Icon :name="allInGroupSelected ? 'checkCircle' : 'infoCircle'" size="sm" :class="allInGroupSelected || selectedCount > 0 ? 'text-primary-600' : 'text-gray-400'" />
@@ -58,7 +62,7 @@
           </button>
         </div>
 
-        <div class="h-[min(42vh,26rem)] min-h-64 overflow-hidden border border-gray-200 dark:border-dark-700">
+        <div class="h-[min(42vh,26rem)] min-h-64 overflow-x-auto overflow-y-scroll border border-gray-200 dark:border-dark-700">
           <DataTable
             :columns="columns"
             :data="keys"
@@ -181,6 +185,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const allInGroupSelected = ref(false)
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
+const search = ref('')
 const { selectedIds, selectedCount, setSelectedIds, clear } = useTableSelection<ApiKey>({ rows: keys, getId: row => row.id })
 
 const editRates = ref(false)
@@ -209,7 +214,7 @@ const groupOptions = computed(() => groups.value.map(group => ({ value: group.id
 const targetGroupOptions = computed(() => [
   { value: 0, label: t('admin.users.apiKeyManagement.noGroup') },
   ...groups.value
-    .filter(group => group.status === 'active' && !group.is_exclusive && group.subscription_type !== 'subscription' && group.id !== groupId.value)
+    .filter(group => group.status === 'active' && !group.is_exclusive && group.id !== groupId.value)
     .map(group => ({ value: group.id, label: group.name }))
 ])
 const statusOptions = computed(() => [
@@ -242,7 +247,7 @@ const loadKeys = async () => {
   if (!groupId.value) return
   loading.value = true
   try {
-    const result = await adminAPI.groups.getGroupApiKeys(groupId.value, pagination.page, pagination.pageSize)
+    const result = await adminAPI.groups.getGroupApiKeys(groupId.value, pagination.page, pagination.pageSize, search.value)
     keys.value = result.items
     pagination.total = result.total
   } catch (error: any) {
@@ -253,6 +258,7 @@ const loadKeys = async () => {
 }
 const changePage = (page: number) => { pagination.page = page; loadKeys() }
 const changePageSize = (pageSize: number) => { pagination.pageSize = pageSize; pagination.page = 1; loadKeys() }
+const applySearch = () => { pagination.page = 1; clearSelection(); allInGroupSelected.value = false; loadKeys() }
 
 watch(() => props.show, async show => {
   if (!show) return
@@ -263,7 +269,7 @@ watch(() => props.show, async show => {
     appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.loadFailed'))
   }
 })
-watch(groupId, () => { pagination.page = 1; targetGroupId.value = null; recreateInSourceGroup.value = false; clearSelection(); loadKeys() })
+watch(groupId, () => { pagination.page = 1; search.value = ''; targetGroupId.value = null; recreateInSourceGroup.value = false; clearSelection(); loadKeys() })
 watch(targetGroupId, () => { recreateInSourceGroup.value = false })
 
 const submit = async () => {

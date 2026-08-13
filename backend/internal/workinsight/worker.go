@@ -349,6 +349,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 			if retryable {
 				s.pauseAnalyzer(time.Now())
 			}
+			// 保留分析文本直到 TTL，管理员可以修正配置后重新分析。
 			s.finishBatchFailure(ctx, cfg, *batch, samples, analyzerErrorCode(err), retryable)
 			return
 		}
@@ -395,9 +396,6 @@ func (s *Service) finishBatchFailure(ctx context.Context, cfg storedConfig, batc
 	if err == nil {
 		if len(dropped) > 0 {
 			samples = dropped
-		}
-		if !retryable {
-			s.deletePayloads(ctx, samples)
 		}
 	}
 }

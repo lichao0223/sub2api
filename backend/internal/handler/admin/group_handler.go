@@ -772,7 +772,15 @@ func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
 
 	page, pageSize := response.ParsePagination(c)
 
-	keys, total, err := h.adminService.GetGroupAPIKeys(c.Request.Context(), groupID, page, pageSize)
+	var keys []service.APIKey
+	var total int64
+	if searcher, ok := h.adminService.(interface {
+		GetGroupAPIKeysWithSearch(context.Context, int64, int, int, string) ([]service.APIKey, int64, error)
+	}); ok {
+		keys, total, err = searcher.GetGroupAPIKeysWithSearch(c.Request.Context(), groupID, page, pageSize, c.Query("search"))
+	} else {
+		keys, total, err = h.adminService.GetGroupAPIKeys(c.Request.Context(), groupID, page, pageSize)
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

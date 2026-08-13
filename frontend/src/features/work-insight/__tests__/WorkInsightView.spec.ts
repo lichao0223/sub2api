@@ -5,7 +5,7 @@ import WorkInsightView from '../WorkInsightView.vue'
 import { TASK_CATEGORIES } from '../types'
 import type { WorkInsightConfig } from '../types'
 
-const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), retryBatch: vi.fn(), retryAllBatches: vi.fn(), stopBatch: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
+const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), retryBatch: vi.fn(), retryAllBatches: vi.fn(), stopBatch: vi.fn(), deleteBatch: vi.fn(), deleteAllFailedBatches: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
 vi.mock('../api', () => ({ default: api }))
 
 const config = (): WorkInsightConfig => ({
@@ -165,7 +165,7 @@ describe('WorkInsightView', () => {
     await flushPromises()
     expect(api.clearLogs).toHaveBeenCalled()
     expect(wrapper.get('[role="dialog"]').text()).toContain('摘要写入版本冲突，自动重试后仍未成功')
-    expect(wrapper.get('[role="dialog"]').text()).not.toContain('summary_write_conflict')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('summary_write_conflict')
     await wrapper.findAll('[role="tab"]')[1].trigger('click')
     await wrapper.get('[data-test="analyze-now"]').trigger('click')
     await flushPromises()

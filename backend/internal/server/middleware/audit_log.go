@@ -125,6 +125,7 @@ var auditSensitiveReads = map[string]string{
 	"GET /api/v1/admin/ai-work-insights/batches":                        "admin.ai_work_insights.batches.read",
 	"DELETE /api/v1/admin/ai-work-insights/logs":                        "admin.ai_work_insights.logs.clear",
 	"DELETE /api/v1/admin/ai-work-insights/batches/:id":                 "admin.ai_work_insights.batch.delete",
+	"DELETE /api/v1/admin/ai-work-insights/batches/errors":              "admin.ai_work_insights.batches.delete_errors",
 }
 
 // auditActionOverrides 变更类请求的动作名精确映射（未命中时自动推导）。

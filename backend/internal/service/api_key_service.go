@@ -483,8 +483,8 @@ func (s *APIKeyService) AdminBatchUpdate(ctx context.Context, req AdminBatchUpda
 			if group.Status != StatusActive {
 				return 0, infraerrors.BadRequest("GROUP_NOT_ACTIVE", "target group is not active")
 			}
-			if group.IsExclusive || group.IsSubscriptionType() {
-				return 0, infraerrors.BadRequest("BATCH_GROUP_NOT_SUPPORTED", "batch moving to exclusive or subscription groups is not supported")
+			if group.IsExclusive {
+				return 0, infraerrors.BadRequest("BATCH_GROUP_NOT_SUPPORTED", "batch moving to exclusive groups is not supported")
 			}
 		}
 	}

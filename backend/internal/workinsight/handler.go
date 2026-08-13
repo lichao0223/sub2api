@@ -101,6 +101,15 @@ func (h *AdminHandler) DeleteFailedBatch(c *gin.Context) {
 	response.Success(c, gin.H{"batch_id": id})
 }
 
+func (h *AdminHandler) DeleteAllFailedBatches(c *gin.Context) {
+	deleted, err := h.service.DeleteAllFailedBatchesNow(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"batches": deleted})
+}
+
 func (h *AdminHandler) ListBatches(c *gin.Context) {
 	page, size := response.ParsePagination(c)
 	items, total, err := h.service.repo.ListBatches(c.Request.Context(), page, size, c.DefaultQuery("kind", "done"))

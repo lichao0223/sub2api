@@ -53,6 +53,49 @@ func (r *Repository) DeleteFailedBatch(ctx context.Context, batchID int64) ([]Ba
 	return samples, tx.Commit()
 }
 
+func (r *Repository) DeleteAllFailedBatches(ctx context.Context) ([]BatchSample, int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.estimated_tokens,s.created_at
+		FROM ai_work_insight_samples s JOIN ai_work_insight_batches b ON b.id=s.batch_id
+		WHERE b.status IN ('retry','failed','dropped') AND NOT (b.status='dropped' AND b.error_code='admin_stopped')
+		ORDER BY s.id`)
+	if err != nil {
+		return nil, 0, err
+	}
+	var samples []BatchSample
+	for rows.Next() {
+		var sample BatchSample
+		if err := rows.Scan(&sample.ID, &sample.EstimatedTokens, &sample.CreatedAt); err != nil {
+			_ = rows.Close()
+			return nil, 0, err
+		}
+		samples = append(samples, sample)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, 0, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_samples WHERE batch_id IN
+		(SELECT id FROM ai_work_insight_batches WHERE status IN ('retry','failed','dropped')
+		 AND NOT (status='dropped' AND error_code='admin_stopped'))`); err != nil {
+		return nil, 0, err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM ai_work_insight_batches WHERE status IN ('retry','failed','dropped')
+		AND NOT (status='dropped' AND error_code='admin_stopped')`)
+	if err != nil {
+		return nil, 0, err
+	}
+	deleted, _ := result.RowsAffected()
+	return samples, deleted, tx.Commit()
+}
+
 func (r *Repository) ClearTerminalLogs(ctx context.Context) (ClearLogsResult, error) {
 	result := ClearLogsResult{}
 	tx, err := r.db.BeginTx(ctx, nil)

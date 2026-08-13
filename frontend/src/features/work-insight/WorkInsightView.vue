@@ -198,9 +198,9 @@
           </div>
 
           <div v-show="batchLogTab === 'errors'" role="tabpanel">
-            <div class="flex items-center justify-between border-y border-red-100 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/20"><p class="text-xs text-red-600 dark:text-red-400">失败任务可逐条或全部重新分析。</p><button type="button" class="btn btn-primary btn-sm" data-test="retry-all-errors" :disabled="retryingAll || !errorLogPage.total" @click="retryAllBatches">{{ retryingAll ? '正在重新排队…' : '全部重新分析' }}</button></div>
+            <div class="flex items-center justify-between border-y border-red-100 bg-red-50 px-4 py-3 dark:border-red-900/50 dark:bg-red-950/20"><p class="text-xs text-red-600 dark:text-red-400">失败任务可重新分析或删除。</p><div class="flex gap-2"><button type="button" class="btn btn-danger btn-sm" data-test="delete-all-errors" :disabled="deletingAll || !errorLogPage.total" @click="deleteAllConfirm = true">{{ deletingAll ? '删除中…' : '全部删除' }}</button><button type="button" class="btn btn-primary btn-sm" data-test="retry-all-errors" :disabled="retryingAll || !errorLogPage.total" @click="retryAllBatches">{{ retryingAll ? '正在重新排队…' : '全部重新分析' }}</button></div></div>
             <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b border-red-100 dark:border-red-900/50"><th class="p-3">时间</th><th class="p-3">用户</th><th class="p-3">样本</th><th class="p-3">错误原因</th><th class="p-3">状态</th><th class="p-3 text-right">操作</th></tr></thead><tbody>
-            <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400">{{ errorLabel(item.error_code) }}</td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll || deletingBatchID !== null" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-secondary btn-xs" :disabled="stoppingBatchID !== null || deletingBatchID !== null" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '暂停中…' : '暂停重试' }}</button><button type="button" class="btn btn-danger btn-xs" :disabled="deletingBatchID !== null" @click="deleteBatch(item)">{{ deletingBatchID === item.id ? '删除中…' : '删除' }}</button></div></td></tr>
+            <tr v-for="item in errorLogPage.items" :key="item.id" class="border-b border-red-100 last:border-0 dark:border-red-950"><td class="p-3 whitespace-nowrap">{{ formatDateTime(item.created_at) }}</td><td class="p-3">{{ logUserLabel(item.username, item.user_id) }}</td><td class="p-3">{{ item.sample_count }}</td><td class="p-3 text-red-600 dark:text-red-400"><div>{{ errorLabel(item.error_code) }}</div><code class="mt-1 block text-[10px] text-red-400">{{ item.error_code || 'unknown_error' }}</code></td><td class="p-3">{{ statusLabel(item.status) }}</td><td class="p-3"><div class="flex justify-end gap-2"><button type="button" class="btn btn-primary btn-xs" :disabled="retryingBatchID !== null || retryingAll || deletingBatchID !== null || deletingAll" @click="retryBatch(item)">{{ retryingBatchID === item.id ? '重新排队中…' : '重新分析' }}</button><button v-if="item.status === 'retry'" type="button" class="btn btn-secondary btn-xs" :disabled="stoppingBatchID !== null || deletingBatchID !== null || deletingAll" @click="stopBatch(item)">{{ stoppingBatchID === item.id ? '暂停中…' : '暂停重试' }}</button><button type="button" class="btn btn-danger btn-xs" :disabled="deletingBatchID !== null || deletingAll" @click="deleteBatch(item)">{{ deletingBatchID === item.id ? '删除中…' : '删除' }}</button></div></td></tr>
               <tr v-if="!logsLoading && !errorLogPage.items.length"><td colspan="6" class="p-8 text-center text-gray-400">暂无错误任务</td></tr>
             </tbody></table></div>
             <Pagination :total="errorLogPage.total" :page="errorLogPage.page" :page-size="errorLogPage.page_size" @update:page="value => changeLogPage(errorLogPage, value, loadErrorLogs)" @update:page-size="value => changeLogPageSize(errorLogPage, value, loadErrorLogs)" />
@@ -228,6 +228,7 @@
       </div>
     </BaseDialog>
     <ConfirmDialog :show="clearLogsConfirm" title="清空历史日志" message="确认清空已完成和失败的采样、分析日志？待分析、正在分析和每日洞察结果会保留，此操作不可恢复。" confirm-text="确认清空" :loading="clearingLogs" danger @confirm="clearLogs" @cancel="clearLogsConfirm = false" />
+    <ConfirmDialog :show="deleteAllConfirm" title="删除全部错误任务" message="确认删除全部错误任务及其关联采样数据？此操作不可恢复。" confirm-text="确认删除" :loading="deletingAll" danger @confirm="deleteAllBatches" @cancel="deleteAllConfirm = false" />
   </AppLayout>
 </template>
 
@@ -291,6 +292,8 @@ const pendingLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, pa
 const processingLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
 const completedLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
 const errorLogPage = reactive<LogPage<BatchSummary>>({ items: [], total: 0, page: 1, page_size: 20, pages: 1 })
+const deletingAll = ref(false)
+const deleteAllConfirm = ref(false)
 let logRefreshTimer: ReturnType<typeof setTimeout> | undefined
 const columns: Column[] = [
   { key: 'rank', label: '排名' }, { key: 'user', label: '用户' }, { key: 'usage', label: 'Token 用量' },
@@ -492,6 +495,18 @@ async function deleteBatch(item: BatchSummary) {
     showMessage('错误任务及关联采样数据已删除')
   } catch (error) { showMessage(error instanceof Error ? error.message : '删除错误任务失败', true) }
   finally { deletingBatchID.value = null }
+}
+async function deleteAllBatches() {
+  if (deletingAll.value || !errorLogPage.total) return
+  deletingAll.value = true
+  try {
+    const result = await api.deleteAllFailedBatches()
+    deleteAllConfirm.value = false
+    errorLogPage.page = 1
+    await Promise.all([loadBatchLogs(), loadSampleLogs(), loadRuntime()])
+    showMessage(`已删除 ${result.batches} 条错误任务及关联采样数据`)
+  } catch (error) { showMessage(error instanceof Error ? error.message : '删除全部错误任务失败', true) }
+  finally { deletingAll.value = false }
 }
 
 onMounted(refresh)

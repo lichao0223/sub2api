@@ -475,6 +475,7 @@ export default {
         concurrency: '并发上限',
         targetGroup: '修改分组',
         noGroup: '无分组',
+        searchUser: '按中文名或邮箱搜索用户',
         recreateInSourceGroup: '迁移后在原分组重新创建 Key',
         invalidValues: '限制值必须是非负数，并发上限必须是整数。',
         selectionLimit: '按 ID 批量操作最多选择 500 个；可改用全选该分组。',

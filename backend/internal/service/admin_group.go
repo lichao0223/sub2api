@@ -1045,7 +1045,20 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 }
 
 func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error) {
+	return s.GetGroupAPIKeysWithSearch(ctx, groupID, page, pageSize, "")
+}
+
+func (s *adminServiceImpl) GetGroupAPIKeysWithSearch(ctx context.Context, groupID int64, page, pageSize int, search string) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
+	if searchRepo, ok := s.apiKeyRepo.(interface {
+		ListByGroupIDSearch(context.Context, int64, pagination.PaginationParams, string) ([]APIKey, *pagination.PaginationResult, error)
+	}); ok {
+		keys, result, err := searchRepo.ListByGroupIDSearch(ctx, groupID, params, search)
+		if err != nil {
+			return nil, 0, err
+		}
+		return keys, result.Total, nil
+	}
 	keys, result, err := s.apiKeyRepo.ListByGroupID(ctx, groupID, params)
 	if err != nil {
 		return nil, 0, err

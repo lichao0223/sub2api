@@ -603,6 +603,15 @@ func (s *Service) DeleteFailedBatchNow(ctx context.Context, batchID int64) error
 	return nil
 }
 
+func (s *Service) DeleteAllFailedBatchesNow(ctx context.Context) (int64, error) {
+	samples, deleted, err := s.repo.DeleteAllFailedBatches(ctx)
+	if err != nil {
+		return 0, err
+	}
+	s.deletePayloads(ctx, samples)
+	return deleted, nil
+}
+
 func (s *Service) SaveConfig(ctx context.Context, next Config, actorID int64) (Config, error) {
 	current := s.config.Load()
 	if current == nil || next.ConfigVersion != current.ConfigVersion {
