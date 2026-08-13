@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 type CleanupResult struct{ Samples, Batches, Daily int64 }
@@ -196,6 +198,42 @@ func (r *Repository) CoveredSessions(ctx context.Context, userID int64, date tim
 	err := r.db.QueryRowContext(ctx, `SELECT COUNT(DISTINCT b.active_session_id),COALESCE(MAX(b.username_snapshot),'')
 		FROM ai_work_insight_batches b WHERE b.user_id=$1 AND b.local_date=$2 AND b.status='done'`, userID, date).Scan(&covered, &username)
 	return covered, username, err
+}
+
+type coverageInput struct {
+	UserID   int64
+	Eligible int
+}
+
+func (r *Repository) PersistCoverageBatch(ctx context.Context, date time.Time, inputs []coverageInput) error {
+	if len(inputs) == 0 {
+		return nil
+	}
+	userIDs := make([]int64, len(inputs))
+	eligible := make([]int, len(inputs))
+	for i, input := range inputs {
+		userIDs[i], eligible[i] = input.UserID, input.Eligible
+	}
+	_, err := r.db.ExecContext(ctx, `WITH input AS (
+		SELECT * FROM unnest($2::bigint[], $3::int[]) AS x(user_id, eligible)
+	), covered AS (
+		SELECT b.user_id,COUNT(DISTINCT b.active_session_id) AS covered,
+			COALESCE(MAX(b.username_snapshot),'') AS username
+		FROM ai_work_insight_batches b
+		WHERE b.local_date=$1 AND b.status='done' AND b.user_id=ANY($2)
+		GROUP BY b.user_id
+	)
+	INSERT INTO ai_user_daily_work_insights
+		(user_id,username_snapshot,insight_date,eligible_active_session_count,covered_active_session_count,computed_at)
+	SELECT i.user_id,COALESCE(NULLIF(c.username,''),u.username,''),$1,
+		GREATEST(i.eligible,COALESCE(c.covered,0)),COALESCE(c.covered,0),NOW()
+	FROM input i LEFT JOIN covered c ON c.user_id=i.user_id LEFT JOIN users u ON u.id=i.user_id
+	ON CONFLICT (user_id,insight_date) DO UPDATE SET
+		username_snapshot=CASE WHEN EXCLUDED.username_snapshot<>'' THEN EXCLUDED.username_snapshot ELSE ai_user_daily_work_insights.username_snapshot END,
+		eligible_active_session_count=GREATEST(ai_user_daily_work_insights.eligible_active_session_count,EXCLUDED.eligible_active_session_count),
+		covered_active_session_count=GREATEST(ai_user_daily_work_insights.covered_active_session_count,EXCLUDED.covered_active_session_count),
+		computed_at=NOW()`, date, pq.Array(userIDs), pq.Array(eligible))
+	return err
 }
 
 func (r *Repository) Finalize(ctx context.Context, date time.Time) (int64, error) {

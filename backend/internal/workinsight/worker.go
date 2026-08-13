@@ -166,31 +166,36 @@ func (s *Service) reconcileDate(ctx context.Context, date time.Time, dateText, t
 func (s *Service) reconcileCoverage(ctx context.Context, date time.Time, dateText string) error {
 	var cursor uint64
 	pattern := "sub2api:ai_work_insight:" + dateText + ":eligible:*"
+	inputs := make([]coverageInput, 0)
 	for {
 		keys, next, err := s.redis.Scan(ctx, cursor, pattern, 200).Result()
 		if err != nil {
 			return err
 		}
-		for _, key := range keys {
-			userID, err := strconv.ParseInt(key[strings.LastIndex(key, ":")+1:], 10, 64)
-			if err != nil {
-				continue
-			}
-			eligible, err := s.redis.Get(ctx, key).Int()
+		if len(keys) > 0 {
+			values, err := s.redis.MGet(ctx, keys...).Result()
 			if err != nil {
 				return err
 			}
-			covered, username, err := s.repo.CoveredSessions(ctx, userID, date)
-			if err != nil {
-				return err
-			}
-			if err := s.repo.PersistCoverage(ctx, userID, username, date, eligible, covered); err != nil {
-				return err
+			for i, key := range keys {
+				userID, err := strconv.ParseInt(key[strings.LastIndex(key, ":")+1:], 10, 64)
+				if err != nil {
+					continue
+				}
+				value, ok := values[i].(string)
+				if !ok {
+					return fmt.Errorf("eligible session count missing for user %d", userID)
+				}
+				eligible, err := strconv.Atoi(value)
+				if err != nil {
+					return err
+				}
+				inputs = append(inputs, coverageInput{UserID: userID, Eligible: eligible})
 			}
 		}
 		cursor = next
 		if cursor == 0 {
-			return nil
+			return s.repo.PersistCoverageBatch(ctx, date, inputs)
 		}
 	}
 }
