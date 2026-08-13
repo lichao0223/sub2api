@@ -74,6 +74,13 @@
                 @change="applyFilters"
               />
             </div>
+            <div class="w-full sm:w-40">
+              <Select
+                v-model="filters.quota_exceeded"
+                :options="quotaExceededOptions"
+                @change="applyFilters"
+              />
+            </div>
             <div class="w-full sm:w-48">
               <Select
                 v-model="filters.group_id"
@@ -159,6 +166,10 @@
               :title="t('admin.subscriptions.guide.showGuide')"
             >
               <Icon name="questionCircle" size="md" />
+            </button>
+            <button @click="showBulkResetQuota = true" class="btn btn-secondary">
+              <Icon name="refresh" size="md" class="mr-2" />
+              批量重置配额
             </button>
             <button @click="showAssignModal = true" class="btn btn-primary">
               <Icon name="plus" size="md" class="mr-2" />
@@ -659,6 +670,21 @@
       @confirm="confirmRevoke"
       @cancel="showRevokeDialog = false"
     />
+    <div v-if="showBulkResetQuota" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl dark:bg-dark-800">
+        <h3 class="mb-4 text-lg font-semibold">批量重置配额</h3>
+        <label class="mb-3 block text-sm">重置范围</label>
+        <select v-model="bulkResetGroup" class="input mb-4">
+          <option value="">全部分组</option>
+          <option v-for="group in groups" :key="group.id" :value="String(group.id)">{{ group.name }}</option>
+        </select>
+        <p class="mb-5 text-sm text-gray-500">将重置所选范围内所有有效订阅的日、周、月用量。</p>
+        <div class="flex justify-end gap-2">
+          <button class="btn btn-secondary" @click="showBulkResetQuota = false">取消</button>
+          <button class="btn btn-primary" :disabled="bulkResetting" @click="confirmBulkResetQuota">{{ bulkResetting ? '重置中…' : '确认重置' }}</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Restore Confirmation Dialog -->
     <ConfirmDialog
@@ -954,8 +980,14 @@ const filters = reactive({
   status: 'active',
   group_id: '',
   platform: '',
-  user_id: null as number | null
+  user_id: null as number | null,
+  quota_exceeded: ''
 })
+
+const quotaExceededOptions = [
+  { value: '', label: '全部用量状态' },
+  { value: 'true', label: '已触发限额' }
+]
 
 // Sorting state
 const sortState = reactive({
@@ -975,6 +1007,9 @@ const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
+const showBulkResetQuota = ref(false)
+const bulkResetting = ref(false)
+const bulkResetGroup = ref('')
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
@@ -1043,6 +1078,7 @@ const loadSubscriptions = async () => {
         group_id: filters.group_id ? parseInt(filters.group_id) : undefined,
         platform: filters.platform || undefined,
         user_id: filters.user_id || undefined,
+        quota_exceeded: filters.quota_exceeded === 'true' ? true : undefined,
         sort_by: sortState.sort_by,
         sort_order: sortState.sort_order
       },
@@ -1338,6 +1374,26 @@ const confirmResetQuota = async () => {
     console.error('Error resetting quota:', error)
   } finally {
     resettingQuota.value = false
+  }
+}
+
+const confirmBulkResetQuota = async () => {
+  if (bulkResetting.value) return
+  bulkResetting.value = true
+  try {
+    const result = await adminAPI.subscriptions.bulkResetQuota({
+      group_id: bulkResetGroup.value ? Number(bulkResetGroup.value) : null,
+      daily: true,
+      weekly: true,
+      monthly: true
+    })
+    appStore.showSuccess(`已重置 ${result.reset_count} 个订阅的配额`)
+    showBulkResetQuota.value = false
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || '批量重置配额失败')
+  } finally {
+    bulkResetting.value = false
   }
 }
 

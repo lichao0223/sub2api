@@ -796,14 +796,52 @@ func (s *SubscriptionService) ListGroupSubscriptions(ctx context.Context, groupI
 }
 
 // List 获取所有订阅（分页，支持筛选和排序）
-func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status, platform, sortBy, sortOrder string) ([]UserSubscription, *pagination.PaginationResult, error) {
+
+func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, userID, groupID *int64, status, platform, sortBy, sortOrder string, quotaExceeded bool) ([]UserSubscription, *pagination.PaginationResult, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
-	subs, pag, err := s.userSubRepo.List(ctx, params, userID, groupID, status, platform, sortBy, sortOrder)
-	if err != nil {
-		return nil, nil, err
+	if quotaExceeded {
+		params.Page, params.PageSize = 1, 1000
+	}
+	var subs []UserSubscription
+	var pag *pagination.PaginationResult
+	var err error
+	if quotaExceeded {
+		for {
+			var pageSubs []UserSubscription
+			pageSubs, pag, err = s.userSubRepo.List(ctx, params, userID, groupID, status, platform, sortBy, sortOrder)
+			if err != nil {
+				return nil, nil, err
+			}
+			subs = append(subs, pageSubs...)
+			if pag == nil || params.Page >= pag.Pages || len(pageSubs) == 0 {
+				break
+			}
+			params.Page++
+		}
+	} else {
+		subs, pag, err = s.userSubRepo.List(ctx, params, userID, groupID, status, platform, sortBy, sortOrder)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	normalizeExpiredWindows(subs)
 	normalizeSubscriptionStatus(subs)
+	if quotaExceeded {
+		filtered := subs[:0]
+		for _, sub := range subs {
+			if sub.Group != nil && ((sub.Group.DailyLimitUSD != nil && sub.DailyUsageUSD >= *sub.Group.DailyLimitUSD) ||
+				(sub.Group.WeeklyLimitUSD != nil && sub.WeeklyUsageUSD >= *sub.Group.WeeklyLimitUSD) ||
+				(sub.Group.MonthlyLimitUSD != nil && sub.MonthlyUsageUSD >= *sub.Group.MonthlyLimitUSD)) {
+				filtered = append(filtered, sub)
+			}
+		}
+		start := (page - 1) * pageSize
+		if page < 1 || pageSize < 1 || start >= len(filtered) {
+			return []UserSubscription{}, &pagination.PaginationResult{Total: int64(len(filtered)), Page: page, PageSize: pageSize, Pages: (len(filtered) + pageSize - 1) / pageSize}, nil
+		}
+		end := min(start+pageSize, len(filtered))
+		return filtered[start:end], &pagination.PaginationResult{Total: int64(len(filtered)), Page: page, PageSize: pageSize, Pages: (len(filtered) + pageSize - 1) / pageSize}, nil
+	}
 	return subs, pag, nil
 }
 
@@ -890,6 +928,32 @@ func (s *SubscriptionService) AdminResetQuota(ctx context.Context, subscriptionI
 	}
 	// Return the refreshed subscription from DB
 	return s.userSubRepo.GetByID(ctx, subscriptionID)
+}
+
+// AdminBulkResetQuota resets the selected quota windows for all active subscriptions,
+// optionally restricted to one subscription group.
+func (s *SubscriptionService) AdminBulkResetQuota(ctx context.Context, groupID *int64, resetDaily, resetWeekly, resetMonthly bool) (int, error) {
+	if !resetDaily && !resetWeekly && !resetMonthly {
+		return 0, ErrInvalidInput
+	}
+	params := pagination.PaginationParams{Page: 1, PageSize: 1000, SortBy: "id", SortOrder: pagination.SortOrderAsc}
+	count := 0
+	for {
+		subs, pages, err := s.userSubRepo.List(ctx, params, nil, groupID, string(SubscriptionStatusActive), "", "id", "asc")
+		if err != nil {
+			return count, err
+		}
+		for i := range subs {
+			if _, err := s.AdminResetQuota(ctx, subs[i].ID, resetDaily, resetWeekly, resetMonthly); err != nil {
+				return count, err
+			}
+			count++
+		}
+		if pages == nil || params.Page >= pages.Pages || len(subs) == 0 {
+			return count, nil
+		}
+		params.Page++
+	}
 }
 
 // CheckAndResetWindows 检查并重置过期的窗口

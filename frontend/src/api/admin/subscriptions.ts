@@ -30,6 +30,7 @@ export async function list(
     platform?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
+    quota_exceeded?: boolean
   },
   options?: {
     signal?: AbortSignal
@@ -148,6 +149,13 @@ export async function resetQuota(
   return data
 }
 
+export async function bulkResetQuota(
+  options: { group_id?: number | null; daily: boolean; weekly: boolean; monthly: boolean }
+): Promise<{ reset_count: number }> {
+  const { data } = await apiClient.post<{ reset_count: number }>('/admin/subscriptions/bulk-reset-quota', options)
+  return data
+}
+
 /**
  * List subscriptions by group
  * @param groupId - Group ID
@@ -200,6 +208,7 @@ export const subscriptionsAPI = {
   revoke,
   restore,
   resetQuota,
+  bulkResetQuota,
   listByGroup,
   listByUser
 }

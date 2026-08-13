@@ -78,12 +78,13 @@ func (h *SubscriptionHandler) List(c *gin.Context) {
 	}
 	status := c.Query("status")
 	platform := c.Query("platform")
+	quotaExceeded := c.Query("quota_exceeded") == "true"
 
 	// Parse sorting parameters
 	sortBy := c.DefaultQuery("sort_by", "created_at")
 	sortOrder := c.DefaultQuery("sort_order", "desc")
 
-	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status, platform, sortBy, sortOrder)
+	subscriptions, pagination, err := h.subscriptionService.List(c.Request.Context(), page, pageSize, userID, groupID, status, platform, sortBy, sortOrder, quotaExceeded)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -222,6 +223,28 @@ type ResetSubscriptionQuotaRequest struct {
 	Daily   bool `json:"daily"`
 	Weekly  bool `json:"weekly"`
 	Monthly bool `json:"monthly"`
+}
+
+type BulkResetSubscriptionQuotaRequest struct {
+	GroupID *int64 `json:"group_id"`
+	Daily   bool   `json:"daily"`
+	Weekly  bool   `json:"weekly"`
+	Monthly bool   `json:"monthly"`
+}
+
+// BulkResetQuota resets quota usage for all active subscriptions, optionally in one group.
+func (h *SubscriptionHandler) BulkResetQuota(c *gin.Context) {
+	var req BulkResetSubscriptionQuotaRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	count, err := h.subscriptionService.AdminBulkResetQuota(c.Request.Context(), req.GroupID, req.Daily, req.Weekly, req.Monthly)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"reset_count": count})
 }
 
 // ResetQuota resets daily, weekly, and/or monthly usage for a subscription.
