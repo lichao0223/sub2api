@@ -410,6 +410,12 @@ func analyzerMessageText(raw json.RawMessage) string {
 	if json.Unmarshal(raw, &text) == nil {
 		return text
 	}
+	var object struct {
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(raw, &object) == nil && object.Text != "" {
+		return object.Text
+	}
 	var parts []struct {
 		Text string `json:"text"`
 	}
@@ -514,7 +520,7 @@ func (s *Service) analyzeChunkResilient(ctx context.Context, endpoint analysisEn
 	if isInvalidAnalyzerResult(err) || isJSONModeUnsupported(err) {
 		repaired, retryInput, retryOutput, retryErr := s.analyzeChunkWithMode(ctx, endpoint, previousSummary, samples, false, true)
 		input, output = input+retryInput, output+retryOutput
-		if retryErr == nil || !isJSONModeUnsupported(retryErr) {
+		if retryErr == nil {
 			return repaired, input, output, 2, retryErr
 		}
 		repaired, retryInput, retryOutput, retryErr = s.analyzeChunk(ctx, endpoint, previousSummary, samples)
