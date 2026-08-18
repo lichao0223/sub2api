@@ -160,19 +160,6 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
-          <button
-            type="button"
-            @click="form.platform = 'kimi'"
-            :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
-              form.platform === 'kimi'
-                ? 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
-                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
-            ]"
-          >
-            <PlatformIcon platform="kimi" size="sm" />
-            Kimi
-          </button>
         </div>
         <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
@@ -1263,19 +1250,6 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
-        <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
-          <label class="input-label">模型提供商</label>
-          <select v-model="modelProvider" class="input" data-testid="model-provider-select">
-            <option value="none">无</option>
-            <option value="glm">GLM</option>
-            <option value="kimi">Kimi</option>
-            <option value="deepseek">DeepSeek</option>
-          </select>
-          <p class="input-hint">
-            GLM、Kimi 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。
-          </p>
-        </div>
-
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -2180,9 +2154,9 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok/Kimi OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'kimi') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3351,12 +3325,6 @@
           </div>
         </div>
 
-        <AccountMultimodalSettings
-          v-if="form.platform === 'openai' || form.platform === 'anthropic'"
-          v-model="multimodalConfig"
-          :models="multimodalModelOptions"
-        />
-
         <!-- Group Selection - 仅标准模式显示 -->
         <GroupSelector
           v-if="!authStore.isSimpleMode"
@@ -3372,13 +3340,7 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
-      <KimiDeviceFlow
-        v-if="form.platform === 'kimi'"
-        :proxy-id="form.proxy_id"
-        @authorized="handleKimiAuthorized"
-      />
       <OAuthAuthorizationFlow
-        v-else
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -3752,8 +3714,6 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
-import { buildKimiCredentials, buildKimiExtraInfo } from '@/composables/useKimiOAuth'
-import type { KimiTokenInfo } from '@/api/admin/kimi'
 import type {
   Proxy,
   AdminGroup,
@@ -3780,11 +3740,6 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
-import AccountMultimodalSettings from '@/components/account/AccountMultimodalSettings.vue'
-import {
-  applyMultimodalConfig,
-  defaultMultimodalConfig
-} from '@/components/account/accountMultimodal'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3809,7 +3764,6 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
-import KimiDeviceFlow from './KimiDeviceFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -3835,7 +3789,6 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
-  if (form.platform === 'kimi') return t('admin.accounts.oauth.kimi.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -3844,7 +3797,6 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
-  if (form.platform === 'kimi') return t('admin.accounts.kimi.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3852,7 +3804,6 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
-  if (form.platform === 'kimi') return t('admin.accounts.kimi.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
 })
 
@@ -3969,7 +3920,6 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
-const modelProvider = ref<'none' | 'glm' | 'kimi' | 'deepseek'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
@@ -4075,14 +4025,6 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
-const multimodalConfig = ref(defaultMultimodalConfig())
-const multimodalModelOptions = computed(() =>
-  [...new Set([
-    ...allowedModels.value,
-    ...modelMappings.value.map((mapping) => mapping.to),
-    ...multimodalConfig.value.rules.map((rule) => rule.model)
-  ].map((model) => model.trim()).filter(Boolean))]
-)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4593,13 +4535,6 @@ watch(
       form.concurrency = 1
       form.load_factor = null
     }
-    if (newPlatform === 'kimi') {
-      accountCategory.value = 'oauth-based'
-      addMethod.value = 'oauth'
-      modelRestrictionMode.value = 'mapping'
-      form.concurrency = 1
-      form.load_factor = null
-    }
     if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
       accountCategory.value = 'oauth-based'
     }
@@ -4635,9 +4570,6 @@ watch(
       anthropicPassthroughEnabled.value = false
       anthropicAPIKeyAuthScheme.value = 'x_api_key'
       webSearchEmulationMode.value = 'default'
-    }
-    if (newPlatform !== 'anthropic' && newPlatform !== 'openai') {
-      modelProvider.value = 'none'
     }
     // 请求头覆写为平台相关配置（常用头集合不同），切换平台时清空，
     // 避免上一平台的配置行被提交到新平台账号
@@ -5021,7 +4953,6 @@ const resetForm = () => {
   apiProtocol.value = 'chat_completions'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
-  modelProvider.value = 'none'
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5033,7 +4964,6 @@ const resetForm = () => {
   editWeeklyResetHour.value = null
   editResetTimezone.value = null
   modelMappings.value = []
-  multimodalConfig.value = defaultMultimodalConfig()
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -5225,17 +5155,6 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
-}
-
-const buildModelProviderExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (
-    accountCategory.value !== 'apikey' ||
-    (form.platform !== 'anthropic' && form.platform !== 'openai') ||
-    modelProvider.value === 'none'
-  ) {
-    return base
-  }
-  return { ...(base || {}), model_provider: modelProvider.value }
 }
 
 // Helper function to create account with mixed channel warning handling
@@ -5557,7 +5476,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildModelProviderExtra(buildAnthropicExtra(buildOpenAIExtra()))
+  const extra = buildAnthropicExtra(buildOpenAIExtra())
 
   await doCreateAccount({
     ...form,
@@ -5624,9 +5543,6 @@ const createAccountAndFinish = async (
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
-  if (platform === 'openai' || platform === 'anthropic') {
-    applyMultimodalConfig(credentials, multimodalConfig.value)
-  }
   // Inject quota limits for apikey/bedrock accounts
   let finalExtra = extra
   if (type === 'apikey' || type === 'bedrock') {
@@ -5673,17 +5589,6 @@ const createAccountAndFinish = async (
   if (platform === 'grok') {
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
-    }
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    } else {
-      delete credentials.model_mapping
-    }
-  }
-  if (platform === 'kimi') {
-    if (!credentials.base_url) {
-      credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.kimi.com/coding/v1'
     }
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
@@ -6582,13 +6487,6 @@ const handleGrokExchange = async (authCode: string) => {
   } finally {
     grokOAuth.loading.value = false
   }
-}
-
-// Kimi OAuth 设备码授权完成（由 KimiDeviceFlow 轮询成功后触发）
-const handleKimiAuthorized = async (tokenInfo: KimiTokenInfo) => {
-  const credentials = buildKimiCredentials(tokenInfo)
-  const extra = buildKimiExtraInfo(tokenInfo)
-  await createAccountAndFinish('kimi', 'oauth', credentials, extra)
 }
 
 // Anthropic OAuth 授权码兑换

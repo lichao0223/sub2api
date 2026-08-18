@@ -31,246 +31,6 @@ func (r *accountUsageCodexProbeRepo) SetRateLimited(_ context.Context, _ int64, 
 	return nil
 }
 
-func TestBuildGLMClaudeUsageResponse(t *testing.T) {
-	t.Parallel()
-
-	payload := &glmUsageResponse{}
-	payload.Data.Limits = append(payload.Data.Limits,
-		struct {
-			Type          string  `json:"type"`
-			Unit          int     `json:"unit"`
-			Percentage    float64 `json:"percentage"`
-			NextResetTime int64   `json:"nextResetTime"`
-		}{Type: "TOKENS_LIMIT", Unit: 3, Percentage: 100, NextResetTime: 1783075612365},
-		struct {
-			Type          string  `json:"type"`
-			Unit          int     `json:"unit"`
-			Percentage    float64 `json:"percentage"`
-			NextResetTime int64   `json:"nextResetTime"`
-		}{Type: "TOKENS_LIMIT", Unit: 6, Percentage: 46, NextResetTime: 1783562399981},
-	)
-
-	resp := buildGLMClaudeUsageResponse(payload)
-	if resp.FiveHour.Utilization != 100 {
-		t.Fatalf("FiveHour.Utilization = %v, want 100", resp.FiveHour.Utilization)
-	}
-	if resp.SevenDay.Utilization != 46 {
-		t.Fatalf("SevenDay.Utilization = %v, want 46", resp.SevenDay.Utilization)
-	}
-	if resp.FiveHour.ResetsAt == "" || resp.SevenDay.ResetsAt == "" {
-		t.Fatalf("expected reset times, got five_hour=%q seven_day=%q", resp.FiveHour.ResetsAt, resp.SevenDay.ResetsAt)
-	}
-}
-
-func TestActiveGLMSubscription(t *testing.T) {
-	t.Parallel()
-
-	payload := &glmSubscriptionResponse{Data: []glmSubscription{
-		{ProductName: "Expired", Status: "EXPIRED", NextRenewTime: "2026-01-01"},
-		{ProductName: "GLM Coding Max", Status: "VALID", NextRenewTime: "2027-04-02", Current: true},
-	}}
-
-	plan, expiresAt := activeGLMSubscription(payload)
-	if plan != "GLM Coding Max" || expiresAt != "2027-04-02" {
-		t.Fatalf("activeGLMSubscription() = %q, %q", plan, expiresAt)
-	}
-}
-
-func TestBuildGLMCodexExtraUpdates(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
-	resp := &ClaudeUsageResponse{}
-	resp.FiveHour.Utilization = 100
-	resp.FiveHour.ResetsAt = "2026-07-06T15:00:00Z"
-	resp.SevenDay.Utilization = 46
-	resp.SevenDay.ResetsAt = "2026-07-13T10:00:00Z"
-	resp.SubscriptionPlan = "GLM Coding Max"
-	resp.SubscriptionExpiresAt = "2027-04-02"
-
-	updates := buildGLMCodexExtraUpdates(resp, now)
-	if got := updates["codex_5h_used_percent"]; got != 100.0 {
-		t.Fatalf("codex_5h_used_percent = %v, want 100", got)
-	}
-	if got := updates["codex_5h_window_minutes"]; got != 300 {
-		t.Fatalf("codex_5h_window_minutes = %v, want 300", got)
-	}
-	if got := updates["codex_7d_used_percent"]; got != 46.0 {
-		t.Fatalf("codex_7d_used_percent = %v, want 46", got)
-	}
-	if got := updates["codex_7d_window_minutes"]; got != 10080 {
-		t.Fatalf("codex_7d_window_minutes = %v, want 10080", got)
-	}
-	if got := updates["codex_usage_updated_at"]; got != "2026-07-06T10:00:00Z" {
-		t.Fatalf("codex_usage_updated_at = %v, want 2026-07-06T10:00:00Z", got)
-	}
-	if got := updates["glm_subscription_plan"]; got != "GLM Coding Max" {
-		t.Fatalf("glm_subscription_plan = %v, want GLM Coding Max", got)
-	}
-	if got := updates["glm_subscription_expires_at"]; got != "2027-04-02" {
-		t.Fatalf("glm_subscription_expires_at = %v, want 2027-04-02", got)
-	}
-}
-
-func TestGLMCodexQuotaRateLimitResetAt(t *testing.T) {
-	t.Parallel()
-
-	now := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
-	fiveHourReset := now.Add(30 * time.Minute).Format(time.RFC3339)
-	sevenDayReset := now.Add(48 * time.Hour).Format(time.RFC3339)
-
-	tests := []struct {
-		name      string
-		resp      *ClaudeUsageResponse
-		wantNil   bool
-		wantReset time.Time
-	}{
-		{
-			name: "5h quota reached",
-			resp: func() *ClaudeUsageResponse {
-				resp := &ClaudeUsageResponse{}
-				resp.FiveHour.Utilization = 100
-				resp.FiveHour.ResetsAt = fiveHourReset
-				resp.SevenDay.Utilization = 88
-				resp.SevenDay.ResetsAt = sevenDayReset
-				return resp
-			}(),
-			wantReset: now.Add(30 * time.Minute),
-		},
-		{
-			name: "7d quota reached",
-			resp: func() *ClaudeUsageResponse {
-				resp := &ClaudeUsageResponse{}
-				resp.FiveHour.Utilization = 0
-				resp.FiveHour.ResetsAt = fiveHourReset
-				resp.SevenDay.Utilization = 100
-				resp.SevenDay.ResetsAt = sevenDayReset
-				return resp
-			}(),
-			wantReset: now.Add(48 * time.Hour),
-		},
-		{
-			name: "both quotas reached uses later reset",
-			resp: func() *ClaudeUsageResponse {
-				resp := &ClaudeUsageResponse{}
-				resp.FiveHour.Utilization = 100
-				resp.FiveHour.ResetsAt = fiveHourReset
-				resp.SevenDay.Utilization = 100
-				resp.SevenDay.ResetsAt = sevenDayReset
-				return resp
-			}(),
-			wantReset: now.Add(48 * time.Hour),
-		},
-		{
-			name: "below quota does not rate limit",
-			resp: func() *ClaudeUsageResponse {
-				resp := &ClaudeUsageResponse{}
-				resp.FiveHour.Utilization = 99
-				resp.FiveHour.ResetsAt = fiveHourReset
-				resp.SevenDay.Utilization = 88
-				resp.SevenDay.ResetsAt = sevenDayReset
-				return resp
-			}(),
-			wantNil: true,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := glmCodexQuotaRateLimitResetAt(tt.resp, now)
-			if tt.wantNil {
-				if got != nil {
-					t.Fatalf("glmCodexQuotaRateLimitResetAt() = %v, want nil", got)
-				}
-				return
-			}
-			if got == nil {
-				t.Fatal("glmCodexQuotaRateLimitResetAt() = nil, want reset time")
-				return
-			}
-			if !got.Equal(tt.wantReset) {
-				t.Fatalf("glmCodexQuotaRateLimitResetAt() = %s, want %s", got.Format(time.RFC3339), tt.wantReset.Format(time.RFC3339))
-			}
-		})
-	}
-}
-
-func TestAccountUsageService_PersistGLMCodexSnapshotPromotesExhaustedQuotaToRateLimit(t *testing.T) {
-	t.Parallel()
-
-	now := time.Now().UTC().Truncate(time.Second)
-	resetAt := now.Add(30 * time.Minute)
-	repo := &accountUsageCodexProbeRepo{
-		updateExtraCh: make(chan map[string]any, 1),
-		rateLimitCh:   make(chan time.Time, 1),
-	}
-	svc := &AccountUsageService{accountRepo: repo}
-	account := &Account{
-		ID:       701,
-		Platform: PlatformAnthropic,
-		Type:     AccountTypeAPIKey,
-		Extra:    map[string]any{"model_provider": "glm"},
-	}
-	resp := &ClaudeUsageResponse{}
-	resp.FiveHour.Utilization = 100
-	resp.FiveHour.ResetsAt = resetAt.Format(time.RFC3339)
-	resp.SevenDay.Utilization = 88
-	resp.SevenDay.ResetsAt = now.Add(2 * time.Hour).Format(time.RFC3339)
-
-	svc.persistGLMCodexSnapshot(context.Background(), account, resp, now)
-
-	select {
-	case updates := <-repo.updateExtraCh:
-		if got := updates["codex_5h_used_percent"]; got != 100.0 {
-			t.Fatalf("codex_5h_used_percent = %v, want 100", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("waiting for GLM codex snapshot update timed out")
-	}
-
-	select {
-	case got := <-repo.rateLimitCh:
-		if !got.Equal(resetAt) {
-			t.Fatalf("rate limit reset = %s, want %s", got.Format(time.RFC3339), resetAt.Format(time.RFC3339))
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("waiting for GLM rate limit update timed out")
-	}
-	if account.RateLimitResetAt == nil || !account.RateLimitResetAt.Equal(resetAt) {
-		t.Fatalf("account.RateLimitResetAt = %v, want %s", account.RateLimitResetAt, resetAt.Format(time.RFC3339))
-	}
-}
-
-func TestShouldAutoPauseGLMAPIKeyAtDefault100Percent(t *testing.T) {
-	t.Parallel()
-
-	account := &Account{
-		Platform:    PlatformAnthropic,
-		Type:        AccountTypeAPIKey,
-		Status:      StatusActive,
-		Schedulable: true,
-		Extra: map[string]any{
-			"model_provider":          "glm",
-			"codex_5h_used_percent":   100.0,
-			"codex_5h_reset_at":       time.Now().Add(time.Hour).Format(time.RFC3339),
-			"codex_usage_updated_at":  time.Now().Format(time.RFC3339),
-			"auto_pause_7d_disabled":  true,
-			"auto_pause_5h_threshold": nil,
-		},
-	}
-
-	paused, decision := shouldAutoPauseOpenAIAccountByQuota(context.Background(), account)
-	if !paused {
-		t.Fatal("expected GLM API key account to pause at 100% by default")
-	}
-	if decision.window != "5h" {
-		t.Fatalf("decision.window = %q, want 5h", decision.window)
-	}
-}
-
 func TestShouldRefreshOpenAICodexSnapshot(t *testing.T) {
 	t.Parallel()
 
@@ -458,7 +218,6 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		progress := buildCodexUsageProgressFromExtra(extra, "5h", now)
 		if progress == nil {
 			t.Fatal("expected non-nil progress")
-			return
 		}
 		if progress.Utilization != 0 {
 			t.Fatalf("expected Utilization=0 for expired window, got %v", progress.Utilization)
@@ -477,7 +236,6 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		progress := buildCodexUsageProgressFromExtra(extra, "5h", now)
 		if progress == nil {
 			t.Fatal("expected non-nil progress")
-			return
 		}
 		if progress.Utilization != 42.0 {
 			t.Fatalf("expected Utilization=42, got %v", progress.Utilization)
@@ -492,7 +250,6 @@ func TestBuildCodexUsageProgressFromExtra_ZerosExpiredWindow(t *testing.T) {
 		progress := buildCodexUsageProgressFromExtra(extra, "7d", now)
 		if progress == nil {
 			t.Fatal("expected non-nil progress")
-			return
 		}
 		if progress.Utilization != 0 {
 			t.Fatalf("expected Utilization=0 for expired 7d window, got %v", progress.Utilization)

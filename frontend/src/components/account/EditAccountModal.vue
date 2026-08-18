@@ -28,24 +28,12 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
-        <div v-if="account.platform === 'anthropic' || account.platform === 'openai'">
-          <label class="input-label">模型提供商</label>
-          <select v-model="editModelProvider" class="input" data-testid="edit-model-provider-select">
-            <option value="none">无</option>
-            <option value="glm">GLM</option>
-            <option value="kimi">Kimi</option>
-            <option value="deepseek">DeepSeek</option>
-          </select>
-          <p class="input-hint">GLM、Kimi 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。</p>
-        </div>
-
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="editBaseUrl"
             type="text"
             class="input"
-            data-testid="edit-api-key-base-url"
             :placeholder="
               account.platform === 'openai'
                 ? 'https://api.openai.com'
@@ -595,7 +583,7 @@
 
       <!-- OpenAI/Grok OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(account.platform === 'openai' || account.platform === 'grok' || account.platform === 'kimi') && account.type === 'oauth'"
+        v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2709,12 +2697,6 @@
         </div>
       </div>
 
-      <AccountMultimodalSettings
-        v-if="!isSparkShadow && (account?.platform === 'openai' || account?.platform === 'anthropic')"
-        v-model="multimodalConfig"
-        :models="multimodalModelOptions"
-      />
-
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
         v-if="!authStore.isSimpleMode"
@@ -2808,12 +2790,6 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
-import AccountMultimodalSettings from '@/components/account/AccountMultimodalSettings.vue'
-import {
-  applyMultimodalConfig,
-  defaultMultimodalConfig,
-  readMultimodalConfig
-} from '@/components/account/accountMultimodal'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
 import {
   applyAntigravityProjectID,
@@ -2998,14 +2974,6 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
-const multimodalConfig = ref(defaultMultimodalConfig())
-const multimodalModelOptions = computed(() =>
-  [...new Set([
-    ...allowedModels.value,
-    ...modelMappings.value.map((mapping) => mapping.to),
-    ...multimodalConfig.value.rules.map((rule) => rule.model)
-  ].map((model) => model.trim()).filter(Boolean))]
-)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -3574,7 +3542,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
-  multimodalConfig.value = readMultimodalConfig(credentials)
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -3591,7 +3558,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
-  editModelProvider.value = 'none'
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
@@ -3893,8 +3859,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : 'https://api.anthropic.com'
     editBaseUrl.value = platformDefaultUrl
 
-    // Load model mappings for OpenAI/Grok/Kimi OAuth accounts
-    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok' || newAccount.platform === 'kimi') && newAccount.credentials) {
+    // Load model mappings for OpenAI/Grok OAuth accounts
+    if ((newAccount.platform === 'openai' || newAccount.platform === 'grok') && newAccount.credentials) {
       const oauthCredentials = newAccount.credentials as Record<string, unknown>
       loadModelRestrictionFromMapping(oauthCredentials.model_mapping as Record<string, unknown> | undefined)
     } else {
@@ -3907,7 +3873,6 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeRetryStatusCodesInput.value = ''
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
-    editModelProvider.value = 'none'
   }
   editApiKey.value = ''
 }
@@ -4715,8 +4680,8 @@ const handleSubmit = async () => {
       updatePayload.credentials = newCredentials
     }
 
-    // OpenAI/Grok/Kimi OAuth: persist model mapping to credentials
-    if ((props.account.platform === 'openai' || props.account.platform === 'grok' || props.account.platform === 'kimi') && props.account.type === 'oauth') {
+    // OpenAI/Grok OAuth: persist model mapping to credentials
+    if ((props.account.platform === 'openai' || props.account.platform === 'grok') && props.account.type === 'oauth') {
       const currentCredentials = isSparkShadow.value
         ? {}
         : (updatePayload.credentials as Record<string, unknown>) ||
@@ -5112,32 +5077,6 @@ const handleSubmit = async () => {
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
       updatePayload.extra = newExtra
-    }
-
-    if (
-      props.account.type === 'apikey' &&
-      (props.account.platform === 'anthropic' || props.account.platform === 'openai')
-    ) {
-      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
-        (props.account.extra as Record<string, unknown>) || {}
-      const newExtra: Record<string, unknown> = { ...currentExtra }
-      if (editModelProvider.value !== 'none') {
-        newExtra.model_provider = editModelProvider.value
-      } else {
-        delete newExtra.model_provider
-      }
-      updatePayload.extra = newExtra
-    }
-
-    if (
-      !isSparkShadow.value &&
-      (props.account.platform === 'openai' || props.account.platform === 'anthropic')
-    ) {
-      const credentials =
-        (updatePayload.credentials as Record<string, unknown>) ||
-        { ...((props.account.credentials as Record<string, unknown>) || {}) }
-      applyMultimodalConfig(credentials, multimodalConfig.value)
-      updatePayload.credentials = credentials
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

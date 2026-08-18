@@ -5,19 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"log/slog"
-	"math"
 	"math/rand/v2"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	httppool "github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	openaipkg "github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -124,12 +120,8 @@ const (
 	windowStatsCacheTTL     = 1 * time.Minute
 	openAIProbeCacheTTL     = 10 * time.Minute
 	grokProbeRetryTTL       = 1 * time.Minute
-	kimiUsageTimeout        = 15 * time.Second
-	deepSeekBalanceURL      = "https://api.deepseek.com/user/balance"
 	grokFreeQuotaWindow     = 24 * time.Hour
 	openAICodexProbeVersion = codexCLIVersion // 与网关出站身份同源，避免两处硬编码版本各自漂移
-	glmUsageURL             = "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
-	glmSubscriptionURL      = "https://open.bigmodel.cn/api/biz/subscription/list"
 )
 
 // UsageCache 封装账户使用量相关的缓存
@@ -141,7 +133,6 @@ type UsageCache struct {
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
-	kimiUsageCache    sync.Map           // accountID -> *antigravityUsageCache
 }
 
 // NewUsageCache 创建 UsageCache 实例
@@ -197,11 +188,6 @@ type AICredit struct {
 	MinimumBalance float64 `json:"minimum_balance,omitempty"`
 }
 
-type AccountBalance struct {
-	Currency     string `json:"currency"`
-	TotalBalance string `json:"total_balance"`
-}
-
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
@@ -242,16 +228,11 @@ type UsageInfo struct {
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
 	SubscriptionTierRaw string `json:"subscription_tier_raw,omitempty"` // 上游原始订阅等级名称
 
-	// GLM Coding Plan 订阅信息
-	SubscriptionPlan      string `json:"subscription_plan,omitempty"`
-	SubscriptionExpiresAt string `json:"subscription_expires_at,omitempty"`
-
 	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
 
 	// Antigravity AI Credits 余额
-	AICredits []AICredit       `json:"ai_credits,omitempty"`
-	Balances  []AccountBalance `json:"balances,omitempty"`
+	AICredits []AICredit `json:"ai_credits,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
@@ -298,8 +279,6 @@ type ClaudeUsageResponse struct {
 	// 见 anthropic-ratelimit-unified-representative-claim 头）。上游 usage API
 	// 若不下发该字段，GetUsage 会用被动采样数据回填。
 	SevenDayOverageIncluded ClaudeUsageWindow `json:"seven_day_overage_included"`
-	SubscriptionPlan        string
-	SubscriptionExpiresAt   string
 }
 
 // ClaudeUsageFetchOptions 包含获取 Claude 用量数据所需的所有选项
@@ -328,8 +307,6 @@ type AccountUsageService struct {
 	grokQuotaFetcher        *GrokQuotaFetcher
 	grokQuotaService        *GrokQuotaService
 	openAIQuotaService      *OpenAIQuotaService
-	kimiTokenProvider       *KimiTokenProvider
-	httpUpstream            HTTPUpstream
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -347,8 +324,6 @@ func NewAccountUsageService(
 	grokQuotaFetcher *GrokQuotaFetcher,
 	grokQuotaService *GrokQuotaService,
 	openAIQuotaService *OpenAIQuotaService,
-	kimiTokenProvider *KimiTokenProvider,
-	httpUpstream HTTPUpstream,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -362,8 +337,6 @@ func NewAccountUsageService(
 		grokQuotaFetcher:        grokQuotaFetcher,
 		grokQuotaService:        grokQuotaService,
 		openAIQuotaService:      openAIQuotaService,
-		kimiTokenProvider:       kimiTokenProvider,
-		httpUpstream:            httpUpstream,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -372,6 +345,19 @@ func NewAccountUsageService(
 
 func supportsAnthropicPassiveUsage(account *Account) bool {
 	return account != nil && account.IsAnthropicOAuthOrSetupToken()
+}
+
+// These predicates keep scheduler/rate-limit platform routing for CN API-key accounts.
+func isGLMAPIKeyAccount(account *Account) bool {
+	return account != nil && account.Type == AccountTypeAPIKey &&
+		(account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
+		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "glm")
+}
+
+func isKimiUsageAccount(account *Account) bool {
+	return account != nil && account.Type == AccountTypeAPIKey &&
+		(account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
+		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "kimi")
 }
 
 func batchUsageErrorMessage(err error) string {
@@ -396,30 +382,6 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {
 		usage, err := s.getOpenAIUsage(ctx, account, forceProbe)
-		if err == nil {
-			s.tryClearRecoverableAccountError(ctx, account)
-		}
-		return usage, err
-	}
-
-	if isGLMAPIKeyAccount(account) {
-		usage, err := s.getGLMUsage(ctx, account, forceProbe)
-		if err == nil {
-			s.tryClearRecoverableAccountError(ctx, account)
-		}
-		return usage, err
-	}
-
-	if isKimiUsageAccount(account) {
-		usage, err := s.getKimiUsage(ctx, account, forceProbe)
-		if err == nil {
-			s.tryClearRecoverableAccountError(ctx, account)
-		}
-		return usage, err
-	}
-
-	if isDeepSeekAPIKeyAccount(account) {
-		usage, err := s.getDeepSeekUsage(ctx, account)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -1000,619 +962,6 @@ func mergeAccountExtra(account *Account, updates map[string]any) {
 	for k, v := range updates {
 		account.Extra[k] = v
 	}
-}
-
-type glmUsageResponse struct {
-	Code int    `json:"code"`
-	Msg  string `json:"msg"`
-	Data struct {
-		Limits []struct {
-			Type          string  `json:"type"`
-			Unit          int     `json:"unit"`
-			Percentage    float64 `json:"percentage"`
-			NextResetTime int64   `json:"nextResetTime"`
-		} `json:"limits"`
-		Level string `json:"level"`
-	} `json:"data"`
-	Success bool `json:"success"`
-}
-
-type glmSubscriptionResponse struct {
-	Code    int               `json:"code"`
-	Msg     string            `json:"msg"`
-	Data    []glmSubscription `json:"data"`
-	Success bool              `json:"success"`
-}
-
-type glmSubscription struct {
-	ProductName   string `json:"productName"`
-	Status        string `json:"status"`
-	NextRenewTime string `json:"nextRenewTime"`
-	Current       bool   `json:"inCurrentPeriod"`
-}
-
-func isGLMAPIKeyAccount(account *Account) bool {
-	if account == nil || account.Type != AccountTypeAPIKey {
-		return false
-	}
-	if account.Platform != PlatformAnthropic && account.Platform != PlatformOpenAI {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "glm")
-}
-
-func isKimiUsageAccount(account *Account) bool {
-	if account == nil {
-		return false
-	}
-	if account.IsKimiOAuth() {
-		return true
-	}
-	return account.Type == AccountTypeAPIKey &&
-		(account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
-		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "kimi")
-}
-
-func isDeepSeekAPIKeyAccount(account *Account) bool {
-	if account == nil || account.Type != AccountTypeAPIKey {
-		return false
-	}
-	return (account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
-		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "deepseek")
-}
-
-type deepSeekBalanceResponse struct {
-	BalanceInfos []AccountBalance `json:"balance_infos"`
-}
-
-func (s *AccountUsageService) getDeepSeekUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if apiKey == "" {
-		return nil, fmt.Errorf("deepseek API key is empty")
-	}
-	if s.httpUpstream == nil {
-		return nil, fmt.Errorf("HTTP upstream is not configured")
-	}
-
-	callCtx, cancel := context.WithTimeout(ctx, kimiUsageTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(callCtx, http.MethodGet, deepSeekBalanceURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build deepseek balance request: %w", err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	account.ApplyHeaderOverrides(req.Header)
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
-	if err != nil {
-		return nil, fmt.Errorf("deepseek balance request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
-		return nil, fmt.Errorf("deepseek balance API returned %d", resp.StatusCode)
-	}
-
-	var payload deepSeekBalanceResponse
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode deepseek balance response: %w", err)
-	}
-	now := time.Now()
-	return &UsageInfo{Source: "active", UpdatedAt: &now, Balances: payload.BalanceInfos}, nil
-}
-
-type kimiUsageDetail struct {
-	Limit     any    `json:"limit"`
-	Used      any    `json:"used"`
-	Remaining any    `json:"remaining"`
-	ResetTime string `json:"resetTime"`
-}
-
-type kimiUsageLimit struct {
-	Window struct {
-		Duration int    `json:"duration"`
-		TimeUnit string `json:"timeUnit"`
-	} `json:"window"`
-	Detail kimiUsageDetail `json:"detail"`
-}
-
-type kimiUsageResponse struct {
-	Usage  kimiUsageDetail  `json:"usage"`
-	Limits []kimiUsageLimit `json:"limits"`
-}
-
-func (s *AccountUsageService) getKimiUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
-	if s.cache != nil && !force {
-		if cached, ok := s.cache.kimiUsageCache.Load(account.ID); ok {
-			if entry, ok := cached.(*antigravityUsageCache); ok && time.Since(entry.timestamp) < apiCacheTTL {
-				return entry.usageInfo, nil
-			}
-		}
-	}
-
-	fetch := func() (*UsageInfo, error) {
-		token, baseURL, err := s.kimiUsageCredentials(ctx, account)
-		if err != nil {
-			return nil, err
-		}
-		usageURL, err := kimi.BuildUsagesURL(baseURL)
-		if err != nil {
-			return nil, fmt.Errorf("invalid kimi usage base URL: %w", err)
-		}
-		if s.httpUpstream == nil {
-			return nil, fmt.Errorf("HTTP upstream is not configured")
-		}
-
-		callCtx, cancel := context.WithTimeout(ctx, kimiUsageTimeout)
-		defer cancel()
-		req, err := http.NewRequestWithContext(callCtx, http.MethodGet, usageURL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("build kimi usage request: %w", err)
-		}
-		req.Header.Set("Accept", "application/json")
-		req.Header.Set("Authorization", "Bearer "+token)
-		account.ApplyHeaderOverrides(req.Header)
-
-		proxyURL := ""
-		if account.ProxyID != nil && account.Proxy != nil {
-			proxyURL = account.Proxy.URL()
-		}
-		resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, maxInt(account.Concurrency, 1))
-		if err != nil {
-			return nil, fmt.Errorf("kimi usage request failed: %w", err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<10))
-			return nil, fmt.Errorf("kimi usage API returned %d", resp.StatusCode)
-		}
-
-		var payload kimiUsageResponse
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
-			return nil, fmt.Errorf("decode kimi usage response: %w", err)
-		}
-		now := time.Now()
-		usage := &UsageInfo{
-			Source:    "active",
-			UpdatedAt: &now,
-			SevenDay:  kimiUsageProgress(payload.Usage, now),
-		}
-		for _, limit := range payload.Limits {
-			if kimiUsageWindowDuration(limit) == 5*time.Hour {
-				usage.FiveHour = kimiUsageProgress(limit.Detail, now)
-				break
-			}
-		}
-		if usage.FiveHour == nil && account.IsRateLimited() {
-			usage.FiveHour = &UsageProgress{Utilization: 100, ResetsAt: account.RateLimitResetAt}
-			usage.FiveHour.RemainingSeconds = maxInt(int(time.Until(*account.RateLimitResetAt).Seconds()), 0)
-		}
-		s.persistKimiUsageLimitReset(ctx, account, usage, now)
-		return usage, nil
-	}
-
-	if s.cache == nil {
-		return fetch()
-	}
-	result, err, _ := s.cache.apiFlight.Do("kimi-usage:"+strconv.FormatInt(account.ID, 10), func() (any, error) {
-		usage, fetchErr := fetch()
-		if fetchErr == nil {
-			s.cache.kimiUsageCache.Store(account.ID, &antigravityUsageCache{usageInfo: usage, timestamp: time.Now()})
-		}
-		return usage, fetchErr
-	})
-	if err != nil {
-		return nil, err
-	}
-	usage, ok := result.(*UsageInfo)
-	if !ok || usage == nil {
-		return nil, fmt.Errorf("invalid kimi usage result")
-	}
-	return usage, nil
-}
-
-func (s *AccountUsageService) persistKimiUsageLimitReset(ctx context.Context, account *Account, usage *UsageInfo, now time.Time) {
-	if s == nil || s.accountRepo == nil || account == nil || usage == nil ||
-		account.RateLimitResetAt == nil || !account.RateLimitResetAt.After(now) {
-		return
-	}
-	var resetAt *time.Time
-	for _, window := range []*UsageProgress{usage.FiveHour, usage.SevenDay} {
-		if window != nil && reachedCodexQuota(window.Utilization) && window.ResetsAt != nil && window.ResetsAt.After(now) {
-			resetAt = laterReset(resetAt, window.ResetsAt)
-		}
-	}
-	if resetAt == nil || !resetAt.After(*account.RateLimitResetAt) {
-		return
-	}
-	if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
-		slog.Warn("kimi_usage_limit_reset_persist_failed", "account_id", account.ID, "reset_at", resetAt, "error", err)
-		return
-	}
-	account.RateLimitResetAt = resetAt
-}
-
-func kimiUsageWindowDuration(limit kimiUsageLimit) time.Duration {
-	switch unit := strings.ToUpper(limit.Window.TimeUnit); {
-	case strings.Contains(unit, "HOUR"):
-		return time.Duration(limit.Window.Duration) * time.Hour
-	case strings.Contains(unit, "MINUTE"):
-		return time.Duration(limit.Window.Duration) * time.Minute
-	case strings.Contains(unit, "SECOND"):
-		return time.Duration(limit.Window.Duration) * time.Second
-	default:
-		return 0
-	}
-}
-
-func (s *AccountUsageService) kimiUsageCredentials(ctx context.Context, account *Account) (string, string, error) {
-	if account.IsKimiOAuth() {
-		if s.kimiTokenProvider == nil {
-			return "", "", fmt.Errorf("kimi token provider is not configured")
-		}
-		token, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
-		return token, account.GetKimiBaseURL(), err
-	}
-	token := strings.TrimSpace(account.GetCredential("api_key"))
-	if token == "" {
-		return "", "", fmt.Errorf("kimi API key is empty")
-	}
-	return token, kimi.DefaultBaseURL, nil
-}
-
-func kimiUsageProgress(detail kimiUsageDetail, now time.Time) *UsageProgress {
-	limit, limitOK := kimiUsageInt(detail.Limit)
-	if !limitOK || limit <= 0 {
-		return nil
-	}
-	used, usedOK := kimiUsageInt(detail.Used)
-	if remaining, remainingOK := kimiUsageInt(detail.Remaining); remainingOK {
-		used = limit - remaining
-		usedOK = true
-	}
-	if !usedOK {
-		return nil
-	}
-	if used < 0 {
-		used = 0
-	}
-	progress := &UsageProgress{
-		Utilization:   math.Min(100, float64(used)/float64(limit)*100),
-		UsedRequests:  used,
-		LimitRequests: limit,
-	}
-	if resetAt, err := parseTime(strings.TrimSpace(detail.ResetTime)); err == nil {
-		progress.ResetsAt = &resetAt
-		progress.RemainingSeconds = maxInt(int(time.Until(resetAt).Seconds()), 0)
-	}
-	return progress
-}
-
-func kimiUsageInt(value any) (int64, bool) {
-	switch typed := value.(type) {
-	case string:
-		parsed, err := strconv.ParseInt(strings.TrimSpace(typed), 10, 64)
-		return parsed, err == nil
-	case float64:
-		return int64(typed), typed >= 0 && typed == math.Trunc(typed)
-	case json.Number:
-		parsed, err := typed.Int64()
-		return parsed, err == nil
-	default:
-		return 0, false
-	}
-}
-
-func (s *AccountUsageService) getGLMUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
-	apiKey := strings.TrimSpace(account.GetCredential("api_key"))
-	if apiKey == "" {
-		return nil, fmt.Errorf("glm api key is empty")
-	}
-
-	if s.cache == nil {
-		resp, err := s.fetchGLMUsageWithSubscription(ctx, account, apiKey)
-		if err != nil {
-			return nil, err
-		}
-		now := time.Now()
-		s.persistGLMCodexSnapshot(ctx, account, resp, now)
-		usage := s.buildUsageInfo(resp, &now)
-		s.addWindowStats(ctx, account, usage)
-		return usage, nil
-	}
-
-	if !force {
-		if cached, ok := s.cache.apiCache.Load(account.ID); ok {
-			if cache, ok := cached.(*apiUsageCache); ok {
-				age := time.Since(cache.timestamp)
-				if cache.err != nil && age < apiErrorCacheTTL {
-					return nil, cache.err
-				}
-				if cache.response != nil && age < apiCacheTTL {
-					usage := s.buildUsageInfo(cache.response, &cache.timestamp)
-					s.addWindowStats(ctx, account, usage)
-					return usage, nil
-				}
-			}
-		}
-	}
-
-	flightKey := fmt.Sprintf("glm-usage:%d", account.ID)
-	result, err, _ := s.cache.apiFlight.Do(flightKey, func() (any, error) {
-		if !force {
-			if cached, ok := s.cache.apiCache.Load(account.ID); ok {
-				if cache, ok := cached.(*apiUsageCache); ok {
-					age := time.Since(cache.timestamp)
-					if cache.err != nil && age < apiErrorCacheTTL {
-						return nil, cache.err
-					}
-					if cache.response != nil && age < apiCacheTTL {
-						return cache.response, nil
-					}
-				}
-			}
-		}
-		resp, fetchErr := s.fetchGLMUsageWithSubscription(ctx, account, apiKey)
-		if fetchErr != nil {
-			s.cache.apiCache.Store(account.ID, &apiUsageCache{err: fetchErr, timestamp: time.Now()})
-			return nil, fetchErr
-		}
-		s.cache.apiCache.Store(account.ID, &apiUsageCache{response: resp, timestamp: time.Now()})
-		return resp, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	resp, _ := result.(*ClaudeUsageResponse)
-	now := time.Now()
-	if force {
-		s.persistGLMCodexSnapshot(ctx, account, resp, now)
-	} else if cached, ok := s.cache.apiCache.Load(account.ID); ok {
-		if cache, ok := cached.(*apiUsageCache); ok {
-			if cache.response == resp && time.Since(cache.timestamp) < time.Second {
-				s.persistGLMCodexSnapshot(ctx, account, resp, now)
-			}
-		}
-	}
-	usage := s.buildUsageInfo(resp, &now)
-	s.addWindowStats(ctx, account, usage)
-	return usage, nil
-}
-
-func (s *AccountUsageService) persistGLMCodexSnapshot(ctx context.Context, account *Account, resp *ClaudeUsageResponse, now time.Time) {
-	if s == nil || s.accountRepo == nil || account == nil || resp == nil {
-		return
-	}
-	updates := buildGLMCodexExtraUpdates(resp, now)
-	if len(updates) == 0 {
-		return
-	}
-	mergeAccountExtra(account, updates)
-	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
-		slog.Warn("glm_codex_snapshot_persist_failed", "account_id", account.ID, "error", err)
-	}
-	if resetAt := glmCodexQuotaRateLimitResetAt(resp, now); resetAt != nil {
-		if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
-			slog.Warn("glm_codex_rate_limit_persist_failed", "account_id", account.ID, "reset_at", resetAt.Format(time.RFC3339), "error", err)
-		} else {
-			account.RateLimitedAt = &now
-			account.RateLimitResetAt = resetAt
-		}
-	}
-}
-
-func glmCodexQuotaRateLimitResetAt(resp *ClaudeUsageResponse, now time.Time) *time.Time {
-	if resp == nil {
-		return nil
-	}
-	var resetAt *time.Time
-	if reachedCodexQuota(resp.FiveHour.Utilization) {
-		resetAt = laterReset(resetAt, parseGLMCodexResetAt(resp.FiveHour.ResetsAt, now.Add(5*time.Hour), now))
-	}
-	if reachedCodexQuota(resp.SevenDay.Utilization) {
-		resetAt = laterReset(resetAt, parseGLMCodexResetAt(resp.SevenDay.ResetsAt, now.Add(7*24*time.Hour), now))
-	}
-	return resetAt
-}
-
-func reachedCodexQuota(utilization float64) bool {
-	return utilization >= 100
-}
-
-func parseGLMCodexResetAt(raw string, fallback time.Time, now time.Time) *time.Time {
-	if strings.TrimSpace(raw) == "" {
-		return &fallback
-	}
-	resetAt, err := parseTime(raw)
-	if err != nil {
-		return &fallback
-	}
-	if !resetAt.After(now) {
-		return nil
-	}
-	return &resetAt
-}
-
-func laterReset(current *time.Time, next *time.Time) *time.Time {
-	if next == nil {
-		return current
-	}
-	if current == nil || next.After(*current) {
-		return next
-	}
-	return current
-}
-
-func (s *AccountUsageService) fetchGLMUsageRaw(ctx context.Context, account *Account, apiKey string) (*ClaudeUsageResponse, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, glmUsageURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create glm usage request: %w", err)
-	}
-	req.Header.Set("Authorization", apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Language", "en-US,en")
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	client, err := httppool.GetClient(httppool.Options{
-		ProxyURL:              proxyURL,
-		Timeout:               15 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build glm usage client: %w", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("glm usage request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("glm usage returned status %d", resp.StatusCode)
-	}
-
-	var payload glmUsageResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode glm usage response: %w", err)
-	}
-	if payload.Code != 0 && payload.Code != http.StatusOK {
-		return nil, fmt.Errorf("glm usage returned code %d: %s", payload.Code, payload.Msg)
-	}
-	return buildGLMClaudeUsageResponse(&payload), nil
-}
-
-func (s *AccountUsageService) fetchGLMUsageWithSubscription(ctx context.Context, account *Account, apiKey string) (*ClaudeUsageResponse, error) {
-	usage, err := s.fetchGLMUsageRaw(ctx, account, apiKey)
-	if err != nil {
-		return nil, err
-	}
-	subscription, err := s.fetchGLMSubscriptionRaw(ctx, account, apiKey)
-	if err != nil {
-		slog.Debug("glm_subscription_fetch_failed", "account_id", account.ID, "error", err)
-		return usage, nil
-	}
-	usage.SubscriptionPlan, usage.SubscriptionExpiresAt = activeGLMSubscription(subscription)
-	return usage, nil
-}
-
-func (s *AccountUsageService) fetchGLMSubscriptionRaw(ctx context.Context, account *Account, apiKey string) (*glmSubscriptionResponse, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, glmSubscriptionURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create glm subscription request: %w", err)
-	}
-	req.Header.Set("Authorization", apiKey)
-	req.Header.Set("Accept", "application/json")
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	client, err := httppool.GetClient(httppool.Options{
-		ProxyURL:              proxyURL,
-		Timeout:               15 * time.Second,
-		ResponseHeaderTimeout: 10 * time.Second,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("build glm subscription client: %w", err)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("glm subscription request failed: %w", err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("glm subscription returned status %d", resp.StatusCode)
-	}
-
-	var payload glmSubscriptionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, fmt.Errorf("decode glm subscription response: %w", err)
-	}
-	if payload.Code != 0 && payload.Code != http.StatusOK {
-		return nil, fmt.Errorf("glm subscription returned code %d: %s", payload.Code, payload.Msg)
-	}
-	return &payload, nil
-}
-
-func activeGLMSubscription(payload *glmSubscriptionResponse) (string, string) {
-	if payload == nil {
-		return "", ""
-	}
-	for _, subscription := range payload.Data {
-		if subscription.Current && strings.EqualFold(subscription.Status, "VALID") {
-			return strings.TrimSpace(subscription.ProductName), strings.TrimSpace(subscription.NextRenewTime)
-		}
-	}
-	return "", ""
-}
-
-func buildGLMClaudeUsageResponse(payload *glmUsageResponse) *ClaudeUsageResponse {
-	resp := &ClaudeUsageResponse{}
-	if payload == nil {
-		return resp
-	}
-	for _, limit := range payload.Data.Limits {
-		if limit.Type != "TOKENS_LIMIT" {
-			continue
-		}
-		resetAt := ""
-		if limit.NextResetTime > 0 {
-			resetAt = time.UnixMilli(limit.NextResetTime).UTC().Format(time.RFC3339)
-		}
-		switch limit.Unit {
-		case 3:
-			resp.FiveHour.Utilization = limit.Percentage
-			resp.FiveHour.ResetsAt = resetAt
-		case 6:
-			resp.SevenDay.Utilization = limit.Percentage
-			resp.SevenDay.ResetsAt = resetAt
-		}
-	}
-	return resp
-}
-
-func buildGLMCodexExtraUpdates(resp *ClaudeUsageResponse, now time.Time) map[string]any {
-	if resp == nil {
-		return nil
-	}
-	updates := make(map[string]any, 9)
-	if resp.FiveHour.ResetsAt != "" || resp.FiveHour.Utilization > 0 {
-		updates["codex_5h_used_percent"] = resp.FiveHour.Utilization
-		updates["codex_5h_window_minutes"] = 5 * 60
-		if resp.FiveHour.ResetsAt != "" {
-			updates["codex_5h_reset_at"] = resp.FiveHour.ResetsAt
-		}
-	}
-	if resp.SevenDay.ResetsAt != "" || resp.SevenDay.Utilization > 0 {
-		updates["codex_7d_used_percent"] = resp.SevenDay.Utilization
-		updates["codex_7d_window_minutes"] = 7 * 24 * 60
-		if resp.SevenDay.ResetsAt != "" {
-			updates["codex_7d_reset_at"] = resp.SevenDay.ResetsAt
-		}
-	}
-	if len(updates) > 0 {
-		updates["codex_usage_updated_at"] = now.UTC().Format(time.RFC3339)
-	}
-	if resp.SubscriptionPlan != "" {
-		updates["glm_subscription_plan"] = resp.SubscriptionPlan
-	}
-	if resp.SubscriptionExpiresAt != "" {
-		updates["glm_subscription_expires_at"] = resp.SubscriptionExpiresAt
-	}
-	return updates
 }
 
 // applyExtraToUsage rebuilds the codex 5h/7d windows in usage from the
@@ -2296,9 +1645,7 @@ func (s *AccountUsageService) tryClearRecoverableAccountError(ctx context.Contex
 // buildUsageInfo 构建UsageInfo
 func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedAt *time.Time) *UsageInfo {
 	info := &UsageInfo{
-		UpdatedAt:             updatedAt,
-		SubscriptionPlan:      resp.SubscriptionPlan,
-		SubscriptionExpiresAt: resp.SubscriptionExpiresAt,
+		UpdatedAt: updatedAt,
 	}
 
 	// 5小时窗口 - 始终创建对象（即使 ResetsAt 为空）

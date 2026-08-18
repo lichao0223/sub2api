@@ -141,7 +141,6 @@ export default {
         codeAssist: 'Code Assist',
         antigravityOauth: 'Antigravity OAuth',
         grokOauth: 'Grok OAuth',
-        kimiOauth: 'Kimi OAuth',
         antigravityApikey: 'Connect via Base URL + API Key',
         upstream: 'Upstream',
         upstreamDesc: 'Connect via Base URL + API Key'
@@ -694,10 +693,6 @@ export default {
         fileReadFailed: 'Failed to read the selected file',
         noResponseBody: 'No response body from server'
       },
-      kimi: {
-        baseUrlHint: 'Kimi OAuth accounts forward to the official Kimi Coding API base URL.',
-        apiKeyHint: 'Kimi subscription support uses OAuth device-flow login; API keys are out of scope for this account type.'
-      },
       anthropic: {
         apiKeyPassthrough: 'Auto passthrough (auth only)',
         apiKeyPassthroughDesc:
@@ -1146,27 +1141,6 @@ export default {
           },
           oauthOnlyHint: 'Initial Grok support is OAuth subscription-backed Responses API text and reasoning traffic only.'
         },
-        kimi: {
-          title: 'Kimi Account Authorization',
-          followSteps: 'Authorize your Kimi subscription with device login:',
-          step1Start: 'Start device authorization to get your user code',
-          startAuth: 'Start Device Authorization',
-          starting: 'Requesting device code...',
-          restart: 'Restart Authorization',
-          userCode: 'User Code',
-          copyCode: 'Copy user code',
-          codeCopied: 'User code copied',
-          step2Open: 'Open the verification page and confirm',
-          openUrlDesc: 'Open the verification page in your browser, sign in to Kimi, and confirm the user code.',
-          openVerificationPage: 'Open Verification Page',
-          waiting: 'Waiting for confirmation in your browser...',
-          authorized: 'Authorization successful. Creating account...',
-          expired: 'The device code has expired. Please restart the authorization.',
-          denied: 'Authorization was denied. Please restart to try again.',
-          failedToStart: 'Failed to start Kimi device authorization',
-          pollFailed: 'Failed to poll Kimi device authorization status',
-          oauthOnlyHint: 'Kimi subscription accounts use OAuth device-flow login (OpenAI-compatible forwarding) only.'
-        },
         // Gemini specific
 	        gemini: {
 	          title: 'Gemini Account Authorization',
@@ -1398,7 +1372,6 @@ export default {
       geminiAccount: 'Gemini Account',
       antigravityAccount: 'Antigravity Account',
       grokAccount: 'Grok Account',
-      kimiAccount: 'Kimi Account',
       inputMethod: 'Input Method',
       reAuthorizedSuccess: 'Account re-authorized successfully',
       // Test Modal
