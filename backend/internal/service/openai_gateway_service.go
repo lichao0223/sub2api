@@ -423,7 +423,6 @@ type OpenAIGatewayService struct {
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	grokTokenProvider     *GrokTokenProvider
-	kimiTokenProvider     *KimiTokenProvider
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
@@ -490,7 +489,6 @@ func NewOpenAIGatewayService(
 	deferredService *DeferredService,
 	openAITokenProvider *OpenAITokenProvider,
 	grokTokenProvider *GrokTokenProvider,
-	kimiTokenProvider *KimiTokenProvider,
 	resolver *ModelPricingResolver,
 	channelService *ChannelService,
 	balanceNotifyService *BalanceNotifyService,
@@ -527,7 +525,6 @@ func NewOpenAIGatewayService(
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		grokTokenProvider:     grokTokenProvider,
-		kimiTokenProvider:     kimiTokenProvider,
 		toolCorrector:         NewCodexToolCorrector(),
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
@@ -1187,20 +1184,6 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			}
 			return accessToken, "oauth", nil
 		}
-		if account.Platform == PlatformKimi {
-			if s.kimiTokenProvider != nil {
-				accessToken, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
-				if err != nil {
-					return "", "", err
-				}
-				return accessToken, "oauth", nil
-			}
-			accessToken := account.GetKimiAccessToken()
-			if accessToken == "" {
-				return "", "", errors.New("access_token not found in credentials")
-			}
-			return accessToken, "oauth", nil
-		}
 		// 使用 TokenProvider 获取缓存的 token
 		if s.openAITokenProvider != nil {
 			accessToken, err := s.openAITokenProvider.GetAccessToken(ctx, account)
@@ -1223,7 +1206,7 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			}
 			return apiKey, "apikey", nil
 		}
-		apiKey := account.GetOpenAIApiKey()
+		apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 		if apiKey == "" {
 			return "", "", errors.New("api_key not found in credentials")
 		}

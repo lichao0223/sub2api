@@ -62,8 +62,8 @@ func RegisterAdminRoutes(
 		// Grok OAuth
 		registerGrokOAuthRoutes(admin, h)
 
-		// Kimi OAuth
-		registerKimiOAuthRoutes(admin, h)
+		// 国产供应商（kimi/zhipu/deepseek）额度与余额
+		registerCNProviderRoutes(admin, h)
 
 		// 代理管理
 		registerProxyRoutes(admin, h, stepUpAuth)
@@ -555,14 +555,14 @@ func registerGrokOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 }
 
-func registerKimiOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	kimi := admin.Group("/kimi")
+// registerCNProviderRoutes 注册国产供应商（kimi/zhipu/deepseek）的额度与余额查询端点。
+func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	cn := admin.Group("/cn-providers")
 	{
-		kimi.POST("/oauth/device-code", h.Admin.KimiOAuth.StartDeviceAuth)
-		kimi.POST("/oauth/poll", h.Admin.KimiOAuth.PollDeviceToken)
-		kimi.POST("/oauth/refresh-token", h.Admin.KimiOAuth.RefreshToken)
-		kimi.POST("/oauth/create-from-oauth", h.Admin.KimiOAuth.CreateAccountFromOAuth)
-		kimi.POST("/accounts/:id/refresh", h.Admin.KimiOAuth.RefreshAccountToken)
+		// Coding Plan 滚动窗口用量（kimi/zhipu coding 账号）。
+		cn.GET("/accounts/:id/quota", h.Admin.CNProvider.QueryQuota)
+		// payg 账号余额（kimi/deepseek；zhipu 无余额端点）。
+		cn.GET("/accounts/:id/balance", h.Admin.CNProvider.QueryBalance)
 	}
 }
 

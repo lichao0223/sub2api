@@ -160,18 +160,47 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+        </div>
+        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
+        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
           <button
             type="button"
-            @click="form.platform = 'kimi'"
+            @click="selectCNPlatform('kimi')"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
               form.platform === 'kimi'
-                ? 'bg-white text-sky-600 shadow-sm dark:bg-dark-600 dark:text-sky-400'
+                ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
             ]"
           >
             <PlatformIcon platform="kimi" size="sm" />
             Kimi
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('zhipu')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'zhipu'
+                ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="zhipu" size="sm" />
+            Zhipu GLM
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('deepseek')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'deepseek'
+                ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="deepseek" size="sm" />
+            DeepSeek
           </button>
         </div>
       </div>
@@ -424,39 +453,98 @@
         </div>
       </div>
 
-      <!-- Account Type Selection (Kimi - OAuth only) -->
-      <div v-if="form.platform === 'kimi'">
-        <label class="input-label">{{ t('admin.accounts.accountType') }}</label>
-        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-type">
+      <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
+      <div v-if="isCNPlatform">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
+          <!-- Pay-as-you-go (token balance) -->
           <button
             type="button"
-            @click="accountCategory = 'oauth-based'"
+            @click="accountMode = 'payg'"
             :class="[
               'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
-              accountCategory === 'oauth-based'
-                ? 'border-sky-500 bg-sky-50 dark:bg-sky-900/20'
-                : 'border-gray-200 hover:border-sky-300 dark:border-dark-600 dark:hover:border-sky-700'
+              accountMode === 'payg'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
             ]"
           >
             <div
               :class="[
                 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
-                accountCategory === 'oauth-based'
-                  ? 'bg-sky-500 text-white'
+                accountMode === 'payg'
+                  ? cnAccentIconClass
                   : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
               ]"
             >
-              <PlatformIcon platform="kimi" size="sm" />
+              <Icon name="creditCard" size="sm" />
             </div>
             <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">OAuth</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.types.kimiOauth') }}</span>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.payg') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
+            </div>
+          </button>
+          <!-- Coding Plan (kimi / zhipu only — DeepSeek has no coding plan) -->
+          <button
+            v-if="form.platform !== 'deepseek'"
+            type="button"
+            @click="accountMode = 'coding'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountMode === 'coding'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountMode === 'coding'
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="bolt" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.cnProviders.accountMode.coding') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.codingDesc') }}</span>
             </div>
           </button>
         </div>
-        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {{ t('admin.accounts.oauth.kimi.oauthOnlyHint') }}
-        </p>
+      </div>
+
+      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek) -->
+      <div v-if="isCNPlatform" class="mt-4">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <button
+            v-for="opt in cnProtocolOptions"
+            :key="opt.value"
+            type="button"
+            @click="apiProtocol = opt.value"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              apiProtocol === opt.value
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                apiProtocol === opt.value
+                  ? cnAccentIconClass
+                  : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon :name="opt.value === 'anthropic' ? 'sparkles' : opt.value === 'responses' ? 'terminal' : 'chat'" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t(`admin.accounts.cnProviders.apiProtocol.${opt.labelKey}`) }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t(`admin.accounts.cnProviders.apiProtocol.${opt.labelKey}Desc`) }}</span>
+            </div>
+          </button>
+        </div>
       </div>
 
       <!-- Account Type Selection (Gemini) -->
@@ -1162,41 +1250,28 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
-        <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
-          <label class="input-label">模型提供商</label>
-          <select v-model="modelProvider" class="input" data-testid="model-provider-select">
-            <option value="none">无</option>
-            <option value="glm">GLM</option>
-            <option value="kimi">Kimi</option>
-            <option value="deepseek">DeepSeek</option>
-          </select>
-          <p class="input-hint">
-            GLM、Kimi 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。
-          </p>
-        </div>
-
         <div>
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="apiKeyBaseUrl"
             type="text"
             class="input"
-            data-testid="api-key-base-url"
-            :placeholder="
-              form.platform === 'openai'
-                ? 'https://api.openai.com'
-                : form.platform === 'gemini'
-                  ? 'https://generativelanguage.googleapis.com'
-                  : form.platform === 'grok'
-                    ? 'https://api.x.ai/v1'
-                    : 'https://api.anthropic.com'
-            "
+            :placeholder="apiKeyBaseUrlPlaceholder"
           />
           <p v-if="baseUrlHint" class="input-hint">{{ baseUrlHint }}</p>
           <GrokBaseUrlPresets
             v-if="form.platform === 'grok'"
             class="mt-2"
             @select="apiKeyBaseUrl = $event"
+          />
+          <CnBaseUrlPresets
+            v-if="isCNPlatform"
+            class="mt-2"
+            :platform="cnPresetPlatform"
+            :mode="accountMode"
+            :protocol="apiProtocol"
+            :current-url="apiKeyBaseUrl"
+            @select="onCnPresetSelect"
           />
         </div>
         <div>
@@ -1206,15 +1281,7 @@
             type="password"
             required
             class="input font-mono"
-            :placeholder="
-              form.platform === 'openai'
-                ? 'sk-proj-...'
-                : form.platform === 'gemini'
-                  ? 'AIza...'
-                  : form.platform === 'grok'
-                    ? 'xai-...'
-                    : 'sk-ant-...'
-            "
+            :placeholder="apiKeyValuePlaceholder"
           />
           <p v-if="apiKeyHint" class="input-hint">{{ apiKeyHint }}</p>
         </div>
@@ -2087,9 +2154,9 @@
         </div>
       </div>
 
-      <!-- OpenAI/Grok/Kimi OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
+      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'kimi') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3258,12 +3325,6 @@
           </div>
         </div>
 
-        <AccountMultimodalSettings
-          v-if="form.platform === 'openai' || form.platform === 'anthropic'"
-          v-model="multimodalConfig"
-          :models="multimodalModelOptions"
-        />
-
         <!-- Group Selection - 仅标准模式显示 -->
         <GroupSelector
           v-if="!authStore.isSimpleMode"
@@ -3279,13 +3340,7 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
-      <KimiDeviceFlow
-        v-if="form.platform === 'kimi'"
-        :proxy-id="form.proxy_id"
-        @authorized="handleKimiAuthorized"
-      />
       <OAuthAuthorizationFlow
-        v-else
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -3659,8 +3714,6 @@ import { useOpenAIOAuth } from '@/composables/useOpenAIOAuth'
 import { useGeminiOAuth } from '@/composables/useGeminiOAuth'
 import { useAntigravityOAuth } from '@/composables/useAntigravityOAuth'
 import { useGrokOAuth } from '@/composables/useGrokOAuth'
-import { buildKimiCredentials, buildKimiExtraInfo } from '@/composables/useKimiOAuth'
-import type { KimiTokenInfo } from '@/api/admin/kimi'
 import type {
   Proxy,
   AdminGroup,
@@ -3685,18 +3738,17 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
-import AccountMultimodalSettings from '@/components/account/AccountMultimodalSettings.vue'
-import {
-  applyMultimodalConfig,
-  defaultMultimodalConfig
-} from '@/components/account/accountMultimodal'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  defaultCNBaseUrl,
   isHeaderOverrideCapable,
   validateHeaderOverrideRows,
+  type CnAccountMode,
+  type CnApiProtocol,
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
@@ -3712,7 +3764,6 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
-import KimiDeviceFlow from './KimiDeviceFlow.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -3738,7 +3789,6 @@ const oauthStepTitle = computed(() => {
   if (form.platform === 'gemini') return t('admin.accounts.oauth.gemini.title')
   if (form.platform === 'antigravity') return t('admin.accounts.oauth.antigravity.title')
   if (form.platform === 'grok') return t('admin.accounts.oauth.grok.title')
-  if (form.platform === 'kimi') return t('admin.accounts.oauth.kimi.title')
   return t('admin.accounts.oauth.title')
 })
 
@@ -3747,7 +3797,6 @@ const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
   if (form.platform === 'grok') return ''
-  if (form.platform === 'kimi') return t('admin.accounts.kimi.baseUrlHint')
   return t('admin.accounts.baseUrlHint')
 })
 
@@ -3755,8 +3804,43 @@ const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
   if (form.platform === 'grok') return ''
-  if (form.platform === 'kimi') return t('admin.accounts.kimi.apiKeyHint')
   return t('admin.accounts.apiKeyHint')
+})
+
+// Base URL / API Key 占位符：国产供应商随账号类型变化。
+const apiKeyBaseUrlPlaceholder = computed(() => {
+  if (isCNPlatform.value) {
+    return defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value) || 'https://api.example.com'
+  }
+  switch (form.platform) {
+    case 'openai':
+      return 'https://api.openai.com'
+    case 'gemini':
+      return 'https://generativelanguage.googleapis.com'
+    case 'grok':
+      return 'https://api.x.ai/v1'
+    default:
+      return 'https://api.anthropic.com'
+  }
+})
+
+const apiKeyValuePlaceholder = computed(() => {
+  switch (form.platform) {
+    case 'openai':
+      return 'sk-proj-...'
+    case 'gemini':
+      return 'AIza...'
+    case 'grok':
+      return 'xai-...'
+    case 'kimi':
+      return 'sk-...'
+    case 'zhipu':
+      return '<api-key>.<secret>'
+    case 'deepseek':
+      return 'sk-...'
+    default:
+      return 'sk-ant-...'
+  }
 })
 
 interface Props {
@@ -3836,30 +3920,87 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
-const modelProvider = ref<'none' | 'glm' | 'kimi' | 'deepseek'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
-function getModelProviderBaseUrl(platform: string, provider: 'none' | 'glm' | 'kimi' | 'deepseek') {
-  if (provider === 'glm') {
-    return platform === 'openai'
-      ? 'https://open.bigmodel.cn/api/coding/paas/v4'
-      : 'https://open.bigmodel.cn/api/anthropic'
+// ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
+const accountMode = ref<CnAccountMode>('payg')
+// API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
+// responses=deepseek 原生 Responses 端点（Codex）。与账号类型正交。
+const apiProtocol = ref<CnApiProtocol>('chat_completions')
+const isCNPlatform = computed(
+  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
+)
+// CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
+// `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
+const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
+  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+    return form.platform
   }
-  if (provider === 'kimi') {
-    return platform === 'openai'
-      ? 'https://api.kimi.com/coding/v1'
-      : 'https://api.kimi.com/coding/'
-  }
-  if (provider === 'deepseek') {
-    return platform === 'openai' ? 'https://api.deepseek.com' : 'https://api.deepseek.com/anthropic'
-  }
-  return platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
-}
-
-watch(modelProvider, (provider) => {
-  if (form.platform !== 'anthropic' && form.platform !== 'openai') return
-  apiKeyBaseUrl.value = getModelProviderBaseUrl(form.platform, provider)
+  return 'kimi'
 })
+// 当前平台可选的协议档（responses 仅 deepseek）。
+const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
+  const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
+    { value: 'chat_completions', labelKey: 'chatCompletions' },
+    { value: 'anthropic', labelKey: 'anthropic' }
+  ]
+  if (form.platform === 'deepseek') {
+    opts.push({ value: 'responses', labelKey: 'responses' })
+  }
+  return opts
+})
+// 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
+const cnAccentActiveClass = computed(() => {
+  switch (form.platform) {
+    case 'kimi':
+      return 'border-pink-500 bg-pink-50 dark:bg-pink-900/20'
+    case 'zhipu':
+      return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
+    case 'deepseek':
+      return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
+    default:
+      return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+  }
+})
+const cnAccentIconClass = computed(() => {
+  switch (form.platform) {
+    case 'kimi':
+      return 'bg-pink-500 text-white'
+    case 'zhipu':
+      return 'bg-indigo-500 text-white'
+    case 'deepseek':
+      return 'bg-teal-500 text-white'
+    default:
+      return 'bg-primary-500 text-white'
+  }
+})
+// 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
+// 协议回落 chat_completions，并把 base url 重置为该平台默认端点。
+function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
+  form.platform = platform
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiProtocol.value = 'chat_completions'
+  if (platform === 'deepseek') {
+    accountMode.value = 'payg'
+  }
+  apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
+}
+// 账号类型 / 协议变更时同步默认 base url。
+watch(accountMode, (mode) => {
+  if (!isCNPlatform.value) return
+  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, mode, apiProtocol.value)
+})
+watch(apiProtocol, (protocol) => {
+  if (!isCNPlatform.value) return
+  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, accountMode.value, protocol)
+})
+// 点击预设端点：同时回填 base url、账号类型与协议。
+function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol; url: string }) {
+  accountMode.value = preset.mode
+  apiProtocol.value = preset.protocol
+  apiKeyBaseUrl.value = preset.url
+}
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -3884,14 +4025,6 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
-const multimodalConfig = ref(defaultMultimodalConfig())
-const multimodalModelOptions = computed(() =>
-  [...new Set([
-    ...allowedModels.value,
-    ...modelMappings.value.map((mapping) => mapping.to),
-    ...multimodalConfig.value.rules.map((rule) => rule.model)
-  ].map((model) => model.trim()).filter(Boolean))]
-)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4364,16 +4497,18 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    apiKeyBaseUrl.value =
-      (newPlatform === 'openai' || newPlatform === 'anthropic')
-        ? getModelProviderBaseUrl(newPlatform, modelProvider.value)
-        : newPlatform === 'gemini'
-          ? 'https://generativelanguage.googleapis.com'
-          : newPlatform === 'grok'
-            ? 'https://api.x.ai/v1'
-            : newPlatform === 'kimi'
-              ? 'https://api.kimi.com/coding/v1'
+    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
+      apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
+    } else {
+      apiKeyBaseUrl.value =
+        (newPlatform === 'openai')
+          ? 'https://api.openai.com'
+          : newPlatform === 'gemini'
+            ? 'https://generativelanguage.googleapis.com'
+            : newPlatform === 'grok'
+              ? 'https://api.x.ai/v1'
               : 'https://api.anthropic.com'
+    }
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4394,13 +4529,6 @@ watch(
       antigravityModelRestrictionMode.value = 'mapping'
     }
     if (newPlatform === 'grok') {
-      accountCategory.value = 'oauth-based'
-      addMethod.value = 'oauth'
-      modelRestrictionMode.value = 'mapping'
-      form.concurrency = 1
-      form.load_factor = null
-    }
-    if (newPlatform === 'kimi') {
       accountCategory.value = 'oauth-based'
       addMethod.value = 'oauth'
       modelRestrictionMode.value = 'mapping'
@@ -4442,9 +4570,6 @@ watch(
       anthropicPassthroughEnabled.value = false
       anthropicAPIKeyAuthScheme.value = 'x_api_key'
       webSearchEmulationMode.value = 'default'
-    }
-    if (newPlatform !== 'anthropic' && newPlatform !== 'openai') {
-      modelProvider.value = 'none'
     }
     // 请求头覆写为平台相关配置（常用头集合不同），切换平台时清空，
     // 避免上一平台的配置行被提交到新平台账号
@@ -4824,9 +4949,10 @@ const resetForm = () => {
   form.expires_at = null
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
+  accountMode.value = 'payg'
+  apiProtocol.value = 'chat_completions'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
-  modelProvider.value = 'none'
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -4838,7 +4964,6 @@ const resetForm = () => {
   editWeeklyResetHour.value = null
   editResetTimezone.value = null
   modelMappings.value = []
-  multimodalConfig.value = defaultMultimodalConfig()
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -5030,17 +5155,6 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
-}
-
-const buildModelProviderExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
-  if (
-    accountCategory.value !== 'apikey' ||
-    (form.platform !== 'anthropic' && form.platform !== 'openai') ||
-    modelProvider.value === 'none'
-  ) {
-    return base
-  }
-  return { ...(base || {}), model_provider: modelProvider.value }
 }
 
 // Helper function to create account with mixed channel warning handling
@@ -5299,6 +5413,20 @@ const handleSubmit = async () => {
     credentials.tier_id = geminiTierAIStudio.value
   }
 
+  // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
+  // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
+  // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
+  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+    credentials.account_mode = accountMode.value
+    credentials.api_protocol = apiProtocol.value
+    const resolvedCNBase = (
+      apiKeyBaseUrl.value.trim() || defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value)
+    ).trim()
+    if (resolvedCNBase) {
+      credentials.base_url = resolvedCNBase
+    }
+  }
+
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
   if (!isOpenAIModelRestrictionDisabled.value) {
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
@@ -5348,7 +5476,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildModelProviderExtra(buildAnthropicExtra(buildOpenAIExtra()))
+  const extra = buildAnthropicExtra(buildOpenAIExtra())
 
   await doCreateAccount({
     ...form,
@@ -5415,9 +5543,6 @@ const createAccountAndFinish = async (
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
-  if (platform === 'openai' || platform === 'anthropic') {
-    applyMultimodalConfig(credentials, multimodalConfig.value)
-  }
   // Inject quota limits for apikey/bedrock accounts
   let finalExtra = extra
   if (type === 'apikey' || type === 'bedrock') {
@@ -5464,17 +5589,6 @@ const createAccountAndFinish = async (
   if (platform === 'grok') {
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
-    }
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
-    if (modelMapping) {
-      credentials.model_mapping = modelMapping
-    } else {
-      delete credentials.model_mapping
-    }
-  }
-  if (platform === 'kimi') {
-    if (!credentials.base_url) {
-      credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.kimi.com/coding/v1'
     }
     const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
     if (modelMapping) {
@@ -6373,13 +6487,6 @@ const handleGrokExchange = async (authCode: string) => {
   } finally {
     grokOAuth.loading.value = false
   }
-}
-
-// Kimi OAuth 设备码授权完成（由 KimiDeviceFlow 轮询成功后触发）
-const handleKimiAuthorized = async (tokenInfo: KimiTokenInfo) => {
-  const credentials = buildKimiCredentials(tokenInfo)
-  const extra = buildKimiExtraInfo(tokenInfo)
-  await createAccountAndFinish('kimi', 'oauth', credentials, extra)
 }
 
 // Anthropic OAuth 授权码兑换

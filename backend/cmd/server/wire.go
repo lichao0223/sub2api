@@ -90,6 +90,7 @@ func provideCleanup(
 	schedulerSnapshot *service.SchedulerSnapshotService,
 	tokenRefresh *service.TokenRefreshService,
 	accountExpiry *service.AccountExpiryService,
+	cnProviderBalanceCheck *service.CNProviderBalanceCheckService,
 	codexVersionSync *service.OpenAICodexVersionSyncService,
 	proxyExpiry *service.ProxyExpiryService,
 	subscriptionExpiry *service.SubscriptionExpiryService,
@@ -108,7 +109,6 @@ func provideCleanup(
 	geminiOAuth *service.GeminiOAuthService,
 	antigravityOAuth *service.AntigravityOAuthService,
 	grokOAuth *service.GrokOAuthService,
-	kimiOAuth *service.KimiOAuthService,
 	openAIGateway *service.OpenAIGatewayService,
 	scheduledTestRunner *service.ScheduledTestRunnerService,
 	backupSvc *service.BackupService,
@@ -255,6 +255,12 @@ func provideCleanup(
 				accountExpiry.Stop()
 				return nil
 			}},
+			{"CNProviderBalanceCheckService", func() error {
+				if cnProviderBalanceCheck != nil {
+					cnProviderBalanceCheck.Stop()
+				}
+				return nil
+			}},
 			{"OpenAICodexVersionSyncService", func() error {
 				codexVersionSync.Stop()
 				return nil
@@ -310,12 +316,6 @@ func provideCleanup(
 			{"GrokOAuthService", func() error {
 				if grokOAuth != nil {
 					grokOAuth.Stop()
-				}
-				return nil
-			}},
-			{"KimiOAuthService", func() error {
-				if kimiOAuth != nil {
-					kimiOAuth.Stop()
 				}
 				return nil
 			}},

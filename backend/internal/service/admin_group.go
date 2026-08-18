@@ -13,7 +13,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -248,8 +247,6 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return ids
 	case PlatformGrok:
 		return xai.DefaultModelIDs()
-	case PlatformKimi:
-		return kimi.DefaultModelIDs()
 	case PlatformComposite:
 		return compositeDefaultModelsListCandidateIDs()
 	default:
@@ -270,7 +267,7 @@ func defaultAllowImageGenerationForPlatform(platform string) bool {
 func compositeDefaultModelsListCandidateIDs() []string {
 	seen := make(map[string]struct{})
 	ids := make([]string, 0)
-	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi} {
+	for _, platform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok} {
 		for _, id := range defaultModelsListCandidateIDs(platform) {
 			if _, ok := seen[id]; ok {
 				continue
@@ -295,7 +292,6 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 		platform == PlatformAnthropic ||
 		platform == PlatformGemini ||
 		platform == PlatformGrok ||
-		platform == PlatformKimi ||
 		platform == PlatformComposite
 }
 
@@ -991,6 +987,12 @@ func normalizeGroupModelPricing(platform string, pricing []ChannelModelPricing) 
 		out[i] = pricing[i].Clone()
 		out[i].ID = 0
 		out[i].ChannelID = 0
+		if out[i].TimePricing != nil && len(out[i].TimePricing.Periods) > 0 {
+			return nil, infraerrors.BadRequest(
+				"GROUP_MODEL_TIME_PRICING_UNSUPPORTED",
+				"group model pricing does not support time pricing",
+			)
+		}
 		if strings.TrimSpace(out[i].Platform) == "" {
 			out[i].Platform = platform
 		}
@@ -1045,20 +1047,7 @@ func (s *adminServiceImpl) DeleteGroup(ctx context.Context, id int64) error {
 }
 
 func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, page, pageSize int) ([]APIKey, int64, error) {
-	return s.GetGroupAPIKeysWithSearch(ctx, groupID, page, pageSize, "")
-}
-
-func (s *adminServiceImpl) GetGroupAPIKeysWithSearch(ctx context.Context, groupID int64, page, pageSize int, search string) ([]APIKey, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize}
-	if searchRepo, ok := s.apiKeyRepo.(interface {
-		ListByGroupIDSearch(context.Context, int64, pagination.PaginationParams, string) ([]APIKey, *pagination.PaginationResult, error)
-	}); ok {
-		keys, result, err := searchRepo.ListByGroupIDSearch(ctx, groupID, params, search)
-		if err != nil {
-			return nil, 0, err
-		}
-		return keys, result.Total, nil
-	}
 	keys, result, err := s.apiKeyRepo.ListByGroupID(ctx, groupID, params)
 	if err != nil {
 		return nil, 0, err

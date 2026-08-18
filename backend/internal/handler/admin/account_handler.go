@@ -23,7 +23,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -1026,7 +1025,8 @@ func (h *AccountHandler) Update(c *gin.Context) {
 // 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时标记保持缺失，
 // 网关会按"现状即证据"默认走 Responses。
 func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) {
-	if account == nil || account.Platform != service.PlatformOpenAI || account.Type != service.AccountTypeAPIKey {
+	if account == nil || account.Type != service.AccountTypeAPIKey ||
+		(account.Platform != service.PlatformOpenAI && !service.IsCNProvider(account.Platform)) {
 		return
 	}
 	if h.accountTestService == nil {
@@ -2700,56 +2700,6 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 				ID:          requestedModel,
 				Object:      "model",
 				OwnedBy:     "xai",
-				DisplayName: requestedModel,
-			})
-		}
-		response.Success(c, models)
-		return
-	}
-
-	// Handle Kimi accounts（与 Grok 分支同构）
-	if account.Platform == service.PlatformKimi {
-		defaultModels := kimi.DefaultModels()
-
-		hasExplicitMapping := false
-		switch rawMapping := account.Credentials["model_mapping"].(type) {
-		case map[string]any:
-			hasExplicitMapping = len(rawMapping) > 0
-		case map[string]string:
-			hasExplicitMapping = len(rawMapping) > 0
-		}
-		if !hasExplicitMapping {
-			response.Success(c, defaultModels)
-			return
-		}
-
-		mapping := account.GetModelMapping()
-		if len(mapping) == 0 {
-			response.Success(c, defaultModels)
-			return
-		}
-
-		defaultByID := make(map[string]kimi.Model, len(defaultModels))
-		for _, model := range defaultModels {
-			defaultByID[model.ID] = model
-		}
-
-		requestedModels := make([]string, 0, len(mapping))
-		for requestedModel := range mapping {
-			requestedModels = append(requestedModels, requestedModel)
-		}
-		sort.Strings(requestedModels)
-
-		var models []kimi.Model
-		for _, requestedModel := range requestedModels {
-			if defaultModel, found := defaultByID[requestedModel]; found {
-				models = append(models, defaultModel)
-				continue
-			}
-			models = append(models, kimi.Model{
-				ID:          requestedModel,
-				Object:      "model",
-				OwnedBy:     "moonshot",
 				DisplayName: requestedModel,
 			})
 		}

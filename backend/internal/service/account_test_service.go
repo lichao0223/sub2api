@@ -29,7 +29,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/kimi"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -142,7 +141,6 @@ type AccountTestService struct {
 	geminiTokenProvider       *GeminiTokenProvider
 	claudeTokenProvider       *ClaudeTokenProvider
 	grokTokenProvider         *GrokTokenProvider
-	kimiTokenProvider         *KimiTokenProvider
 	antigravityGatewayService *AntigravityGatewayService
 	httpUpstream              HTTPUpstream
 	cfg                       *config.Config
@@ -167,7 +165,6 @@ func NewAccountTestService(
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
-	kimiTokenProvider *KimiTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
@@ -178,7 +175,6 @@ func NewAccountTestService(
 		geminiTokenProvider:       geminiTokenProvider,
 		claudeTokenProvider:       claudeTokenProvider,
 		grokTokenProvider:         grokTokenProvider,
-		kimiTokenProvider:         kimiTokenProvider,
 		antigravityGatewayService: antigravityGatewayService,
 		httpUpstream:              httpUpstream,
 		cfg:                       cfg,
@@ -301,82 +297,11 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.testGrokAccountConnection(c, account, modelID, prompt, mode, testOpts)
 	}
 
-	if account.Platform == PlatformKimi {
-		return s.testKimiAccountConnection(c, account, modelID, prompt)
-	}
-
 	if account.Platform == PlatformAntigravity {
 		return s.routeAntigravityTest(c, account, modelID, prompt)
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
-}
-
-// testKimiAccountConnection tests a Kimi OAuth account through its Coding API.
-func (s *AccountTestService) testKimiAccountConnection(c *gin.Context, account *Account, modelID, prompt string) error {
-	ctx := c.Request.Context()
-	if account.Type != AccountTypeOAuth {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Unsupported Kimi account type: %s", account.Type))
-	}
-	if s.kimiTokenProvider == nil {
-		return s.sendErrorAndEnd(c, "Kimi token provider not configured")
-	}
-
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = "kimi-for-coding"
-	}
-	if mapped := strings.TrimSpace(account.GetMappedModel(testModelID)); mapped != "" {
-		testModelID = mapped
-	}
-
-	authToken, err := s.kimiTokenProvider.GetAccessToken(ctx, account)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Failed to get Kimi access token: %s", err.Error()))
-	}
-	apiURL, err := kimi.BuildChatCompletionsURL(account.GetKimiBaseURL())
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Kimi base URL: %s", err.Error()))
-	}
-
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.Flush()
-
-	payloadBytes, _ := json.Marshal(createOpenAIChatCompletionsTestPayload(testModelID, prompt))
-	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
-	if err != nil {
-		return s.sendErrorAndEnd(c, "Failed to create Kimi request")
-	}
-	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAI))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	kimi.SetFingerprintHeaders(req.Header, account.GetKimiDeviceID())
-	account.ApplyHeaderOverrides(req.Header)
-
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
-	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
-	if err != nil {
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Kimi API request failed: %s", err.Error()))
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		if isKimiUsageLimitError(account, resp.StatusCode, body) {
-			_, _ = persistKimiUsageLimit(ctx, s.accountRepo, account, resp.Header)
-		}
-		return s.sendErrorAndEnd(c, fmt.Sprintf("Kimi API returned %d: %s", resp.StatusCode, string(body)))
-	}
-	return s.processOpenAIChatCompletionsStream(c, resp.Body)
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
@@ -490,10 +415,8 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body))
 
-		if isKimiUsageLimitError(account, resp.StatusCode, body) {
-			_, _ = persistKimiUsageLimit(ctx, s.accountRepo, account, resp.Header)
-		} else if resp.StatusCode == http.StatusForbidden {
-			// 其他 403 表示账号被上游封禁，标记为 error 状态
+		// 403 表示账号被上游封禁，标记为 error 状态
+		if resp.StatusCode == http.StatusForbidden {
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
 
@@ -2041,9 +1964,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if isKimiUsageLimitError(account, resp.StatusCode, body) {
-			_, _ = persistKimiUsageLimit(ctx, s.accountRepo, account, resp.Header)
-		} else if resp.StatusCode == http.StatusTooManyRequests {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
 		}
 		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {

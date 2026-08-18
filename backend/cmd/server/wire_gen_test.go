@@ -66,6 +66,7 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		schedulerSnapshotSvc,
 		tokenRefreshSvc,
 		accountExpirySvc,
+		nil, // cnProviderBalanceCheck
 		codexVersionSyncSvc,
 		proxyExpirySvc,
 		subscriptionExpirySvc,
@@ -84,7 +85,6 @@ func TestProvideCleanup_WithMinimalDependencies_NoPanic(t *testing.T) {
 		geminiOAuthSvc,
 		antigravityOAuthSvc,
 		nil, // grokOAuth
-		nil, // kimiOAuth
 		nil, // openAIGateway
 		nil, // scheduledTestRunner
 		nil, // backupSvc

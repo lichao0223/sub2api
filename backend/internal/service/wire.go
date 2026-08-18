@@ -125,7 +125,6 @@ func ProvideTokenRefreshService(
 	geminiOAuthService *GeminiOAuthService,
 	antigravityOAuthService *AntigravityOAuthService,
 	grokOAuthService *GrokOAuthService,
-	kimiOAuthService *KimiOAuthService,
 	cacheInvalidator TokenCacheInvalidator,
 	schedulerCache SchedulerCache,
 	cfg *config.Config,
@@ -136,8 +135,6 @@ func ProvideTokenRefreshService(
 	runtimeBlocker AccountRuntimeBlocker,
 ) *TokenRefreshService {
 	svc := NewTokenRefreshService(accountRepo, oauthService, openaiOAuthService, geminiOAuthService, antigravityOAuthService, cacheInvalidator, schedulerCache, cfg, tempUnschedCache, grokOAuthService)
-	// 注册 Kimi 平台刷新器（构造后注入，保持 NewTokenRefreshService 签名稳定）
-	svc.SetKimiOAuthService(kimiOAuthService)
 	// 注入 OpenAI privacy opt-out 依赖
 	svc.SetPrivacyDeps(privacyClientFactory, proxyRepo)
 	// 注入统一 OAuth 刷新 API（消除 TokenRefreshService 与 TokenProvider 之间的竞争条件）
@@ -201,8 +198,6 @@ func ProvideAccountUsageService(
 	grokQuotaFetcher *GrokQuotaFetcher,
 	grokQuotaService *GrokQuotaService,
 	openAIQuotaService *OpenAIQuotaService,
-	kimiTokenProvider *KimiTokenProvider,
-	httpUpstream HTTPUpstream,
 	cache *UsageCache,
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
@@ -217,8 +212,6 @@ func ProvideAccountUsageService(
 		grokQuotaFetcher,
 		grokQuotaService,
 		openAIQuotaService,
-		kimiTokenProvider,
-		httpUpstream,
 		cache,
 		identityCache,
 		tlsFPProfileService,
@@ -232,7 +225,6 @@ func ProvideAccountTestService(
 	geminiTokenProvider *GeminiTokenProvider,
 	claudeTokenProvider *ClaudeTokenProvider,
 	grokTokenProvider *GrokTokenProvider,
-	kimiTokenProvider *KimiTokenProvider,
 	antigravityGatewayService *AntigravityGatewayService,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
@@ -245,7 +237,6 @@ func ProvideAccountTestService(
 		geminiTokenProvider,
 		claudeTokenProvider,
 		grokTokenProvider,
-		kimiTokenProvider,
 		antigravityGatewayService,
 		httpUpstream,
 		cfg,
@@ -268,6 +259,45 @@ func ProvideGrokQuotaService(
 	service := NewGrokQuotaService(accountRepo, proxyRepo, tokenProvider, httpUpstream, cfg, usageLogRepo)
 	service.SetSettingService(settingService)
 	return service
+}
+
+// ProvideCNProviderQuotaService 构造国产供应商 Coding Plan 额度探测服务。
+func ProvideCNProviderQuotaService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	httpUpstream HTTPUpstream,
+	cfg *config.Config,
+) *CNProviderQuotaService {
+	return NewCNProviderQuotaService(accountRepo, proxyRepo, httpUpstream, cfg)
+}
+
+// ProvideCNProviderBalanceService 构造国产供应商余额探测服务。
+func ProvideCNProviderBalanceService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	httpUpstream HTTPUpstream,
+	cfg *config.Config,
+) *CNProviderBalanceService {
+	return NewCNProviderBalanceService(accountRepo, proxyRepo, httpUpstream, cfg)
+}
+
+// ProvideCNProviderBalanceCheckService 构造并启动周期余额/额度检测任务。
+// payg 账号探余额（低余额停调）；coding plan 账号探 5h/weekly 滚动窗口
+// （落 extra 快照供调度阈值评估自动停调）。
+// 间隔取自 gateway.cn_providers.balance_check_interval_minutes；<=0 或关闭时不启动。
+func ProvideCNProviderBalanceCheckService(
+	accountRepo AccountRepository,
+	balanceService *CNProviderBalanceService,
+	quotaService *CNProviderQuotaService,
+	cfg *config.Config,
+) *CNProviderBalanceCheckService {
+	minutes := 10
+	if cfg != nil && cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes > 0 {
+		minutes = cfg.Gateway.CNProviders.BalanceCheckIntervalMinutes
+	}
+	svc := NewCNProviderBalanceCheckService(accountRepo, balanceService, quotaService, cfg, time.Duration(minutes)*time.Minute)
+	svc.Start()
+	return svc
 }
 
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
@@ -312,22 +342,6 @@ func ProvideGrokTokenProvider(
 	executor := NewGrokTokenRefresher(grokOAuthService)
 	p.SetRefreshAPI(refreshAPI, executor)
 	p.SetRefreshPolicy(GrokProviderRefreshPolicy())
-	p.SetTempUnschedCache(tempUnschedCache)
-	return p
-}
-
-// ProvideKimiTokenProvider creates KimiTokenProvider with OAuthRefreshAPI injection.
-func ProvideKimiTokenProvider(
-	accountRepo AccountRepository,
-	tokenCache GeminiTokenCache,
-	kimiOAuthService *KimiOAuthService,
-	refreshAPI *OAuthRefreshAPI,
-	tempUnschedCache TempUnschedCache,
-) *KimiTokenProvider {
-	p := NewKimiTokenProvider(accountRepo, tokenCache)
-	executor := NewKimiTokenRefresher(kimiOAuthService)
-	p.SetRefreshAPI(refreshAPI, executor)
-	p.SetRefreshPolicy(AntigravityProviderRefreshPolicy())
 	p.SetTempUnschedCache(tempUnschedCache)
 	return p
 }
@@ -809,7 +823,6 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAIOAuthService,
 	ProvideGrokOAuthService,
 	wire.Bind(new(GrokOAuthTokenService), new(*GrokOAuthService)),
-	NewKimiOAuthService,
 	NewGeminiOAuthService,
 	NewGeminiQuotaService,
 	NewCompositeTokenCacheInvalidator,
@@ -820,10 +833,12 @@ var ProviderSet = wire.NewSet(
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideGrokTokenProvider,
-	ProvideKimiTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideGrokQuotaService,
+	ProvideCNProviderQuotaService,
+	ProvideCNProviderBalanceService,
+	ProvideCNProviderBalanceCheckService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,

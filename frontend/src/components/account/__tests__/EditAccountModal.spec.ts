@@ -279,33 +279,6 @@ function buildGrokAPIKeyAccount() {
   } as any
 }
 
-function buildKimiOAuthAccount() {
-  return {
-    id: 6,
-    name: 'Kimi OAuth',
-    notes: '',
-    platform: 'kimi',
-    type: 'oauth',
-    credentials: {
-      refresh_token: 'kimi-rt',
-      base_url: 'https://api.kimi.com/coding/v1',
-      device_id: 'abc123',
-      model_mapping: {
-        'kimi-latest': 'kimi-for-coding'
-      }
-    },
-    extra: {},
-    proxy_id: null,
-    concurrency: 1,
-    priority: 1,
-    rate_multiplier: 1,
-    status: 'active',
-    group_ids: [],
-    expires_at: null,
-    auto_pause_on_expired: false
-  } as any
-}
-
 function buildOpenAISetupTokenAccount() {
   return {
     ...buildAccount(),
@@ -341,33 +314,6 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
-  })
-
-  it.each([
-    ['openai', 'glm', 'https://open.bigmodel.cn/api/coding/paas/v4'],
-    ['anthropic', 'glm', 'https://open.bigmodel.cn/api/anthropic'],
-    ['openai', 'kimi', 'https://api.kimi.com/coding/v1'],
-    ['anthropic', 'kimi', 'https://api.kimi.com/coding/'],
-    ['openai', 'deepseek', 'https://api.deepseek.com'],
-    ['anthropic', 'deepseek', 'https://api.deepseek.com/anthropic'],
-  ] as const)('sets and saves the %s %s provider base URL', async (platform, provider, expectedBaseUrl) => {
-    const account = buildAccount()
-    account.platform = platform
-    account.credentials.base_url =
-      platform === 'openai' ? 'https://api.openai.com' : 'https://api.anthropic.com'
-    updateAccountMock.mockReset().mockResolvedValue(account)
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-
-    const wrapper = mountModal(account)
-    await wrapper.get('[data-testid="edit-model-provider-select"]').setValue(provider)
-
-    expect((wrapper.get('[data-testid="edit-api-key-base-url"]').element as HTMLInputElement).value)
-      .toBe(expectedBaseUrl)
-
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.base_url).toBe(expectedBaseUrl)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.model_provider).toBe(provider)
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
@@ -644,34 +590,6 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.base_url).toBe('https://api.x.ai/v1')
-  })
-
-  it('loads and submits Kimi OAuth model mapping edits', async () => {
-    const account = buildKimiOAuthAccount()
-    updateAccountMock.mockReset()
-    checkMixedChannelRiskMock.mockReset()
-    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
-    updateAccountMock.mockResolvedValue(account)
-
-    const wrapper = mountModal(account)
-    expect(wrapper.text()).toContain('K2 Thinking')
-
-    const inputWithValue = (value: string) => {
-      const input = wrapper
-        .findAll('input')
-        .find((input) => (input.element as HTMLInputElement).value === value)
-      expect(input).toBeTruthy()
-      return input!
-    }
-
-    await inputWithValue('kimi-latest').setValue(' kimi ')
-    await inputWithValue('kimi-for-coding').setValue(' k3 ')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock).toHaveBeenCalledTimes(1)
-    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
-      kimi: 'k3'
-    })
   })
 
   it('only submits model mapping credentials when saving an OpenAI spark shadow account', async () => {
