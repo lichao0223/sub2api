@@ -157,6 +157,7 @@ func TestMultimodalPricingUsesVisionGroupWithoutChangingSourceGroup(t *testing.T
 		"gpt-vision",
 		1,
 		1,
+		time.Now(),
 		&recordUsageOpts{},
 	)
 

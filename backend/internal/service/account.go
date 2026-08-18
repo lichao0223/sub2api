@@ -277,6 +277,10 @@ func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
 
+func (a *Account) IsKimiOAuth() bool {
+	return a.IsKimi() && a.Type == AccountTypeOAuth
+}
+
 func (a *Account) IsZhipu() bool {
 	return a.Platform == PlatformZhipu
 }
