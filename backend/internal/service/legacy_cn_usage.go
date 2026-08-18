@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"math"
 	"net/http"
 	"strings"
@@ -49,7 +50,11 @@ func (s *AccountUsageService) getLegacyCNUsage(ctx context.Context, account *Acc
 		if err != nil {
 			return nil, err
 		}
-		return parseLegacyGLMUsage(body)
+		usage, err := parseLegacyGLMUsage(body)
+		if err == nil {
+			s.persistLegacyGLMQuota(ctx, account, usage)
+		}
+		return usage, err
 	case "kimi":
 		body, err := legacyCNGet(ctx, account, legacyKimiUsageURL(account.GetBaseURL()), apiKey, true)
 		if err != nil {
@@ -155,6 +160,56 @@ func parseLegacyGLMUsage(body []byte) (*UsageInfo, error) {
 		}
 	}
 	return usage, nil
+}
+
+func (s *AccountUsageService) persistLegacyGLMQuota(ctx context.Context, account *Account, usage *UsageInfo) {
+	if s == nil || s.accountRepo == nil || account == nil || usage == nil {
+		return
+	}
+	now := time.Now()
+	updates := map[string]any{"codex_usage_updated_at": now.UTC().Format(time.RFC3339)}
+	for _, window := range []struct {
+		name    string
+		minutes int
+		value   *UsageProgress
+	}{
+		{"5h", 5 * 60, usage.FiveHour},
+		{"7d", 7 * 24 * 60, usage.SevenDay},
+	} {
+		if window.value == nil {
+			continue
+		}
+		updates["codex_"+window.name+"_used_percent"] = window.value.Utilization
+		updates["codex_"+window.name+"_window_minutes"] = window.minutes
+		if window.value.ResetsAt != nil {
+			updates["codex_"+window.name+"_reset_at"] = window.value.ResetsAt.UTC().Format(time.RFC3339)
+		}
+	}
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("legacy_glm_quota_snapshot_persist_failed", "account_id", account.ID, "error", err)
+	}
+	if resetAt := legacyGLMRateLimitReset(usage, now); resetAt != nil {
+		if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+			slog.Warn("legacy_glm_rate_limit_persist_failed", "account_id", account.ID, "error", err)
+			return
+		}
+		account.RateLimitedAt = &now
+		account.RateLimitResetAt = resetAt
+	}
+}
+
+func legacyGLMRateLimitReset(usage *UsageInfo, now time.Time) *time.Time {
+	var result *time.Time
+	for _, progress := range []*UsageProgress{usage.FiveHour, usage.SevenDay} {
+		if progress == nil || progress.Utilization < 100 || progress.ResetsAt == nil || !progress.ResetsAt.After(now) {
+			continue
+		}
+		if result == nil || progress.ResetsAt.After(*result) {
+			reset := *progress.ResetsAt
+			result = &reset
+		}
+	}
+	return result
 }
 
 func parseLegacyKimiUsage(body []byte) (*UsageInfo, error) {

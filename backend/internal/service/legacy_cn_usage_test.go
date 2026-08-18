@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -18,4 +19,25 @@ func TestLegacyCNUsageParsersRestoreWindowsAndBalance(t *testing.T) {
 	require.Equal(t, 80.0, kimi.SevenDay.Utilization)
 
 	require.True(t, isLegacyCNUsageAccount(&Account{Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Extra: map[string]any{"model_provider": "deepseek"}}))
+}
+
+func TestLegacyGLMQuotaPersistsRateLimitAtExhaustion(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	fiveHourReset := now.Add(time.Hour)
+	sevenDayReset := now.Add(7 * 24 * time.Hour)
+	repo := &accountUsageCodexProbeRepo{rateLimitCh: make(chan time.Time, 1)}
+	service := &AccountUsageService{accountRepo: repo}
+	account := &Account{ID: 7, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"model_provider": "glm"}}
+
+	service.persistLegacyGLMQuota(t.Context(), account, &UsageInfo{
+		FiveHour: &UsageProgress{Utilization: 100, ResetsAt: &fiveHourReset},
+		SevenDay: &UsageProgress{Utilization: 100, ResetsAt: &sevenDayReset},
+	})
+
+	select {
+	case got := <-repo.rateLimitCh:
+		require.Equal(t, sevenDayReset, got)
+	case <-time.After(time.Second):
+		t.Fatal("expected exhausted GLM quota to rate limit account")
+	}
 }
