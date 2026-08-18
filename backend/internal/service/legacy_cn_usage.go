@@ -103,7 +103,7 @@ func legacyCNGet(ctx context.Context, account *Account, url, apiKey string, bear
 	if err != nil {
 		return nil, fmt.Errorf("usage request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return nil, fmt.Errorf("usage API returned %d", resp.StatusCode)
