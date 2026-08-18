@@ -135,6 +135,7 @@ type apiKeyRepoStubForGroupUpdate struct {
 	getErr    error
 	updateErr error
 	updated   *APIKey // captures what was passed to Update
+	search    string
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -183,6 +184,10 @@ func (s *apiKeyRepoStubForGroupUpdate) ExistsByKey(context.Context, string) (boo
 func (s *apiKeyRepoStubForGroupUpdate) ListByGroupID(context.Context, int64, pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
+func (s *apiKeyRepoStubForGroupUpdate) ListByGroupIDSearch(_ context.Context, _ int64, _ pagination.PaginationParams, search string) ([]APIKey, *pagination.PaginationResult, error) {
+	s.search = search
+	return []APIKey{{ID: 1}}, &pagination.PaginationResult{Total: 1}, nil
+}
 func (s *apiKeyRepoStubForGroupUpdate) SearchAPIKeys(context.Context, int64, string, int) ([]APIKey, error) {
 	panic("unexpected")
 }
@@ -215,6 +220,15 @@ func (s *apiKeyRepoStubForGroupUpdate) GetRateLimitData(context.Context, int64) 
 }
 func (s *apiKeyRepoStubForGroupUpdate) UpdateGroupIDByUserAndGroup(context.Context, int64, int64, int64) (int64, error) {
 	panic("unexpected")
+}
+
+func TestGetGroupAPIKeysWithSearch(t *testing.T) {
+	repo := &apiKeyRepoStubForGroupUpdate{}
+	keys, total, err := (&adminServiceImpl{apiKeyRepo: repo}).GetGroupAPIKeysWithSearch(context.Background(), 7, 1, 20, "邓俊")
+	require.NoError(t, err)
+	require.Equal(t, "邓俊", repo.search)
+	require.Len(t, keys, 1)
+	require.EqualValues(t, 1, total)
 }
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.

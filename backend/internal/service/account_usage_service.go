@@ -232,7 +232,8 @@ type UsageInfo struct {
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
 
 	// Antigravity AI Credits 余额
-	AICredits []AICredit `json:"ai_credits,omitempty"`
+	AICredits []AICredit       `json:"ai_credits,omitempty"`
+	Balances  []AccountBalance `json:"balances,omitempty"`
 
 	// Antigravity 废弃模型转发规则 (old_model_id -> new_model_id)
 	ModelForwardingRules map[string]string `json:"model_forwarding_rules,omitempty"`
@@ -378,6 +379,14 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	// passive snapshot that the account table loads on mount.
 	if account.IsSyntheticUITest() && account.IsAnthropicOAuthOrSetupToken() {
 		return s.getPassiveUsageForAccount(ctx, account)
+	}
+
+	if isLegacyCNUsageAccount(account) {
+		usage, err := s.getLegacyCNUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
 	}
 
 	if account.Platform == PlatformOpenAI && account.Type == AccountTypeOAuth {

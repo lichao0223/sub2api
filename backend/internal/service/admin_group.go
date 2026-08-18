@@ -1055,6 +1055,22 @@ func (s *adminServiceImpl) GetGroupAPIKeys(ctx context.Context, groupID int64, p
 	return keys, result.Total, nil
 }
 
+// GetGroupAPIKeysWithSearch is kept separate from AdminService for compatibility
+// with existing service stubs while the handler opts into this capability.
+func (s *adminServiceImpl) GetGroupAPIKeysWithSearch(ctx context.Context, groupID int64, page, pageSize int, search string) ([]APIKey, int64, error) {
+	searcher, ok := s.apiKeyRepo.(interface {
+		ListByGroupIDSearch(context.Context, int64, pagination.PaginationParams, string) ([]APIKey, *pagination.PaginationResult, error)
+	})
+	if !ok {
+		return s.GetGroupAPIKeys(ctx, groupID, page, pageSize)
+	}
+	keys, result, err := searcher.ListByGroupIDSearch(ctx, groupID, pagination.PaginationParams{Page: page, PageSize: pageSize}, search)
+	if err != nil {
+		return nil, 0, err
+	}
+	return keys, result.Total, nil
+}
+
 func (s *adminServiceImpl) GetGroupRateMultipliers(ctx context.Context, groupID int64) ([]UserGroupRateEntry, error) {
 	if s.userGroupRateRepo == nil {
 		return nil, nil
