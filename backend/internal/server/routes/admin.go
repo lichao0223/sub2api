@@ -245,6 +245,7 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.POST("/batch-update", h.Admin.APIKey.BatchUpdate)
+		apiKeys.POST("/batch-create", h.Admin.APIKey.BatchCreate)
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 		apiKeys.DELETE("/:id", h.Admin.APIKey.Delete)
 	}
@@ -415,6 +416,7 @@ func registerGroupRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		groups.PUT("/:id/rpm-overrides", h.Admin.Group.BatchSetGroupRPMOverrides)
 		groups.DELETE("/:id/rpm-overrides", h.Admin.Group.ClearGroupRPMOverrides)
 		groups.GET("/:id/api-keys", h.Admin.Group.GetGroupAPIKeys)
+		groups.GET("/:id/api-key-candidates", h.Admin.APIKey.BatchCreateCandidates)
 	}
 }
 

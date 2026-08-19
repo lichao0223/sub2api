@@ -575,6 +575,9 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 			dbgroup.NameContainsFold(filters.GroupName),
 		))
 	}
+	if filters.AllowedGroupID > 0 {
+		q = q.Where(dbuser.HasAllowedGroupsWith(dbgroup.IDEQ(filters.AllowedGroupID)))
+	}
 
 	if filters.APIKeyGroupID > 0 {
 		// 按"API Key 实际绑定的分组"过滤：用户只要有任意一个未软删除的 API Key

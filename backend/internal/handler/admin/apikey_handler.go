@@ -72,6 +72,66 @@ type AdminBatchUpdateAPIKeysRequest struct {
 	RecreateInSource bool     `json:"recreate_in_source_group"`
 }
 
+type AdminBatchCreateAPIKeysRequest struct {
+	GroupID          int64    `json:"group_id" binding:"required,gt=0"`
+	UserIDs          []int64  `json:"user_ids"`
+	All              bool     `json:"all"`
+	Name             string   `json:"name" binding:"required,max=100"`
+	Quota            *float64 `json:"quota"`
+	ExpiresInDays    *int     `json:"expires_in_days"`
+	RateLimit5h      *float64 `json:"rate_limit_5h"`
+	RateLimit1d      *float64 `json:"rate_limit_1d"`
+	RateLimit7d      *float64 `json:"rate_limit_7d"`
+	ConcurrencyLimit *int     `json:"concurrency_limit" binding:"omitempty,gte=0"`
+}
+
+func (h *AdminAPIKeyHandler) BatchCreateCandidates(c *gin.Context) {
+	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || groupID <= 0 {
+		response.BadRequest(c, "Invalid group ID")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	items, total, err := h.apiKeyService.ListGroupAPIKeyCandidates(c.Request.Context(), groupID, page, pageSize, c.Query("search"))
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, pageSize)
+}
+
+func (h *AdminAPIKeyHandler) BatchCreate(c *gin.Context) {
+	if h.apiKeyService == nil {
+		response.InternalError(c, "API key service unavailable")
+		return
+	}
+	var req AdminBatchCreateAPIKeysRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if !req.All && (len(req.UserIDs) == 0 || len(req.UserIDs) > 500) {
+		response.BadRequest(c, "No users selected")
+		return
+	}
+	fields := service.CreateAPIKeyRequest{Name: req.Name, Quota: valueOrZero(req.Quota), ExpiresInDays: req.ExpiresInDays,
+		RateLimit5h: valueOrZero(req.RateLimit5h), RateLimit1d: valueOrZero(req.RateLimit1d), RateLimit7d: valueOrZero(req.RateLimit7d), ConcurrencyLimit: valueOrZero(req.ConcurrencyLimit)}
+	created, err := h.apiKeyService.AdminBatchCreate(c.Request.Context(), service.AdminBatchCreateAPIKeysRequest{GroupID: req.GroupID, UserIDs: req.UserIDs, All: req.All, Fields: fields})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"created": created})
+}
+
+func valueOrZero[T any](value *T) T {
+	var zero T
+	if value == nil {
+		return zero
+	}
+	return *value
+}
+
 // BatchUpdate updates API keys selected from one group.
 // POST /api/v1/admin/api-keys/batch-update
 func (h *AdminAPIKeyHandler) BatchUpdate(c *gin.Context) {

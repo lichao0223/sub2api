@@ -12,7 +12,12 @@
             searchable
           />
         </div>
-        <div v-if="groupId && pagination.total > 0" class="flex flex-wrap items-center justify-end gap-2">
+        <div v-if="groupId" class="flex flex-wrap items-center justify-end gap-2">
+          <button type="button" class="btn btn-secondary" @click="toggleCreateMode">
+            {{ createMode ? t('admin.users.apiKeyManagement.manageExisting') : t('admin.users.apiKeyManagement.createForUsers') }}
+          </button>
+        </div>
+        <div v-if="groupId && !createMode && pagination.total > 0" class="flex flex-wrap items-center justify-end gap-2">
           <span class="mr-1 text-sm text-gray-500 dark:text-gray-400">
             {{ t('admin.users.apiKeyManagement.total', { count: pagination.total }) }}
           </span>
@@ -36,7 +41,7 @@
       <div v-if="!groupId" class="py-12 text-center text-sm text-gray-500">
         {{ t('admin.users.apiKeyManagement.selectGroupHint') }}
       </div>
-      <template v-else>
+      <template v-else-if="!createMode">
         <div class="flex items-center gap-2">
           <input v-model="search" type="search" class="input flex-1" :placeholder="t('admin.users.apiKeyManagement.searchUser')" @keyup.enter="applySearch" />
           <button type="button" class="btn btn-secondary" :disabled="loading" @click="applySearch">{{ t('common.search') }}</button>
@@ -145,13 +150,33 @@
           {{ t('admin.users.apiKeyManagement.selectionLimit') }}
         </p>
       </template>
+      <template v-else>
+        <div class="flex items-center gap-2">
+          <input v-model="search" type="search" class="input flex-1" :placeholder="t('admin.users.apiKeyManagement.searchUser')" @keyup.enter="applySearch" />
+          <button type="button" class="btn btn-secondary" :disabled="loading" @click="applySearch">{{ t('common.search') }}</button>
+        </div>
+        <div class="flex items-center justify-between border-y border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900/40">
+          <span>{{ t('admin.users.apiKeyManagement.createSelected', { count: createAll ? candidateTotal : createSelected.size }) }}</span>
+          <button type="button" class="btn btn-secondary" @click="selectAllCandidates">{{ createAll ? t('admin.users.apiKeyManagement.clearSelection') : t('admin.users.apiKeyManagement.selectAll') }}</button>
+        </div>
+        <div class="h-[min(42vh,26rem)] min-h-64 overflow-y-auto border border-gray-200 dark:border-dark-700">
+          <label v-for="candidate in candidates" :key="candidate.user.id" class="flex items-center gap-3 border-b border-gray-100 px-3 py-3 dark:border-dark-800">
+            <input type="checkbox" class="checkbox" :disabled="candidate.has_api_key" :checked="createAll || createSelected.has(candidate.user.id)" @change="toggleCandidate(candidate.user.id)" />
+            <span class="min-w-0 flex-1"><span class="block truncate font-medium">{{ candidate.user.email }}</span><span class="block text-xs text-gray-500">{{ candidate.user.username }}</span></span>
+            <span v-if="candidate.has_api_key" class="text-xs text-gray-500">{{ t('admin.users.apiKeyManagement.alreadyExists') }}</span>
+          </label>
+          <div v-if="!loading && candidates.length === 0" class="py-12 text-center text-sm text-gray-500">{{ t('admin.users.apiKeyManagement.noCandidates') }}</div>
+        </div>
+        <Pagination v-if="candidateTotal > 0" :total="candidateTotal" :page="pagination.page" :page-size="pagination.pageSize" @update:page="changeCandidatePage" @update:page-size="changeCandidatePageSize" />
+        <label class="block text-sm"><span class="input-label">{{ t('admin.users.apiKeyManagement.newKeyName') }}</span><input v-model="createName" class="input" /></label>
+      </template>
     </div>
 
     <template #footer>
       <div class="flex justify-end gap-3">
         <button type="button" class="btn btn-secondary" @click="emit('close')">{{ t('common.cancel') }}</button>
-        <button type="button" class="btn btn-primary" :disabled="!canSubmit" @click="submit">
-          {{ submitting ? t('admin.users.apiKeyManagement.applying') : t('admin.users.apiKeyManagement.apply') }}
+        <button type="button" class="btn btn-primary" :disabled="createMode ? !canCreate : !canSubmit" @click="createMode ? submitCreate() : submit()">
+          {{ submitting ? t('admin.users.apiKeyManagement.applying') : createMode ? t('admin.users.apiKeyManagement.createForUsers') : t('admin.users.apiKeyManagement.apply') }}
         </button>
       </div>
     </template>
@@ -162,7 +187,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
-import type { BatchUpdateApiKeysRequest } from '@/api/admin/apiKeys'
+import type { BatchUpdateApiKeysRequest, APIKeyBatchCandidate } from '@/api/admin/apiKeys'
 import type { AdminGroup, ApiKey } from '@/types'
 import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
@@ -186,6 +211,12 @@ const submitting = ref(false)
 const allInGroupSelected = ref(false)
 const pagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const search = ref('')
+const createMode = ref(false)
+const candidates = ref<APIKeyBatchCandidate[]>([])
+const candidateTotal = ref(0)
+const createSelected = reactive(new Set<number>())
+const createAll = ref(false)
+const createName = ref('default')
 const { selectedIds, selectedCount, setSelectedIds, clear } = useTableSelection<ApiKey>({ rows: keys, getId: row => row.id })
 
 const editRates = ref(false)
@@ -237,11 +268,26 @@ const canSubmit = computed(() =>
   (!editGroup.value || (targetGroupId.value !== null && targetGroupId.value !== groupId.value)) &&
   !invalidValues.value && !submitting.value
 )
+const canCreate = computed(() => !!groupId.value && (createAll.value || createSelected.size > 0) && createName.value.trim() !== '' && !submitting.value)
 
 const maskKey = (key: string) => key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key
 const formatLimit = (value: number) => value > 0 ? `$${value}` : '∞'
 const clearSelection = () => { allInGroupSelected.value = false; clear() }
 const selectAllInGroup = () => { clear(); allInGroupSelected.value = true }
+const selectAllCandidates = () => { createAll.value = !createAll.value; createSelected.clear() }
+const toggleCandidate = (id: number) => { if (createAll.value) createAll.value = false; createSelected.has(id) ? createSelected.delete(id) : createSelected.add(id) }
+const loadCandidates = async () => {
+  if (!groupId.value) return
+  loading.value = true
+  try {
+    const result = await adminAPI.apiKeys.listBatchCreateCandidates(groupId.value, pagination.page, pagination.pageSize, search.value)
+    candidates.value = result.items
+    candidateTotal.value = result.total
+  } finally { loading.value = false }
+}
+const changeCandidatePage = (page: number) => { pagination.page = page; loadCandidates() }
+const changeCandidatePageSize = (size: number) => { pagination.pageSize = size; pagination.page = 1; loadCandidates() }
+const toggleCreateMode = () => { createMode.value = !createMode.value; pagination.page = 1; search.value = ''; createAll.value = false; createSelected.clear(); if (createMode.value) loadCandidates() }
 
 const loadKeys = async () => {
   if (!groupId.value) return
@@ -269,7 +315,7 @@ watch(() => props.show, async show => {
     appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.loadFailed'))
   }
 })
-watch(groupId, () => { pagination.page = 1; search.value = ''; targetGroupId.value = null; recreateInSourceGroup.value = false; clearSelection(); loadKeys() })
+watch(groupId, () => { pagination.page = 1; search.value = ''; targetGroupId.value = null; recreateInSourceGroup.value = false; clearSelection(); createAll.value = false; createSelected.clear(); createMode.value ? loadCandidates() : loadKeys() })
 watch(targetGroupId, () => { recreateInSourceGroup.value = false })
 
 const submit = async () => {
@@ -300,5 +346,16 @@ const submit = async () => {
   } finally {
     submitting.value = false
   }
+}
+const submitCreate = async () => {
+  if (!canCreate.value || !groupId.value) return
+  if (!window.confirm(t('admin.users.apiKeyManagement.confirmCreate', { count: createAll.value ? candidateTotal.value : createSelected.size }))) return
+  submitting.value = true
+  try {
+    const result = await adminAPI.apiKeys.batchCreate({ group_id: groupId.value, all: createAll.value, user_ids: createAll.value ? undefined : [...createSelected], name: createName.value.trim() })
+    appStore.showSuccess(t('admin.users.apiKeyManagement.createdSuccess', { count: result.created }))
+    createAll.value = false; createSelected.clear(); await loadCandidates()
+  } catch (error: any) { appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.failed'))
+  } finally { submitting.value = false }
 }
 </script>

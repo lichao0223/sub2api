@@ -26,6 +26,36 @@ export interface BatchUpdateApiKeysRequest {
   recreate_in_source_group?: boolean
 }
 
+export interface APIKeyBatchCandidate {
+  user: { id: number; email: string; username: string }
+  has_api_key: boolean
+}
+
+export interface BatchCreateApiKeysRequest {
+  group_id: number
+  user_ids?: number[]
+  all: boolean
+  name: string
+  quota?: number
+  expires_in_days?: number
+  rate_limit_5h?: number
+  rate_limit_1d?: number
+  rate_limit_7d?: number
+  concurrency_limit?: number
+}
+
+export async function listBatchCreateCandidates(groupId: number, page = 1, pageSize = 20, search = '') {
+  const { data } = await apiClient.get<{ items: APIKeyBatchCandidate[]; total: number }>(
+    `/admin/groups/${groupId}/api-key-candidates`, { params: { page, page_size: pageSize, search } }
+  )
+  return data
+}
+
+export async function batchCreate(request: BatchCreateApiKeysRequest): Promise<{ created: number }> {
+  const { data } = await apiClient.post<{ created: number }>('/admin/api-keys/batch-create', request)
+  return data
+}
+
 export async function batchUpdate(request: BatchUpdateApiKeysRequest): Promise<{ affected: number; created: number }> {
   const { data } = await apiClient.post<{ affected: number; created: number }>('/admin/api-keys/batch-update', request)
   return data
@@ -68,6 +98,8 @@ export async function rotateForUser(userId: number): Promise<ApiKey[]> {
 
 export const apiKeysAPI = {
   batchUpdate,
+  batchCreate,
+  listBatchCreateCandidates,
   updateApiKeyGroup,
   createForUser,
   update,

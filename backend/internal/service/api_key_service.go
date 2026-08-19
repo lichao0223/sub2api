@@ -153,6 +153,106 @@ type AdminBatchUpdateAPIKeysRequest struct {
 	Fields  APIKeyBatchUpdateFields
 }
 
+type APIKeyBatchCandidate struct {
+	User      User `json:"user"`
+	HasAPIKey bool `json:"has_api_key"`
+}
+
+type AdminBatchCreateAPIKeysRequest struct {
+	GroupID int64
+	UserIDs []int64
+	All     bool
+	Fields  CreateAPIKeyRequest
+}
+
+func (s *APIKeyService) ListGroupAPIKeyCandidates(ctx context.Context, groupID int64, page, pageSize int, search string) ([]APIKeyBatchCandidate, int64, error) {
+	group, err := s.groupRepo.GetByID(ctx, groupID)
+	if err != nil {
+		return nil, 0, err
+	}
+	filters := UserListFilters{Status: StatusActive, Search: strings.TrimSpace(search)}
+	if group.IsExclusive {
+		filters.AllowedGroupID = groupID
+	}
+	users, pageResult, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]APIKeyBatchCandidate, 0, len(users))
+	for _, user := range users {
+		keys, err := s.listAllByUserID(ctx, user.ID, groupID)
+		if err != nil {
+			return nil, 0, err
+		}
+		result = append(result, APIKeyBatchCandidate{User: user, HasAPIKey: len(keys) > 0})
+	}
+	return result, pageResult.Total, nil
+}
+
+func (s *APIKeyService) listAllByUserID(ctx context.Context, userID, groupID int64) ([]APIKey, error) {
+	lister, ok := s.apiKeyRepo.(apiKeyAllByUserIDLister)
+	if !ok {
+		return nil, fmt.Errorf("api key repository does not support full user listing")
+	}
+	return lister.ListAllByUserID(ctx, userID, APIKeyListFilters{GroupID: &groupID})
+}
+
+func (s *APIKeyService) AdminBatchCreate(ctx context.Context, req AdminBatchCreateAPIKeysRequest) (int, error) {
+	if req.GroupID <= 0 {
+		return 0, fmt.Errorf("group_id must be positive")
+	}
+	group, err := s.groupRepo.GetByID(ctx, req.GroupID)
+	if err != nil {
+		return 0, err
+	}
+	var users []User
+	if req.All {
+		filters := UserListFilters{Status: StatusActive}
+		if group.IsExclusive {
+			filters.AllowedGroupID = req.GroupID
+		}
+		users, _, err = s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, filters)
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		seen := make(map[int64]struct{}, len(req.UserIDs))
+		for _, id := range req.UserIDs {
+			if id <= 0 {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			user, err := s.userRepo.GetByID(ctx, id)
+			if err != nil {
+				return 0, err
+			}
+			if user.Status == StatusActive && s.canUserBindGroup(ctx, user, group) {
+				users = append(users, *user)
+			}
+		}
+	}
+	created := 0
+	for _, user := range users {
+		keys, err := s.listAllByUserID(ctx, user.ID, req.GroupID)
+		if err != nil {
+			return created, err
+		}
+		if len(keys) > 0 {
+			continue
+		}
+		fields := req.Fields
+		fields.GroupID = &req.GroupID
+		if _, err := s.Create(ctx, user.ID, fields); err != nil {
+			return created, err
+		}
+		created++
+	}
+	return created, nil
+}
+
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
 type APIKeyRateLimitData struct {
 	Usage5h       float64
