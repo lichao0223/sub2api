@@ -62,7 +62,7 @@ func newGatewayModelsHandlerForTest(repo service.AccountRepository) *GatewayHand
 	}
 }
 
-func TestGatewayModels_GeminiGroupWithoutMappingsReturnsEmpty(t *testing.T) {
+func TestGatewayModels_GeminiGroupFallsBackToGeminiModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(20)
@@ -90,10 +90,11 @@ func TestGatewayModels_GeminiGroupWithoutMappingsReturnsEmpty(t *testing.T) {
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 	require.Equal(t, "list", got.Object)
-	require.Empty(t, got.Data)
+	require.Contains(t, modelIDsForTest(got.Data), "gemini-2.5-flash")
+	require.NotContains(t, modelIDsForTest(got.Data), "claude-sonnet-4-6")
 }
 
-func TestGatewayModels_EmptyWhenGroupHasNoSchedulableAccounts(t *testing.T) {
+func TestGatewayModels_FallsBackWhenGroupHasNoSchedulableAccounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(21)
@@ -111,7 +112,7 @@ func TestGatewayModels_EmptyWhenGroupHasNoSchedulableAccounts(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Empty(t, got.Data)
+	require.Contains(t, modelIDsForTest(got.Data), "claude-sonnet-4-5-20250929")
 }
 
 func TestGatewayModels_Grok45AdvertisesReasoningEffortForGrokBuild(t *testing.T) {
@@ -413,7 +414,7 @@ func TestGatewayModels_CompositeUnmappedAccountsDoNotAddPlatformDefaults(t *test
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
 
 	ids := modelIDsForTest(got.Data)
-	require.NotContains(t, ids, "gpt-5.5")
+	require.Contains(t, ids, "gpt-5.5")
 	require.Contains(t, ids, "grok-4.3")
 	require.NotContains(t, ids, "claude-sonnet-4-6")
 	require.NotContains(t, ids, "gemini-2.5-flash")
@@ -562,7 +563,7 @@ func TestGatewayModels_AnthropicCustomModelsListOnlyIncludesMappedModels(t *test
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, []string{"deepseek-v4-pro"}, modelIDsForTest(got.Data))
+	require.Equal(t, []string{"claude-fable-5", "claude-opus-4-8", "deepseek-v4-pro"}, modelIDsForTest(got.Data))
 }
 
 func TestGatewayModels_AnthropicCustomModelsListDisabledKeepsMappedModelList(t *testing.T) {
@@ -616,7 +617,7 @@ func TestGatewayModels_AnthropicCustomModelsListDisabledKeepsMappedModelList(t *
 	require.Equal(t, []string{"deepseek-v4-pro"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_AnthropicCustomModelsListWithoutMappingsReturnsEmpty(t *testing.T) {
+func TestGatewayModels_AnthropicCustomModelsListIncludesOAuthClaudeWithoutMappings(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(30)
@@ -654,7 +655,7 @@ func TestGatewayModels_AnthropicCustomModelsListWithoutMappingsReturnsEmpty(t *t
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Empty(t, got.Data)
+	require.Equal(t, []string{"claude-opus-4-6-thinking", "claude-sonnet-4-5"}, modelIDsForTest(got.Data))
 }
 
 func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t *testing.T) {
@@ -702,7 +703,7 @@ func TestGatewayModels_CustomModelsListCanReturnEmptyWhenSelectionsUnavailable(t
 	require.Empty(t, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_CustomModelsListWithoutMappingsReturnsEmpty(t *testing.T) {
+func TestGatewayModels_CustomModelsListFiltersDefaultFallbackModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(25)
@@ -736,10 +737,10 @@ func TestGatewayModels_CustomModelsListWithoutMappingsReturnsEmpty(t *testing.T)
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Empty(t, got.Data)
+	require.Equal(t, []string{"gpt-5.5", "gpt-5.4"}, modelIDsForTest(got.Data))
 }
 
-func TestGatewayModels_OpenAICustomModelsListWithoutMappingsKeepsListShape(t *testing.T) {
+func TestGatewayModels_OpenAICustomModelsListKeepsOpenAIResponseShapeForDefaultFallback(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	groupID := int64(27)
@@ -773,8 +774,11 @@ func TestGatewayModels_OpenAICustomModelsListWithoutMappingsKeepsListShape(t *te
 
 	var got gatewayModelsResponseForTest
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
-	require.Equal(t, "list", got.Object)
-	require.Empty(t, got.Data)
+	require.Equal(t, []string{"gpt-5.5", "gpt-5.4"}, modelIDsForTest(got.Data))
+	require.Equal(t, "model", got.Data[0].Object)
+	require.NotZero(t, got.Data[0].Created)
+	require.Equal(t, "openai", got.Data[0].OwnedBy)
+	require.Empty(t, got.Data[0].CreatedAt)
 }
 
 func modelIDsForTest(models []gatewayModelItemForTest) []string {
