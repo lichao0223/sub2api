@@ -111,6 +111,23 @@ const GroupSelectorStub = defineComponent({
   `,
 })
 
+const AccountMultimodalSettingsStub = defineComponent({
+  name: 'AccountMultimodalSettings',
+  emits: ['update:modelValue'],
+  template: `
+    <button
+      type="button"
+      data-testid="configure-multimodal"
+      @click="$emit('update:modelValue', {
+        defaultMode: 'vision_to_text',
+        defaultVisionGroupId: 7,
+        defaultVisionModel: 'gpt-4.1-mini',
+        rules: []
+      })"
+    >multimodal</button>
+  `,
+})
+
 function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
@@ -127,6 +144,7 @@ function mountModal(groups: any[] = []) {
         GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: true,
         QuotaLimitCard: true,
+        AccountMultimodalSettings: AccountMultimodalSettingsStub,
       },
     },
   })
@@ -211,6 +229,23 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+  })
+
+  it('persists multimodal settings when creating an OpenAI account', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-testid="configure-multimodal"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI multimodal')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      multimodal_default_mode: 'vision_to_text',
+      multimodal_default_vision_group_id: 7,
+      multimodal_default_vision_model: 'gpt-4.1-mini',
+    })
   })
 
   it('keeps the account toggle when any selected group disables tier pricing', async () => {

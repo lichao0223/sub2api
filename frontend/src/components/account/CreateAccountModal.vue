@@ -3326,6 +3326,12 @@
           </div>
         </div>
 
+        <AccountMultimodalSettings
+          v-if="form.platform === 'openai' || form.platform === 'anthropic'"
+          v-model="multimodalConfig"
+          :models="multimodalModelOptions"
+        />
+
         <!-- Group Selection - 仅标准模式显示 -->
         <GroupSelector
           v-if="!authStore.isSimpleMode"
@@ -3741,6 +3747,11 @@ import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
+import AccountMultimodalSettings from '@/components/account/AccountMultimodalSettings.vue'
+import {
+  applyMultimodalConfig,
+  defaultMultimodalConfig
+} from '@/components/account/accountMultimodal'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
@@ -4031,6 +4042,14 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const multimodalConfig = ref(defaultMultimodalConfig())
+const multimodalModelOptions = computed(() =>
+  [...new Set([
+    ...allowedModels.value,
+    ...modelMappings.value.map((mapping) => mapping.to),
+    ...multimodalConfig.value.rules.map((rule) => rule.model)
+  ].map((model) => model.trim()).filter(Boolean))]
+)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
@@ -4970,6 +4989,7 @@ const resetForm = () => {
   editWeeklyResetHour.value = null
   editResetTimezone.value = null
   modelMappings.value = []
+  multimodalConfig.value = defaultMultimodalConfig()
   openAICompactModelMappings.value = []
   modelRestrictionMode.value = 'whitelist'
   allowedModels.value = [...claudeModels] // Default fill related models
@@ -5480,6 +5500,9 @@ const handleSubmit = async () => {
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
+  if (form.platform === 'openai' || form.platform === 'anthropic') {
+    applyMultimodalConfig(credentials, multimodalConfig.value)
+  }
 
   form.credentials = credentials
   const extra = buildAnthropicExtra(buildOpenAIExtra())
@@ -5548,6 +5571,9 @@ const createAccountAndFinish = async (
 ) => {
   if (!applyTempUnschedConfig(credentials)) {
     return
+  }
+  if (platform === 'openai' || platform === 'anthropic') {
+    applyMultimodalConfig(credentials, multimodalConfig.value)
   }
   // Inject quota limits for apikey/bedrock accounts
   let finalExtra = extra

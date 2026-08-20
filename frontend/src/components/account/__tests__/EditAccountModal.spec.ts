@@ -140,6 +140,27 @@ const GroupSelectorStub = defineComponent({
   `
 })
 
+const AccountMultimodalSettingsStub = defineComponent({
+  name: 'AccountMultimodalSettings',
+  props: { modelValue: { type: Object, required: true } },
+  emits: ['update:modelValue'],
+  template: `
+    <div>
+      <span data-testid="multimodal-mode">{{ modelValue.defaultMode }}</span>
+      <button
+        type="button"
+        data-testid="configure-multimodal"
+        @click="$emit('update:modelValue', {
+          defaultMode: 'vision_to_text',
+          defaultVisionGroupId: 7,
+          defaultVisionModel: 'gpt-4.1-mini',
+          rules: []
+        })"
+      >multimodal</button>
+    </div>
+  `
+})
+
 function buildAccount() {
   return {
     id: 1,
@@ -305,7 +326,8 @@ function mountModal(account = buildAccount()) {
         Icon: true,
         ProxySelector: true,
         GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        AccountMultimodalSettings: AccountMultimodalSettingsStub
       }
     }
   })
@@ -340,6 +362,25 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({
       'gpt-5.2': 'gpt-5.2'
+    })
+  })
+
+  it('loads and persists multimodal account settings', async () => {
+    const account = buildAccount()
+    account.credentials.multimodal_default_mode = 'reject'
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="multimodal-mode"]').text()).toBe('reject')
+
+    await wrapper.get('[data-testid="configure-multimodal"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      multimodal_default_mode: 'vision_to_text',
+      multimodal_default_vision_group_id: 7,
+      multimodal_default_vision_model: 'gpt-4.1-mini'
     })
   })
 
