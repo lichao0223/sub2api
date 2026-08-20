@@ -97,7 +97,15 @@ func (h *AdminAPIKeyHandler) BatchCreateCandidates(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	response.Paginated(c, items, total, page, pageSize)
+	out := make([]struct {
+		User      *dto.User `json:"user"`
+		HasAPIKey bool      `json:"has_api_key"`
+	}, len(items))
+	for i := range items {
+		out[i].User = dto.UserFromServiceShallow(&items[i].User)
+		out[i].HasAPIKey = items[i].HasAPIKey
+	}
+	response.Paginated(c, out, total, page, pageSize)
 }
 
 func (h *AdminAPIKeyHandler) BatchCreate(c *gin.Context) {

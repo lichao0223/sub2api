@@ -469,6 +469,7 @@ export default {
         noneSelected: 'Select keys on this page or select the entire group',
         total: '{count} keys in this group',
         selectAll: 'Select all {count} group keys',
+        selectAllCandidates: 'Select all {count} eligible users',
         clearSelection: 'Clear selection',
         changes: 'Fields to update',
         rateLimits: 'Rate limits (USD)',

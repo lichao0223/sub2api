@@ -469,6 +469,7 @@ export default {
         noneSelected: '勾选当前页中的 Key，或直接全选整个分组',
         total: '分组内共 {count} 个 Key',
         selectAll: '全选本分组 {count} 个 Key',
+        selectAllCandidates: '全选可创建用户 {count} 人',
         clearSelection: '清除选择',
         changes: '批量修改字段',
         rateLimits: '速率限制（USD）',

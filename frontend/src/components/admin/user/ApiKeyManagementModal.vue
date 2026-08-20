@@ -157,7 +157,7 @@
         </div>
         <div class="flex items-center justify-between border-y border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-dark-700 dark:bg-dark-900/40">
           <span>{{ t('admin.users.apiKeyManagement.createSelected', { count: createAll ? candidateTotal : createSelected.size }) }}</span>
-          <button type="button" class="btn btn-secondary" @click="selectAllCandidates">{{ createAll ? t('admin.users.apiKeyManagement.clearSelection') : t('admin.users.apiKeyManagement.selectAll') }}</button>
+          <button type="button" class="btn btn-secondary" @click="selectAllCandidates">{{ createAll ? t('admin.users.apiKeyManagement.clearSelection') : t('admin.users.apiKeyManagement.selectAllCandidates', { count: candidateTotal }) }}</button>
         </div>
         <div class="h-[min(42vh,26rem)] min-h-64 overflow-y-auto border border-gray-200 dark:border-dark-700">
           <label v-for="candidate in candidates" :key="candidate.user.id" class="flex items-center gap-3 border-b border-gray-100 px-3 py-3 dark:border-dark-800">
