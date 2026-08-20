@@ -259,6 +259,11 @@ func (s *APIKeyService) AdminBatchCreate(ctx context.Context, req AdminBatchCrea
 			continue
 		}
 		fields := req.Fields
+		name := strings.TrimSpace(user.Username)
+		if name == "" {
+			name = user.Email
+		}
+		fields.Name = fmt.Sprintf("%s%s", name, group.Name)
 		fields.GroupID = &req.GroupID
 		if _, err := s.Create(ctx, user.ID, fields); err != nil {
 			return created, err

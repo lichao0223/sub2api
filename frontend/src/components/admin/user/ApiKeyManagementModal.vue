@@ -168,7 +168,6 @@
           <div v-if="!loading && candidates.length === 0" class="py-12 text-center text-sm text-gray-500">{{ t('admin.users.apiKeyManagement.noCandidates') }}</div>
         </div>
         <Pagination v-if="candidateTotal > 0" :total="candidateTotal" :page="pagination.page" :page-size="pagination.pageSize" @update:page="changeCandidatePage" @update:page-size="changeCandidatePageSize" />
-        <label class="block text-sm"><span class="input-label">{{ t('admin.users.apiKeyManagement.newKeyName') }}</span><input v-model="createName" class="input" /></label>
       </template>
     </div>
 
@@ -216,7 +215,6 @@ const candidates = ref<APIKeyBatchCandidate[]>([])
 const candidateTotal = ref(0)
 const createSelected = reactive(new Set<number>())
 const createAll = ref(false)
-const createName = ref('default')
 const { selectedIds, selectedCount, setSelectedIds, clear } = useTableSelection<ApiKey>({ rows: keys, getId: row => row.id })
 
 const editRates = ref(false)
@@ -268,7 +266,7 @@ const canSubmit = computed(() =>
   (!editGroup.value || (targetGroupId.value !== null && targetGroupId.value !== groupId.value)) &&
   !invalidValues.value && !submitting.value
 )
-const canCreate = computed(() => !!groupId.value && (createAll.value || createSelected.size > 0) && createName.value.trim() !== '' && !submitting.value)
+const canCreate = computed(() => !!groupId.value && (createAll.value || createSelected.size > 0) && !submitting.value)
 
 const maskKey = (key: string) => key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key
 const formatLimit = (value: number) => value > 0 ? `$${value}` : '∞'
@@ -352,7 +350,7 @@ const submitCreate = async () => {
   if (!window.confirm(t('admin.users.apiKeyManagement.confirmCreate', { count: createAll.value ? candidateTotal.value : createSelected.size }))) return
   submitting.value = true
   try {
-    const result = await adminAPI.apiKeys.batchCreate({ group_id: groupId.value, all: createAll.value, user_ids: createAll.value ? undefined : [...createSelected], name: createName.value.trim() })
+    const result = await adminAPI.apiKeys.batchCreate({ group_id: groupId.value, all: createAll.value, user_ids: createAll.value ? undefined : [...createSelected] })
     appStore.showSuccess(t('admin.users.apiKeyManagement.createdSuccess', { count: result.created }))
     createAll.value = false; createSelected.clear(); await loadCandidates()
   } catch (error: any) { appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.failed'))

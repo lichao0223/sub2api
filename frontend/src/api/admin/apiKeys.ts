@@ -35,7 +35,6 @@ export interface BatchCreateApiKeysRequest {
   group_id: number
   user_ids?: number[]
   all: boolean
-  name: string
   quota?: number
   expires_in_days?: number
   rate_limit_5h?: number

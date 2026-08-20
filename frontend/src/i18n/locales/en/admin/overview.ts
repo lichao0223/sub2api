@@ -487,7 +487,7 @@ export default {
         moveAndRecreateSuccess: 'Moved {count} and created {created} replacement API keys',
         failed: 'Failed to update API keys',
         loadFailed: 'Failed to load API keys',
-        createForUsers: 'Create keys for users', manageExisting: 'Manage existing keys', createSelected: '{count} users selected', alreadyExists: 'Already has a key in this group', noCandidates: 'No users available', newKeyName: 'New key name', confirmCreate: 'Create API keys for {count} users?', createdSuccess: 'Created {count} API keys'
+        createForUsers: 'Create keys for users', manageExisting: 'Manage existing keys', createSelected: '{count} users selected', alreadyExists: 'Already has a key in this group', noCandidates: 'No users available', confirmCreate: 'Create API keys for {count} users?', createdSuccess: 'Created {count} API keys'
       },
       deleteUser: 'Delete User',
       deleteConfirmMessage: "Are you sure you want to delete user '{email}'? This action cannot be undone.",

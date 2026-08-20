@@ -76,7 +76,6 @@ type AdminBatchCreateAPIKeysRequest struct {
 	GroupID          int64    `json:"group_id" binding:"required,gt=0"`
 	UserIDs          []int64  `json:"user_ids"`
 	All              bool     `json:"all"`
-	Name             string   `json:"name" binding:"required,max=100"`
 	Quota            *float64 `json:"quota"`
 	ExpiresInDays    *int     `json:"expires_in_days"`
 	RateLimit5h      *float64 `json:"rate_limit_5h"`
@@ -122,7 +121,7 @@ func (h *AdminAPIKeyHandler) BatchCreate(c *gin.Context) {
 		response.BadRequest(c, "No users selected")
 		return
 	}
-	fields := service.CreateAPIKeyRequest{Name: req.Name, Quota: valueOrZero(req.Quota), ExpiresInDays: req.ExpiresInDays,
+	fields := service.CreateAPIKeyRequest{Quota: valueOrZero(req.Quota), ExpiresInDays: req.ExpiresInDays,
 		RateLimit5h: valueOrZero(req.RateLimit5h), RateLimit1d: valueOrZero(req.RateLimit1d), RateLimit7d: valueOrZero(req.RateLimit7d), ConcurrencyLimit: valueOrZero(req.ConcurrencyLimit)}
 	created, err := h.apiKeyService.AdminBatchCreate(c.Request.Context(), service.AdminBatchCreateAPIKeysRequest{GroupID: req.GroupID, UserIDs: req.UserIDs, All: req.All, Fields: fields})
 	if err != nil {
