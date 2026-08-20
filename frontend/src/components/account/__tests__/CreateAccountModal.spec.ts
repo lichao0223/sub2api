@@ -7,11 +7,13 @@ const {
   probeUpstreamBillingMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
   probeUpstreamBillingMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  authIsSimpleMode: { value: true },
 }))
 
 vi.mock('@/stores/app', () => ({
@@ -23,7 +25,11 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isSimpleMode: true }),
+  useAuthStore: () => ({
+    get isSimpleMode() {
+      return authIsSimpleMode.value
+    },
+  }),
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -58,6 +64,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import { defaultCNBaseUrl } from '../credentialsBuilder'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -84,9 +91,29 @@ const OAuthAuthorizationFlowStub = defineComponent({
   `,
 })
 
-function mountModal() {
+const GroupSelectorStub = defineComponent({
+  name: 'GroupSelector',
+  props: {
+    modelValue: {
+      type: Array,
+      default: () => [],
+    },
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <button
+      type="button"
+      data-testid="select-pricing-groups"
+      @click="$emit('update:modelValue', [1, 2])"
+    >
+      groups
+    </button>
+  `,
+})
+
+function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
-    props: { show: true, proxies: [], groups: [] },
+    props: { show: true, proxies: [], groups },
     global: {
       stubs: {
         BaseDialog: BaseDialogStub,
@@ -97,7 +124,7 @@ function mountModal() {
         PlatformIcon: true,
         ProxySelector: true,
         ProxyAdBanner: true,
-        GroupSelector: true,
+        GroupSelector: GroupSelectorStub,
         ModelWhitelistSelector: true,
         QuotaLimitCard: true,
       },
@@ -147,6 +174,7 @@ async function openCodexImportStep(toggleClicks = 0) {
 
 describe('CreateAccountModal OpenAI long-context billing', () => {
   beforeEach(() => {
+    authIsSimpleMode.value = true
     createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'openai', type: 'apikey' })
     probeUpstreamBillingMock.mockReset().mockResolvedValue({})
     importCodexSessionMock.mockReset().mockResolvedValue({
@@ -161,23 +189,42 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   it.each([
-    ['openai', 'glm', 'https://open.bigmodel.cn/api/coding/paas/v4'],
-    ['anthropic', 'glm', 'https://open.bigmodel.cn/api/anthropic'],
-    ['openai', 'kimi', 'https://api.kimi.com/coding/v1'],
-    ['anthropic', 'kimi', 'https://api.kimi.com/coding/'],
-    ['openai', 'deepseek', 'https://api.deepseek.com'],
-    ['anthropic', 'deepseek', 'https://api.deepseek.com/anthropic'],
-  ] as const)('sets the %s %s provider base URL', async (platform, provider, expectedBaseUrl) => {
-    const wrapper = mountModal()
-    await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
-    if (platform === 'openai') {
-      await selectButtonByText(wrapper, 'API Key')
-    }
+    ['zhipu', 'coding', 'chat_completions', 'https://open.bigmodel.cn/api/coding/paas/v4'],
+    ['zhipu', 'coding', 'anthropic', 'https://open.bigmodel.cn/api/anthropic'],
+    ['kimi', 'coding', 'chat_completions', 'https://api.kimi.com/coding/v1'],
+    ['kimi', 'coding', 'anthropic', 'https://api.kimi.com/coding'],
+    ['deepseek', 'payg', 'chat_completions', 'https://api.deepseek.com'],
+    ['deepseek', 'payg', 'anthropic', 'https://api.deepseek.com/anthropic'],
+  ] as const)('sets the %s %s %s base URL', (platform, mode, protocol, expectedBaseUrl) => {
+    expect(defaultCNBaseUrl(platform, mode, protocol)).toBe(expectedBaseUrl)
+  })
 
-    await wrapper.get('[data-testid="model-provider-select"]').setValue(provider)
+  it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal([
+      { id: 1, long_context_pricing_enabled: true },
+      { id: 2, long_context_pricing_enabled: true },
+    ])
 
-    expect((wrapper.get('[data-testid="api-key-base-url"]').element as HTMLInputElement).value)
-      .toBe(expectedBaseUrl)
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="select-pricing-groups"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
+  })
+
+  it('keeps the account toggle when any selected group disables tier pricing', async () => {
+    authIsSimpleMode.value = false
+    const wrapper = mountModal([
+      { id: 1, long_context_pricing_enabled: true },
+      { id: 2, long_context_pricing_enabled: false },
+    ])
+
+    await selectButtonByText(wrapper, 'OpenAI')
+    await wrapper.get('[data-testid="select-pricing-groups"]').trigger('click')
+
+    expect(wrapper.find('[data-testid="openai-long-context-billing-toggle"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="create-openai-ws-mode"]').exists()).toBe(true)
   })
 
   it('sends false explicitly for normal OpenAI account creation by default', async () => {
