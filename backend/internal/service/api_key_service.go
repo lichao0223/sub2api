@@ -171,8 +171,8 @@ func (s *APIKeyService) ListGroupAPIKeyCandidates(ctx context.Context, groupID i
 		return nil, 0, err
 	}
 	filters := UserListFilters{Status: StatusActive, Search: strings.TrimSpace(search)}
-	if group.IsExclusive {
-		filters.AllowedGroupID = groupID
+	if group.IsSubscriptionType() {
+		filters.SubscriptionGroupID = groupID
 	}
 	users, pageResult, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
 	if err != nil {
@@ -197,6 +197,21 @@ func (s *APIKeyService) listAllByUserID(ctx context.Context, userID, groupID int
 	return lister.ListAllByUserID(ctx, userID, APIKeyListFilters{GroupID: &groupID})
 }
 
+func (s *APIKeyService) listAllUsers(ctx context.Context, filters UserListFilters) ([]User, error) {
+	const pageSize = 1000
+	users := make([]User, 0)
+	for page := 1; ; page++ {
+		batch, pageResult, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, batch...)
+		if len(batch) == 0 || pageResult == nil || int64(page*pageSize) >= pageResult.Total {
+			return users, nil
+		}
+	}
+}
+
 func (s *APIKeyService) AdminBatchCreate(ctx context.Context, req AdminBatchCreateAPIKeysRequest) (int, error) {
 	if req.GroupID <= 0 {
 		return 0, fmt.Errorf("group_id must be positive")
@@ -208,10 +223,10 @@ func (s *APIKeyService) AdminBatchCreate(ctx context.Context, req AdminBatchCrea
 	var users []User
 	if req.All {
 		filters := UserListFilters{Status: StatusActive}
-		if group.IsExclusive {
-			filters.AllowedGroupID = req.GroupID
+		if group.IsSubscriptionType() {
+			filters.SubscriptionGroupID = req.GroupID
 		}
-		users, _, err = s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10000}, filters)
+		users, err = s.listAllUsers(ctx, filters)
 		if err != nil {
 			return 0, err
 		}

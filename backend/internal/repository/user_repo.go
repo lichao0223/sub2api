@@ -578,6 +578,13 @@ func (r *userRepository) ListWithFilters(ctx context.Context, params pagination.
 	if filters.AllowedGroupID > 0 {
 		q = q.Where(dbuser.HasAllowedGroupsWith(dbgroup.IDEQ(filters.AllowedGroupID)))
 	}
+	if filters.SubscriptionGroupID > 0 {
+		q = q.Where(dbuser.HasSubscriptionsWith(
+			usersubscription.GroupIDEQ(filters.SubscriptionGroupID),
+			usersubscription.StatusEQ(service.SubscriptionStatusActive),
+			usersubscription.ExpiresAtGT(time.Now()),
+		))
+	}
 
 	if filters.APIKeyGroupID > 0 {
 		// 按"API Key 实际绑定的分组"过滤：用户只要有任意一个未软删除的 API Key
