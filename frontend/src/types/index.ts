@@ -2079,9 +2079,20 @@ export interface AssignSubscriptionRequest {
 }
 
 export interface BulkAssignSubscriptionRequest {
-  user_ids: number[]
+  user_ids?: number[]
+  all?: boolean
   group_id: number
   validity_days?: number
+}
+
+export interface BulkAssignSubscriptionResult {
+  success_count: number
+  created_count: number
+  reused_count: number
+  failed_count: number
+  subscriptions: UserSubscription[]
+  errors: string[]
+  statuses?: Record<string, string>
 }
 
 export interface ExtendSubscriptionRequest {

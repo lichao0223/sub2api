@@ -468,7 +468,19 @@
         @submit.prevent="handleAssignSubscription"
         class="space-y-5"
       >
-        <div>
+        <label class="flex items-start gap-3 rounded-md border border-gray-200 p-3 dark:border-dark-700">
+          <input
+            v-model="assignForm.all_active"
+            type="checkbox"
+            class="checkbox mt-0.5"
+            @change="clearUserSelection"
+          />
+          <span>
+            <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.subscriptions.allActiveUsers') }}</span>
+            <span class="block text-xs text-gray-500 dark:text-gray-400">{{ t('admin.subscriptions.allActiveUsersHint') }}</span>
+          </span>
+        </label>
+        <div v-if="!assignForm.all_active">
           <label class="input-label">{{ t('admin.subscriptions.form.user') }}</label>
           <div class="relative" data-assign-user-search>
             <input
@@ -1019,6 +1031,7 @@ const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
 
 const assignForm = reactive({
+  all_active: false,
   user_id: null as number | null,
   group_id: null as number | null,
   validity_days: 30
@@ -1230,6 +1243,7 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const closeAssignModal = () => {
   showAssignModal.value = false
+  assignForm.all_active = false
   assignForm.user_id = null
   assignForm.group_id = null
   assignForm.validity_days = 30
@@ -1241,7 +1255,7 @@ const closeAssignModal = () => {
 }
 
 const handleAssignSubscription = async () => {
-  if (!assignForm.user_id) {
+  if (!assignForm.all_active && !assignForm.user_id) {
     appStore.showError(t('admin.subscriptions.pleaseSelectUser'))
     return
   }
@@ -1256,12 +1270,28 @@ const handleAssignSubscription = async () => {
 
   submitting.value = true
   try {
-    await adminAPI.subscriptions.assign({
-      user_id: assignForm.user_id,
-      group_id: assignForm.group_id,
-      validity_days: assignForm.validity_days
-    })
-    appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
+    if (assignForm.all_active) {
+      if (!window.confirm(t('admin.subscriptions.bulkAssignConfirm'))) return
+      const result = await adminAPI.subscriptions.bulkAssign({
+        all: true,
+        group_id: assignForm.group_id,
+        validity_days: assignForm.validity_days
+      })
+      const message = t('admin.subscriptions.bulkAssignResult', {
+        success: result.success_count,
+        created: result.created_count,
+        reused: result.reused_count,
+        failed: result.failed_count
+      })
+      result.failed_count > 0 ? appStore.showWarning(message) : appStore.showSuccess(message)
+    } else {
+      await adminAPI.subscriptions.assign({
+        user_id: assignForm.user_id!,
+        group_id: assignForm.group_id,
+        validity_days: assignForm.validity_days
+      })
+      appStore.showSuccess(t('admin.subscriptions.subscriptionAssigned'))
+    }
     closeAssignModal()
     loadSubscriptions()
   } catch (error: any) {

@@ -29,12 +29,40 @@ func toResponsePagination(p *pagination.PaginationResult) *response.PaginationRe
 // SubscriptionHandler handles admin subscription management
 type SubscriptionHandler struct {
 	subscriptionService *service.SubscriptionService
+	adminService        service.AdminService
+}
+
+type adminUserLister interface {
+	ListUsers(context.Context, int, int, service.UserListFilters, string, string) ([]service.User, int64, error)
+}
+
+func listAllActiveUserIDs(ctx context.Context, users adminUserLister, pageSize int) ([]int64, error) {
+	ids := make([]int64, 0)
+	includeSubscriptions := false
+	for page := 1; ; page++ {
+		batch, total, err := users.ListUsers(ctx, page, pageSize, service.UserListFilters{
+			Status:               service.StatusActive,
+			IncludeSubscriptions: &includeSubscriptions,
+		}, "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		for i := range batch {
+			if batch[i].Status == service.StatusActive && batch[i].DeletedAt == nil {
+				ids = append(ids, batch[i].ID)
+			}
+		}
+		if len(batch) == 0 || int64(page*pageSize) >= total {
+			return ids, nil
+		}
+	}
 }
 
 // NewSubscriptionHandler creates a new admin subscription handler
-func NewSubscriptionHandler(subscriptionService *service.SubscriptionService) *SubscriptionHandler {
+func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, adminService service.AdminService) *SubscriptionHandler {
 	return &SubscriptionHandler{
 		subscriptionService: subscriptionService,
+		adminService:        adminService,
 	}
 }
 
@@ -48,7 +76,8 @@ type AssignSubscriptionRequest struct {
 
 // BulkAssignSubscriptionRequest represents bulk assign subscription request
 type BulkAssignSubscriptionRequest struct {
-	UserIDs      []int64 `json:"user_ids" binding:"required,min=1"`
+	UserIDs      []int64 `json:"user_ids"`
+	All          bool    `json:"all"`
 	GroupID      int64   `json:"group_id" binding:"required"`
 	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
 	Notes        string  `json:"notes"`
@@ -166,6 +195,18 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	var req BulkAssignSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if req.All {
+		userIDs, err := listAllActiveUserIDs(c.Request.Context(), h.adminService, 1000)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		req.UserIDs = userIDs
+	}
+	if len(req.UserIDs) == 0 {
+		response.BadRequest(c, "No active users selected")
 		return
 	}
 
