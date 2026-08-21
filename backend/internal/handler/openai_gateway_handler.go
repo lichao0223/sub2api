@@ -388,6 +388,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	if cappedBody, changed := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); changed {
 		body = cappedBody
 	}
+	c.Request = c.Request.WithContext(service.WithMultimodalRequest(c.Request.Context(), body))
 
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
@@ -674,7 +675,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
-			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
+			return h.forwardWithMultimodal(
+				c.Request.Context(), c, account, apiKey, subscription, attemptBody,
+				func(preparedBody []byte) (*service.OpenAIForwardResult, error) {
+					return h.gatewayService.Forward(c.Request.Context(), c, account, preparedBody)
+				},
+			)
 		}()
 		var cyberBlockBodyHTTP []byte
 		if service.GetOpsCyberPolicy(c) != nil {

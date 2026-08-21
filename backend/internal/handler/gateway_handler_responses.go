@@ -68,6 +68,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	c.Request = c.Request.WithContext(service.WithMultimodalRequest(c.Request.Context(), body))
 
 	// Extract model and stream using gjson (like OpenAI handler)
 	modelResult := gjson.GetBytes(body, "model")
@@ -273,7 +274,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
 			result, err = h.antigravityGatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
 		} else {
-			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
+			result, err = h.forwardWithMultimodal(
+				requestCtx, c, account, apiKey, subscription, forwardBody,
+				func(preparedBody []byte) (*service.ForwardResult, error) {
+					return h.gatewayService.ForwardAsResponses(requestCtx, c, account, preparedBody, parsedReq)
+				},
+			)
 		}
 
 		if accountReleaseFunc != nil {

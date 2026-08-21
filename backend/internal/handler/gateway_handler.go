@@ -858,7 +858,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
-				result, err = h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
+				result, err = h.forwardWithMultimodal(
+					requestCtx, c, account, currentAPIKey, currentSubscription, attemptBody,
+					func(preparedBody []byte) (*service.ForwardResult, error) {
+						if err := attemptParsedReq.ReplaceBody(preparedBody); err != nil {
+							return nil, err
+						}
+						return h.gatewayService.Forward(requestCtx, c, account, attemptParsedReq)
+					},
+				)
 			}
 
 			// 兜底释放串行锁（正常情况已通过回调提前释放）
