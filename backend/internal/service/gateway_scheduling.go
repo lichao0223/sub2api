@@ -225,8 +225,25 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return nil, err
 	}
 	if len(accounts) == 0 {
+		slog.Warn("account_scheduling_pool_empty",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel,
+			"platform", platform,
+		)
 		return nil, ErrNoAvailableAccounts
 	}
+	poolIDs := make([]int64, 0, len(accounts))
+	for i := range accounts {
+		poolIDs = append(poolIDs, accounts[i].ID)
+	}
+	slog.Info("account_scheduling_pool",
+		"group_id", derefGroupID(groupID),
+		"model", requestedModel,
+		"platform", platform,
+		"mixed", useMixed,
+		"account_count", len(accounts),
+		"account_ids", poolIDs,
+	)
 	ctx = s.withWindowCostPrefetch(ctx, accounts)
 	ctx = s.withRPMPrefetch(ctx, accounts)
 
@@ -638,6 +655,24 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	candidates := make([]*Account, 0, len(accounts))
 	for i := range accounts {
 		acc := &accounts[i]
+		mappedModel, mappingMatched := acc.ResolveMappedModel(requestedModel)
+		modelSupported := requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel)
+		multimodalAllowed := acc.acceptsMultimodalRequest(requestedModel)
+		diagnosis := s.diagnoseSelectionFailure(ctx, acc, requestedModel, platform, excludedIDs, useMixed)
+		slog.Info("account_scheduling_candidate",
+			"group_id", derefGroupID(groupID),
+			"model", requestedModel,
+			"account_id", acc.ID,
+			"account_name", acc.Name,
+			"account_platform", acc.Platform,
+			"account_type", acc.Type,
+			"mapped_model", mappedModel,
+			"mapping_matched", mappingMatched,
+			"model_supported", modelSupported,
+			"multimodal_allowed", multimodalAllowed,
+			"selection_diagnosis", diagnosis.Category,
+			"selection_detail", diagnosis.Detail,
+		)
 		if isExcluded(acc.ID) {
 			continue
 		}
