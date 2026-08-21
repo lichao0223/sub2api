@@ -180,7 +180,7 @@ const loadVisionModels = async (groupId: number) => {
 onMounted(async () => {
   try {
     visionGroups.value = (await groupsAPI.getAll())
-      .filter((group) => group.platform === 'openai' || group.platform === 'anthropic')
+      .filter((group) => ['openai', 'anthropic', 'composite'].includes(group.platform))
   } catch {
     visionGroups.value = []
   }
