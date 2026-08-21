@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -27,7 +28,15 @@ func (s *GatewayService) PrepareMultimodal(
 	if policy.Mode != multimodalModeVisionToText || !requestBodyHasImageInput(body) {
 		return body, nil, nil
 	}
+	slog.Info("multimodal_bridge_started",
+		"source_account_id", account.ID,
+		"source_platform", account.Platform,
+		"source_model", model,
+		"vision_group_id", policy.VisionGroupID,
+		"vision_model", policy.VisionModel,
+	)
 	if policy.VisionModel == "" {
+		slog.Warn("multimodal_bridge_missing_vision_model", "source_account_id", account.ID, "source_model", model)
 		return body, nil, fmt.Errorf("vision-to-text requires a vision model")
 	}
 
@@ -40,6 +49,12 @@ func (s *GatewayService) PrepareMultimodal(
 	if policy.VisionGroupID > 0 {
 		selectedAccount, release, selectErr := s.selectMultimodalVisionAccount(ctx, policy.VisionGroupID, policy.VisionModel)
 		if selectErr != nil {
+			slog.Warn("multimodal_bridge_vision_account_selection_failed",
+				"source_account_id", account.ID,
+				"vision_group_id", policy.VisionGroupID,
+				"vision_model", policy.VisionModel,
+				"error", selectErr,
+			)
 			return body, nil, selectErr
 		}
 		targetAccount = selectedAccount
@@ -49,6 +64,11 @@ func (s *GatewayService) PrepareMultimodal(
 		return body, nil, fmt.Errorf("vision-to-text requires an API-key or OpenAI OAuth target account")
 	}
 	if targetAccount.Platform != PlatformAnthropic && !targetAccount.IsOpenAICompatible() {
+		slog.Warn("multimodal_bridge_unsupported_vision_platform",
+			"account_id", targetAccount.ID,
+			"platform", targetAccount.Platform,
+			"vision_model", policy.VisionModel,
+		)
 		return body, nil, fmt.Errorf("vision-to-text target platform does not support image description")
 	}
 
@@ -65,6 +85,14 @@ func (s *GatewayService) PrepareMultimodal(
 			ctx, c, openAIService, targetAccount, visionModel, imageURL, index+1,
 		)
 		if describeErr != nil {
+			slog.Warn("multimodal_bridge_vision_request_failed",
+				"source_account_id", account.ID,
+				"vision_account_id", targetAccount.ID,
+				"vision_platform", targetAccount.Platform,
+				"vision_model", visionModel,
+				"image_index", index+1,
+				"error", describeErr,
+			)
 			return body, nil, describeErr
 		}
 		if usage.RequestID == "" {
