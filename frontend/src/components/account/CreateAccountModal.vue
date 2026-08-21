@@ -1250,6 +1250,16 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
+        <div v-if="form.platform === 'anthropic' || form.platform === 'openai'">
+          <label class="input-label">模型提供商</label>
+          <select v-model="modelProvider" class="input" data-testid="model-provider-select">
+            <option value="none">无</option>
+            <option value="glm">GLM</option>
+            <option value="deepseek">DeepSeek</option>
+          </select>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。</p>
+        </div>
+
         <div v-if="!isCNPlatform || apiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -3958,6 +3968,7 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const modelProvider = ref<'none' | 'glm' | 'deepseek'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
@@ -4628,6 +4639,9 @@ watch(
     if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
       accountCategory.value = 'oauth-based'
     }
+    if (newPlatform !== 'anthropic' && newPlatform !== 'openai') {
+      modelProvider.value = 'none'
+    }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
     bedrockSecretAccessKey.value = ''
@@ -5041,6 +5055,7 @@ const resetForm = () => {
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  modelProvider.value = 'none'
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5244,6 +5259,17 @@ const buildAnthropicExtra = (base?: Record<string, unknown>): Record<string, unk
   }
 
   return Object.keys(extra).length > 0 ? extra : undefined
+}
+
+const buildModelProviderExtra = (base?: Record<string, unknown>): Record<string, unknown> | undefined => {
+  if (
+    accountCategory.value !== 'apikey' ||
+    (form.platform !== 'anthropic' && form.platform !== 'openai') ||
+    modelProvider.value === 'none'
+  ) {
+    return base
+  }
+  return { ...(base || {}), model_provider: modelProvider.value }
 }
 
 // Helper function to create account with mixed channel warning handling
@@ -5577,7 +5603,7 @@ const handleSubmit = async () => {
   }
 
   form.credentials = credentials
-  const extra = buildAnthropicExtra(buildOpenAIExtra())
+  const extra = buildModelProviderExtra(buildAnthropicExtra(buildOpenAIExtra()))
 
   await doCreateAccount({
     ...form,

@@ -201,6 +201,25 @@ func TestAdminService_CompositeModelsListCandidatesIncludeConcreteAccountMapping
 	require.Contains(t, candidates, "gemini-2.5-flash")
 }
 
+func TestAdminService_CompositeAvailableModelsMatchGatewayModels(t *testing.T) {
+	accountRepo := &accountRepoStubForCompositeModelsList{
+		accounts: []Account{
+			{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-vision": "gpt-5"}}},
+			{Platform: PlatformKimi, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"kimi-vision": "kimi-k2"}}},
+		},
+	}
+	groupRepo := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{
+		99: {ID: 99, Platform: PlatformComposite},
+	}}
+	svc := &adminServiceImpl{accountRepo: accountRepo, groupRepo: groupRepo}
+
+	models, err := svc.GetGroupAvailableModels(context.Background(), 99)
+
+	require.NoError(t, err)
+	require.Equal(t, []string{"gpt-vision", "kimi-vision"}, models)
+	require.NotContains(t, models, "claude-sonnet-4-6")
+}
+
 // 独立 CN 分组的模型列表候选沿用 default 分支的 Claude 默认列表；
 // composite 支持不得改变独立分组的候选语义。
 func TestAdminService_CNProviderModelsListCandidatesKeepClaudeDefaults(t *testing.T) {

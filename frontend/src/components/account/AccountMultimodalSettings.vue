@@ -171,7 +171,7 @@ const visionModelOptions = (groupId: number, selected: string): SelectOption[] =
 const loadVisionModels = async (groupId: number) => {
   if (groupId <= 0 || modelsByGroup.value[groupId]) return
   try {
-    modelsByGroup.value[groupId] = await groupsAPI.getModelsListCandidates(groupId)
+    modelsByGroup.value[groupId] = await groupsAPI.getAvailableModels(groupId)
   } catch {
     modelsByGroup.value[groupId] = []
   }

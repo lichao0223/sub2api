@@ -84,6 +84,32 @@ func TestAnthropicPrepareMultimodal(t *testing.T) {
 	require.Equal(t, 2, usage.OutputTokens)
 }
 
+func TestKimiAPIKeyPrepareMultimodalUsesOpenAICompatibleBridge(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(bytes.NewBufferString(
+			"data: {\"id\":\"vision-response\",\"choices\":[{\"delta\":{\"content\":\"A diagram.\"}}]}\n\n" +
+				"data: {\"choices\":[],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":2}}\n\n",
+		)),
+	}}}
+	openAISvc := &OpenAIGatewayService{httpUpstream: upstream, cfg: &config.Config{}}
+	svc := &GatewayService{cfg: &config.Config{}}
+	account := multimodalBridgeAccount(PlatformKimi)
+	account.Credentials["base_url"] = "https://example.com"
+	account.Credentials["api_key"] = "kimi-key"
+	body := []byte(`{"model":"text-only","messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.com/a.png"}}]}]}`)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	prepared, _, err := svc.PrepareMultimodal(context.Background(), c, openAISvc, account, body)
+
+	require.NoError(t, err)
+	require.Contains(t, string(prepared), "Image 1 description: A diagram.")
+	require.Equal(t, "vision-model", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+}
+
 func TestOpenAIOAuthDescribeImage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{{

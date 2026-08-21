@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -98,6 +99,142 @@ func (s *adminServiceImpl) GetGroupModelsListCandidates(ctx context.Context, id 
 		}
 	}
 	return candidates, nil
+}
+
+func (s *adminServiceImpl) GetGroupAvailableModels(ctx context.Context, id int64) ([]string, error) {
+	group, err := s.groupRepo.GetByIDLite(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	accounts, err := s.accountRepo.ListSchedulableByGroupID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	visionAccounts := make([]Account, 0, len(accounts))
+	for _, account := range accounts {
+		if account.Type == AccountTypeAPIKey || account.IsOpenAIOAuth() {
+			if account.Platform == PlatformAnthropic || account.IsOpenAICompatible() {
+				visionAccounts = append(visionAccounts, account)
+			}
+		}
+	}
+
+	models := availableModelsForGroup(group.Platform, visionAccounts)
+	fallback := defaultAvailableModelIDs(group.Platform)
+	if group.CustomModelsListEnabled() {
+		if group.Platform == PlatformAnthropic && len(models) > 0 {
+			models = mergeUniqueModelIDs(models, fallback)
+		}
+		return filterAvailableModels(models, fallback, group.ModelsListConfig.Models), nil
+	}
+	if len(models) == 0 {
+		models = fallback
+	}
+	return models, nil
+}
+
+func availableModelsForGroup(platform string, accounts []Account) []string {
+	if platform != PlatformComposite {
+		return availableModelsForPlatform(platform, accounts)
+	}
+
+	models := make([]string, 0)
+	for _, concretePlatform := range []string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+		platformModels := availableModelsForPlatform(concretePlatform, accounts)
+		if len(platformModels) == 0 && hasSchedulablePlatform(accounts, concretePlatform) && !IsCNProvider(concretePlatform) {
+			platformModels = defaultAvailableModelIDs(concretePlatform)
+		}
+		models = mergeUniqueModelIDs(models, platformModels)
+	}
+	return models
+}
+
+func availableModelsForPlatform(platform string, accounts []Account) []string {
+	models := make(map[string]struct{})
+	for _, account := range accounts {
+		if account.Platform != platform {
+			continue
+		}
+		if platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
+			return nil
+		}
+		for model := range account.GetModelMapping() {
+			if model = strings.TrimSpace(model); model != "" {
+				models[model] = struct{}{}
+			}
+		}
+	}
+	result := make([]string, 0, len(models))
+	for model := range models {
+		result = append(result, model)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func hasSchedulablePlatform(accounts []Account, platform string) bool {
+	for _, account := range accounts {
+		if account.Platform == platform {
+			return true
+		}
+	}
+	return false
+}
+
+func filterAvailableModels(available, fallback, selected []string) []string {
+	if len(available) == 0 {
+		available = fallback
+	}
+	filtered := make([]string, 0, len(selected))
+	for _, model := range selected {
+		model = strings.TrimSpace(model)
+		if model != "" && modelMatchesAvailable(available, model) {
+			filtered = mergeUniqueModelIDs(filtered, []string{model})
+		}
+	}
+	return filtered
+}
+
+func modelMatchesAvailable(available []string, model string) bool {
+	for _, pattern := range available {
+		if pattern == model || strings.HasSuffix(pattern, "*") && strings.HasPrefix(model, strings.TrimSuffix(pattern, "*")) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultAvailableModelIDs(platform string) []string {
+	if platform == PlatformAnthropic {
+		return defaultModelsListCandidateIDs(platform)
+	}
+	if platform != PlatformComposite {
+		return defaultModelsListCandidateIDs(platform)
+	}
+	ids := make([]string, 0)
+	for _, concretePlatform := range []string{PlatformAnthropic, PlatformOpenAI} {
+		ids = mergeUniqueModelIDs(ids, defaultAvailableModelIDs(concretePlatform))
+	}
+	return ids
+}
+
+func mergeUniqueModelIDs(primary, secondary []string) []string {
+	seen := make(map[string]struct{}, len(primary)+len(secondary))
+	merged := make([]string, 0, len(primary)+len(secondary))
+	for _, models := range [][]string{primary, secondary} {
+		for _, model := range models {
+			model = strings.TrimSpace(model)
+			if model == "" {
+				continue
+			}
+			if _, ok := seen[model]; ok {
+				continue
+			}
+			seen[model] = struct{}{}
+			merged = append(merged, model)
+		}
+	}
+	return merged
 }
 
 func (s *adminServiceImpl) ListCompositeRoutes(ctx context.Context, groupID int64) ([]CompositeModelRoute, error) {

@@ -48,8 +48,8 @@ func (s *GatewayService) PrepareMultimodal(
 	if targetAccount.Type != AccountTypeAPIKey && !targetAccount.IsOpenAIOAuth() {
 		return body, nil, fmt.Errorf("vision-to-text requires an API-key or OpenAI OAuth target account")
 	}
-	if targetAccount.Platform != PlatformOpenAI && targetAccount.Platform != PlatformAnthropic {
-		return body, nil, fmt.Errorf("vision-to-text target must use OpenAI or Anthropic platform")
+	if targetAccount.Platform != PlatformAnthropic && !targetAccount.IsOpenAICompatible() {
+		return body, nil, fmt.Errorf("vision-to-text target platform does not support image description")
 	}
 
 	visionModel := targetAccount.GetMappedModel(policy.VisionModel)
@@ -101,7 +101,7 @@ func (s *GatewayService) selectMultimodalVisionAccount(
 			return nil, nil, fmt.Errorf("select vision account: no account returned")
 		}
 		if (account.Type != AccountTypeAPIKey && !account.IsOpenAIOAuth()) ||
-			(account.Platform != PlatformOpenAI && account.Platform != PlatformAnthropic) {
+			(account.Platform != PlatformAnthropic && !account.IsOpenAICompatible()) {
 			if selection.Acquired && selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()
 			}
@@ -125,9 +125,9 @@ func (s *GatewayService) describeMultimodalImage(
 	imageURL string,
 	index int,
 ) (string, string, ClaudeUsage, error) {
-	if account.Platform == PlatformOpenAI {
+	if account.Platform != PlatformAnthropic {
 		if openAIService == nil {
-			return "", "", ClaudeUsage{}, fmt.Errorf("OpenAI vision gateway is unavailable")
+			return "", "", ClaudeUsage{}, fmt.Errorf("OpenAI-compatible vision gateway is unavailable")
 		}
 		description, requestID, usage, err := openAIService.describeOpenAIImage(
 			ctx, c, account, visionModel, imageURL, index,

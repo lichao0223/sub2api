@@ -140,6 +140,22 @@ const GroupSelectorStub = defineComponent({
   `
 })
 
+const AccountMultimodalSettingsStub = defineComponent({
+  name: 'AccountMultimodalSettings',
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  template: `
+    <div>
+      <span data-testid="multimodal-mode">{{ modelValue.defaultMode }}</span>
+      <button
+        type="button"
+        data-testid="configure-multimodal"
+        @click="$emit('update:modelValue', { defaultMode: 'vision_to_text', defaultVisionGroupId: 7, defaultVisionModel: 'gpt-4.1-mini', rules: [] })"
+      >configure</button>
+    </div>
+  `
+})
+
 function buildAccount() {
   return {
     id: 1,
@@ -165,6 +181,28 @@ function buildAccount() {
     auto_pause_on_expired: false
   } as any
 }
+
+describe('EditAccountModal model provider', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    updateAccountMock.mockReset().mockResolvedValue(buildAccount())
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+  })
+
+  it('restores model providers without Kimi and saves the selection', async () => {
+    const account = buildAccount()
+    account.extra = { model_provider: 'glm' }
+    const wrapper = mountModal(account)
+
+    const provider = wrapper.get('[data-testid="edit-model-provider-select"]')
+    expect(provider.findAll('option').map(option => option.text())).toEqual(['无', 'GLM', 'DeepSeek'])
+    expect((provider.element as HTMLSelectElement).value).toBe('glm')
+    await provider.setValue('deepseek')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.extra?.model_provider).toBe('deepseek')
+  })
+})
 
 function buildOpenAISparkShadowAccount() {
   const account = buildAccount()
@@ -305,7 +343,8 @@ function mountModal(account = buildAccount()) {
         Icon: true,
         ProxySelector: true,
         GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub
+        ModelWhitelistSelector: ModelWhitelistSelectorStub,
+        AccountMultimodalSettings: AccountMultimodalSettingsStub
       }
     }
   })

@@ -231,6 +231,22 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     expect(defaultCNBaseUrl(platform, mode, protocol)).toBe(expectedBaseUrl)
   })
 
+  it('restores model providers without Kimi and saves the selection', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+
+    const provider = wrapper.get('[data-testid="model-provider-select"]')
+    expect(provider.findAll('option').map(option => option.text())).toEqual(['无', 'GLM', 'DeepSeek'])
+    await provider.setValue('glm')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('GLM account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.extra?.model_provider).toBe('glm')
+  })
+
   it('hides only the redundant account toggle when every selected group enables tier pricing', async () => {
     authIsSimpleMode.value = false
     const wrapper = mountModal([

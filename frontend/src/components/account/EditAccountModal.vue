@@ -28,6 +28,16 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <div v-if="account.platform === 'anthropic' || account.platform === 'openai'">
+          <label class="input-label">模型提供商</label>
+          <select v-model="editModelProvider" class="input" data-testid="edit-model-provider-select">
+            <option value="none">无</option>
+            <option value="glm">GLM</option>
+            <option value="deepseek">DeepSeek</option>
+          </select>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。</p>
+        </div>
+
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -2917,6 +2927,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editModelProvider = ref<'none' | 'glm' | 'deepseek'>('none')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3641,6 +3652,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+	editModelProvider.value = extra?.model_provider === 'glm' || extra?.model_provider === 'deepseek'
+		? extra.model_provider
+		: 'none'
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
@@ -5208,6 +5222,21 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    if (
+      props.account.type === 'apikey' &&
+      (props.account.platform === 'anthropic' || props.account.platform === 'openai')
+    ) {
+      const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
+        (props.account.extra as Record<string, unknown>) || {}
+      const newExtra: Record<string, unknown> = { ...currentExtra }
+      if (editModelProvider.value === 'none') {
+        delete newExtra.model_provider
+      } else {
+        newExtra.model_provider = editModelProvider.value
+      }
       updatePayload.extra = newExtra
     }
 

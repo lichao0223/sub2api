@@ -120,6 +120,11 @@ export async function getModelsListCandidates(
   return data.models || []
 }
 
+export async function getAvailableModels(id: number): Promise<string[]> {
+  const { data } = await apiClient.get<{ models: string[] }>(`/admin/groups/${id}/available-models`)
+  return data.models || []
+}
+
 /**
  * Create new group
  * @param groupData - Group data
@@ -480,6 +485,7 @@ export const groupsAPI = {
   getLiveCapability,
   getById,
   getModelsListCandidates,
+  getAvailableModels,
   create,
   duplicate,
   update,
