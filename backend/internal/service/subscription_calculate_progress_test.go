@@ -17,6 +17,12 @@ func newTestSubscriptionService() *SubscriptionService {
 func ptrFloat64(v float64) *float64  { return &v }
 func ptrTime(t time.Time) *time.Time { return &t }
 
+func TestSubscriptionQuotaExceededIgnoresUnlimited(t *testing.T) {
+	zero, ten := 0.0, 10.0
+	assert.False(t, subscriptionQuotaExceeded(UserSubscription{DailyUsageUSD: 1, Group: &Group{DailyLimitUSD: &zero}}))
+	assert.True(t, subscriptionQuotaExceeded(UserSubscription{DailyUsageUSD: 10, Group: &Group{DailyLimitUSD: &ten}}))
+}
+
 func TestCalculateProgress_BasicFields(t *testing.T) {
 	svc := newTestSubscriptionService()
 	now := time.Now()

@@ -32,6 +32,17 @@ func TestValidateCostPlanInputRejectsInvalidPrice(t *testing.T) {
 	require.EqualError(t, err, "cost values must be nonnegative numbers")
 }
 
+func TestValidateCostPlanInputValidatesTimePricing(t *testing.T) {
+	err := validateCostPlanInput(CostPlanInput{
+		Name: "Qwen 按量", PlanType: "metered", EffectiveFrom: time.Now(),
+		Prices: []CostModelPrice{{UpstreamModel: "qwen3", TimePricing: &ChannelTimePricing{
+			Timezone: "Asia/Shanghai",
+			Periods:  []ChannelTimePricingPeriod{{StartTime: "09:00", EndTime: "12:00", Multiplier: 0}},
+		}}},
+	})
+	require.ErrorContains(t, err, "time_pricing")
+}
+
 func TestValidateCostPlanInputRejectsInvalidBillingCycle(t *testing.T) {
 	err := validateCostPlanInput(CostPlanInput{
 		Name:             "年度套餐",

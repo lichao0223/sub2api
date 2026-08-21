@@ -829,9 +829,7 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 	if quotaExceeded {
 		filtered := subs[:0]
 		for _, sub := range subs {
-			if sub.Group != nil && ((sub.Group.DailyLimitUSD != nil && sub.DailyUsageUSD >= *sub.Group.DailyLimitUSD) ||
-				(sub.Group.WeeklyLimitUSD != nil && sub.WeeklyUsageUSD >= *sub.Group.WeeklyLimitUSD) ||
-				(sub.Group.MonthlyLimitUSD != nil && sub.MonthlyUsageUSD >= *sub.Group.MonthlyLimitUSD)) {
+			if subscriptionQuotaExceeded(sub) {
 				filtered = append(filtered, sub)
 			}
 		}
@@ -843,6 +841,12 @@ func (s *SubscriptionService) List(ctx context.Context, page, pageSize int, user
 		return filtered[start:end], &pagination.PaginationResult{Total: int64(len(filtered)), Page: page, PageSize: pageSize, Pages: (len(filtered) + pageSize - 1) / pageSize}, nil
 	}
 	return subs, pag, nil
+}
+
+func subscriptionQuotaExceeded(sub UserSubscription) bool {
+	return sub.Group != nil && ((sub.Group.HasDailyLimit() && sub.DailyUsageUSD >= *sub.Group.DailyLimitUSD) ||
+		(sub.Group.HasWeeklyLimit() && sub.WeeklyUsageUSD >= *sub.Group.WeeklyLimitUSD) ||
+		(sub.Group.HasMonthlyLimit() && sub.MonthlyUsageUSD >= *sub.Group.MonthlyLimitUSD))
 }
 
 // normalizeExpiredWindows 将已过期窗口的数据清零（仅影响返回数据，不影响数据库）

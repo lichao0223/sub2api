@@ -1,5 +1,6 @@
 import { apiClient } from '../client'
 import type { BasePaginationResponse } from '@/types'
+import type { ChannelTimePricing } from './channels'
 
 export interface CostPlan {
   id: number; name: string; plan_type: 'metered'|'fixed'; fixed_category?: string; status: string
@@ -11,7 +12,7 @@ export interface CostPlan {
 export interface CostModelPrice {
   upstream_model: string; billing_mode: string; input_price_cny: string; output_price_cny: string
   cache_write_price_cny: string; cache_read_price_cny: string; image_input_price_cny: string
-  image_output_price_cny: string; per_request_price_cny: string
+  image_output_price_cny: string; per_request_price_cny: string; time_pricing?: ChannelTimePricing | null
 }
 export interface AccountCostRow {
   account_id:number;account_name:string;platform:string;account_status:string;cost_mode:string

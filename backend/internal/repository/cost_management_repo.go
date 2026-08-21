@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -87,15 +88,21 @@ func (r *costManagementRepository) GetCostPlan(ctx context.Context, id int64) (*
 	}
 	p.FixedUnitCostCNY = normalizeCostAmount(p.FixedUnitCostCNY)
 	p.MonthlyUnitCostCNY = normalizeCostAmount(p.MonthlyUnitCostCNY)
-	rows, err := r.db.QueryContext(ctx, `SELECT upstream_model,billing_mode,input_price_cny::text,output_price_cny::text,cache_write_price_cny::text,cache_read_price_cny::text,image_input_price_cny::text,image_output_price_cny::text,per_request_price_cny::text FROM cost_model_prices WHERE plan_version_id=$1 ORDER BY upstream_model`, versionID)
+	rows, err := r.db.QueryContext(ctx, `SELECT upstream_model,billing_mode,input_price_cny::text,output_price_cny::text,cache_write_price_cny::text,cache_read_price_cny::text,image_input_price_cny::text,image_output_price_cny::text,per_request_price_cny::text,time_pricing FROM cost_model_prices WHERE plan_version_id=$1 ORDER BY upstream_model`, versionID)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var price service.CostModelPrice
-		if err := rows.Scan(&price.UpstreamModel, &price.BillingMode, &price.InputPriceCNY, &price.OutputPriceCNY, &price.CacheWritePriceCNY, &price.CacheReadPriceCNY, &price.ImageInputPriceCNY, &price.ImageOutputPriceCNY, &price.PerRequestPriceCNY); err != nil {
+		var timePricing []byte
+		if err := rows.Scan(&price.UpstreamModel, &price.BillingMode, &price.InputPriceCNY, &price.OutputPriceCNY, &price.CacheWritePriceCNY, &price.CacheReadPriceCNY, &price.ImageInputPriceCNY, &price.ImageOutputPriceCNY, &price.PerRequestPriceCNY, &timePricing); err != nil {
 			return nil, err
+		}
+		if len(timePricing) > 0 {
+			if err := json.Unmarshal(timePricing, &price.TimePricing); err != nil {
+				return nil, err
+			}
 		}
 		price.InputPriceCNY = normalizeCostAmount(price.InputPriceCNY)
 		price.OutputPriceCNY = normalizeCostAmount(price.OutputPriceCNY)
@@ -296,16 +303,23 @@ func (r *costManagementRepository) ListCostPriceHistory(ctx context.Context, pla
 			planVersionIndexes[items[i].ID] = i
 		}
 	}
-	priceRows, err := r.db.QueryContext(ctx, `SELECT mp.plan_version_id,mp.upstream_model,mp.billing_mode,mp.input_price_cny::text,mp.output_price_cny::text,mp.cache_write_price_cny::text,mp.cache_read_price_cny::text,mp.image_input_price_cny::text,mp.image_output_price_cny::text,mp.per_request_price_cny::text FROM cost_model_prices mp JOIN cost_plan_versions v ON v.id=mp.plan_version_id WHERE v.plan_id=$1 ORDER BY mp.plan_version_id,mp.upstream_model`, planID)
+	priceRows, err := r.db.QueryContext(ctx, `SELECT mp.plan_version_id,mp.upstream_model,mp.billing_mode,mp.input_price_cny::text,mp.output_price_cny::text,mp.cache_write_price_cny::text,mp.image_input_price_cny::text,mp.image_output_price_cny::text,mp.per_request_price_cny::text,mp.time_pricing FROM cost_model_prices mp JOIN cost_plan_versions v ON v.id=mp.plan_version_id WHERE v.plan_id=$1 ORDER BY mp.plan_version_id,mp.upstream_model`, planID)
 	if err != nil {
 		return nil, err
 	}
 	for priceRows.Next() {
 		var versionID int64
 		var price service.CostModelPrice
-		if err = priceRows.Scan(&versionID, &price.UpstreamModel, &price.BillingMode, &price.InputPriceCNY, &price.OutputPriceCNY, &price.CacheWritePriceCNY, &price.CacheReadPriceCNY, &price.ImageInputPriceCNY, &price.ImageOutputPriceCNY, &price.PerRequestPriceCNY); err != nil {
+		var timePricing []byte
+		if err = priceRows.Scan(&versionID, &price.UpstreamModel, &price.BillingMode, &price.InputPriceCNY, &price.OutputPriceCNY, &price.CacheWritePriceCNY, &price.CacheReadPriceCNY, &price.ImageInputPriceCNY, &price.ImageOutputPriceCNY, &price.PerRequestPriceCNY, &timePricing); err != nil {
 			_ = priceRows.Close()
 			return nil, err
+		}
+		if len(timePricing) > 0 {
+			if err = json.Unmarshal(timePricing, &price.TimePricing); err != nil {
+				_ = priceRows.Close()
+				return nil, err
+			}
 		}
 		if index, ok := planVersionIndexes[versionID]; ok {
 			items[index].Prices = append(items[index].Prices, price)
@@ -330,7 +344,11 @@ func insertCostModelPrices(ctx context.Context, tx *sql.Tx, versionID int64, pri
 		if mode == "" {
 			mode = "token"
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO cost_model_prices(plan_version_id,upstream_model,billing_mode,input_price_cny,output_price_cny,cache_write_price_cny,cache_read_price_cny,image_input_price_cny,image_output_price_cny,per_request_price_cny) VALUES($1,$2,$3,$4::numeric,$5::numeric,$6::numeric,$7::numeric,$8::numeric,$9::numeric,$10::numeric)`, versionID, strings.TrimSpace(p.UpstreamModel), mode, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6]); err != nil {
+		timePricing, err := json.Marshal(p.TimePricing)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO cost_model_prices(plan_version_id,upstream_model,billing_mode,input_price_cny,output_price_cny,cache_write_price_cny,cache_read_price_cny,image_input_price_cny,image_output_price_cny,per_request_price_cny,time_pricing) VALUES($1,$2,$3,$4::numeric,$5::numeric,$6::numeric,$7::numeric,$8::numeric,$9::numeric,$10::numeric,$11)`, versionID, strings.TrimSpace(p.UpstreamModel), mode, vals[0], vals[1], vals[2], vals[3], vals[4], vals[5], vals[6], timePricing); err != nil {
 			return err
 		}
 	}
@@ -1201,7 +1219,8 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		  SELECT b.*,c.id config_id,c.cost_mode,c.plan_id,v.id version_id,mp.id price_id,
 		    mp.billing_mode AS cost_billing_mode,
 		    mp.input_price_cny,mp.output_price_cny,mp.cache_write_price_cny,mp.cache_read_price_cny,
-		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny
+		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny,
+		    COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) time_multiplier
 		  FROM batch b
 		  LEFT JOIN LATERAL(SELECT * FROM account_cost_configs x WHERE x.account_id=b.account_id AND x.effective_from<=b.created_at AND(x.effective_to IS NULL OR x.effective_to>b.created_at)ORDER BY x.effective_from DESC LIMIT 1)c ON TRUE
 		  LEFT JOIN LATERAL(SELECT * FROM cost_plan_versions x WHERE x.plan_id=c.plan_id AND x.effective_from<=b.created_at AND(x.effective_to IS NULL OR x.effective_to>b.created_at)ORDER BY x.version_no DESC LIMIT 1)v ON TRUE
@@ -1215,11 +1234,11 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		    SUM(COALESCE(image_input_tokens,0))::bigint image_inputs,SUM(COALESCE(image_output_tokens,0))::bigint image_outputs,SUM(COALESCE(image_count,0))::bigint images,
 		    SUM(CASE WHEN price_id IS NULL THEN 0 ELSE
 		      CASE WHEN cost_billing_mode IN('token','hybrid') THEN
-		        input_tokens*input_price_cny/1000000+output_tokens*output_price_cny/1000000+
+		        (input_tokens*input_price_cny/1000000+output_tokens*output_price_cny/1000000+
 		        cache_creation_tokens*cache_write_price_cny/1000000+cache_read_tokens*cache_read_price_cny/1000000+
-		        COALESCE(image_input_tokens,0)*image_input_price_cny/1000000+COALESCE(image_output_tokens,0)*image_output_price_cny/1000000
+		        COALESCE(image_input_tokens,0)*image_input_price_cny/1000000+COALESCE(image_output_tokens,0)*image_output_price_cny/1000000)*time_multiplier
 		      ELSE 0 END+
-		      CASE WHEN cost_billing_mode IN('request','hybrid') THEN per_request_price_cny ELSE 0 END
+		      CASE WHEN cost_billing_mode IN('request','hybrid') THEN per_request_price_cny*time_multiplier ELSE 0 END
 		    END) amount,
 		    COUNT(*) FILTER(WHERE config_id IS NULL OR final_model='' OR version_id IS NULL OR price_id IS NULL)::bigint pending
 		  FROM resolved WHERE COALESCE(cost_mode,'metered')='metered'
@@ -1552,7 +1571,8 @@ func rebuildUsageRange(ctx context.Context, tx *sql.Tx, start, end time.Time) er
 		    c.id config_id,c.cost_mode,c.plan_id,v.id version_id,mp.id price_id,
 		    mp.billing_mode AS cost_billing_mode,
 		    mp.input_price_cny,mp.output_price_cny,mp.cache_write_price_cny,mp.cache_read_price_cny,
-		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny
+		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny,
+		    COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) time_multiplier
 		  FROM usage_logs ul
 		  LEFT JOIN LATERAL(SELECT * FROM account_cost_configs x WHERE x.account_id=ul.account_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at)ORDER BY x.effective_from DESC LIMIT 1)c ON TRUE
 		  LEFT JOIN LATERAL(SELECT * FROM cost_plan_versions x WHERE x.plan_id=c.plan_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at)ORDER BY x.version_no DESC LIMIT 1)v ON TRUE
@@ -1568,11 +1588,11 @@ func rebuildUsageRange(ctx context.Context, tx *sql.Tx, start, end time.Time) er
 		    SUM(COALESCE(image_input_tokens,0))::bigint image_inputs,SUM(COALESCE(image_output_tokens,0))::bigint image_outputs,SUM(COALESCE(image_count,0))::bigint images,
 		    SUM(CASE WHEN price_id IS NULL THEN 0 ELSE
 		      CASE WHEN cost_billing_mode IN('token','hybrid') THEN
-		        input_tokens*input_price_cny/1000000+output_tokens*output_price_cny/1000000+
+		        (input_tokens*input_price_cny/1000000+output_tokens*output_price_cny/1000000+
 		        cache_creation_tokens*cache_write_price_cny/1000000+cache_read_tokens*cache_read_price_cny/1000000+
-		        COALESCE(image_input_tokens,0)*image_input_price_cny/1000000+COALESCE(image_output_tokens,0)*image_output_price_cny/1000000
+		        COALESCE(image_input_tokens,0)*image_input_price_cny/1000000+COALESCE(image_output_tokens,0)*image_output_price_cny/1000000)*time_multiplier
 		      ELSE 0 END+
-		      CASE WHEN cost_billing_mode IN('request','hybrid') THEN per_request_price_cny ELSE 0 END
+		      CASE WHEN cost_billing_mode IN('request','hybrid') THEN per_request_price_cny*time_multiplier ELSE 0 END
 		    END) amount,
 		    COUNT(*) FILTER(WHERE config_id IS NULL OR final_model='' OR version_id IS NULL OR price_id IS NULL)::bigint pending
 		  FROM resolved WHERE COALESCE(cost_mode,'metered')='metered'

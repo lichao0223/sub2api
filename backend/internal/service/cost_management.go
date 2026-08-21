@@ -22,15 +22,16 @@ const (
 var ErrCostAggregationBusy = errors.New("cost aggregation is already running")
 
 type CostModelPrice struct {
-	UpstreamModel       string `json:"upstream_model"`
-	BillingMode         string `json:"billing_mode"`
-	InputPriceCNY       string `json:"input_price_cny"`
-	OutputPriceCNY      string `json:"output_price_cny"`
-	CacheWritePriceCNY  string `json:"cache_write_price_cny"`
-	CacheReadPriceCNY   string `json:"cache_read_price_cny"`
-	ImageInputPriceCNY  string `json:"image_input_price_cny"`
-	ImageOutputPriceCNY string `json:"image_output_price_cny"`
-	PerRequestPriceCNY  string `json:"per_request_price_cny"`
+	UpstreamModel       string              `json:"upstream_model"`
+	BillingMode         string              `json:"billing_mode"`
+	InputPriceCNY       string              `json:"input_price_cny"`
+	OutputPriceCNY      string              `json:"output_price_cny"`
+	CacheWritePriceCNY  string              `json:"cache_write_price_cny"`
+	CacheReadPriceCNY   string              `json:"cache_read_price_cny"`
+	ImageInputPriceCNY  string              `json:"image_input_price_cny"`
+	ImageOutputPriceCNY string              `json:"image_output_price_cny"`
+	PerRequestPriceCNY  string              `json:"per_request_price_cny"`
+	TimePricing         *ChannelTimePricing `json:"time_pricing,omitempty"`
 }
 
 func (p *CostModelPrice) UnmarshalJSON(data []byte) error {
@@ -712,6 +713,9 @@ func validateModelPrices(prices []CostModelPrice) error {
 			if err := validateNonnegativeCost(value); err != nil {
 				return err
 			}
+		}
+		if err := validateChannelTimePricing(p.TimePricing); err != nil {
+			return fmt.Errorf("time_pricing: %w", err)
 		}
 	}
 	return nil
