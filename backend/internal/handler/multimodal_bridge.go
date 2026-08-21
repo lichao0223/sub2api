@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -23,18 +24,23 @@ func (h *OpenAIGatewayHandler) forwardWithMultimodal(
 	body []byte,
 	forward openAIMultimodalForward,
 ) (*service.OpenAIForwardResult, error) {
+	slog.Info("multimodal_bridge_forward_entered", "source_account_id", account.ID, "source_platform", account.Platform, "body_bytes", len(body))
 	if h.multimodalGatewayService == nil {
+		slog.Warn("multimodal_bridge_service_unavailable", "source_account_id", account.ID)
 		return forward(body)
 	}
 	preparedBody, usage, err := h.multimodalGatewayService.PrepareMultimodal(
 		ctx, c, h.gatewayService, account, body,
 	)
 	if err != nil {
+		slog.Warn("multimodal_bridge_forward_failed", "source_account_id", account.ID, "error", err)
 		return nil, err
 	}
 	if usage != nil {
+		slog.Info("multimodal_bridge_usage_record_scheduled", "source_account_id", account.ID, "vision_account_id", usage.Account.ID, "vision_model", usage.Model)
 		h.recordOpenAIMultimodalUsage(ctx, c, usage.Account, apiKey, subscription, body, usage)
 	}
+	slog.Info("multimodal_bridge_forward_prepared", "source_account_id", account.ID, "rewritten", usage != nil, "body_bytes", len(preparedBody))
 	return forward(preparedBody)
 }
 
@@ -47,15 +53,19 @@ func (h *GatewayHandler) forwardWithMultimodal(
 	body []byte,
 	forward anthropicMultimodalForward,
 ) (*service.ForwardResult, error) {
+	slog.Info("multimodal_bridge_forward_entered", "source_account_id", account.ID, "source_platform", account.Platform, "body_bytes", len(body))
 	preparedBody, usage, err := h.gatewayService.PrepareMultimodal(
 		ctx, c, h.openAIGatewayService, account, body,
 	)
 	if err != nil {
+		slog.Warn("multimodal_bridge_forward_failed", "source_account_id", account.ID, "error", err)
 		return nil, err
 	}
 	if usage != nil {
+		slog.Info("multimodal_bridge_usage_record_scheduled", "source_account_id", account.ID, "vision_account_id", usage.Account.ID, "vision_model", usage.Model)
 		h.recordAnthropicMultimodalUsage(ctx, c, usage.Account, apiKey, subscription, body, usage)
 	}
+	slog.Info("multimodal_bridge_forward_prepared", "source_account_id", account.ID, "rewritten", usage != nil, "body_bytes", len(preparedBody))
 	return forward(preparedBody)
 }
 

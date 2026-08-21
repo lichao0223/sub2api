@@ -25,7 +25,27 @@ func (s *GatewayService) PrepareMultimodal(
 ) ([]byte, *MultimodalBridgeUsage, error) {
 	model := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	policy := account.multimodalPolicy(model)
-	if policy.Mode != multimodalModeVisionToText || !requestBodyHasImageInput(body) {
+	hasImageInput := requestBodyHasImageInput(body)
+	if hasImageInput || policy.Mode != "" || policy.VisionModel != "" || policy.VisionGroupID > 0 {
+		slog.Info("multimodal_bridge_check",
+			"source_account_id", account.ID,
+			"source_platform", account.Platform,
+			"source_model", model,
+			"policy_mode", policy.Mode,
+			"vision_group_id", policy.VisionGroupID,
+			"vision_model", policy.VisionModel,
+			"image_input_detected", hasImageInput,
+			"body_bytes", len(body),
+		)
+	}
+	if policy.Mode != multimodalModeVisionToText || !hasImageInput {
+		if hasImageInput || policy.Mode != "" || policy.VisionModel != "" || policy.VisionGroupID > 0 {
+			slog.Info("multimodal_bridge_skipped",
+				"source_account_id", account.ID,
+				"source_model", model,
+				"reason", multimodalSkipReason(policy.Mode, policy.VisionModel, hasImageInput),
+			)
+		}
 		return body, nil, nil
 	}
 	slog.Info("multimodal_bridge_started",
@@ -42,8 +62,14 @@ func (s *GatewayService) PrepareMultimodal(
 
 	root, images, err := imageBridgeInput(body)
 	if err != nil || len(images) == 0 {
+		slog.Warn("multimodal_bridge_input_parse_failed",
+			"source_account_id", account.ID,
+			"source_model", model,
+			"error", err,
+		)
 		return body, nil, err
 	}
+	slog.Info("multimodal_bridge_images_parsed", "source_account_id", account.ID, "image_count", len(images))
 
 	targetAccount := account
 	if policy.VisionGroupID > 0 {
@@ -58,6 +84,13 @@ func (s *GatewayService) PrepareMultimodal(
 			return body, nil, selectErr
 		}
 		targetAccount = selectedAccount
+		slog.Info("multimodal_bridge_vision_account_selected",
+			"source_account_id", account.ID,
+			"vision_group_id", policy.VisionGroupID,
+			"vision_account_id", targetAccount.ID,
+			"vision_platform", targetAccount.Platform,
+			"vision_model", policy.VisionModel,
+		)
 		defer release()
 	}
 	if targetAccount.Type != AccountTypeAPIKey && !targetAccount.IsOpenAIOAuth() {
@@ -95,6 +128,14 @@ func (s *GatewayService) PrepareMultimodal(
 			)
 			return body, nil, describeErr
 		}
+		slog.Info("multimodal_bridge_image_described",
+			"source_account_id", account.ID,
+			"vision_account_id", targetAccount.ID,
+			"vision_model", visionModel,
+			"image_index", index+1,
+			"description_bytes", len(description),
+			"request_id", requestID,
+		)
 		if usage.RequestID == "" {
 			usage.RequestID = requestID
 		}
@@ -108,9 +149,33 @@ func (s *GatewayService) PrepareMultimodal(
 
 	rewritten, err := rewriteImagesAsText(root, descriptions)
 	if err != nil {
+		slog.Warn("multimodal_bridge_rewrite_failed", "source_account_id", account.ID, "source_model", model, "error", err)
 		return body, nil, err
 	}
+	slog.Info("multimodal_bridge_completed",
+		"source_account_id", account.ID,
+		"source_model", model,
+		"vision_account_id", targetAccount.ID,
+		"vision_model", visionModel,
+		"image_count", len(images),
+		"duration_ms", usage.Duration.Milliseconds(),
+		"input_tokens", usage.InputTokens,
+		"output_tokens", usage.OutputTokens,
+	)
 	return rewritten, usage, nil
+}
+
+func multimodalSkipReason(mode, visionModel string, hasImageInput bool) string {
+	if !hasImageInput {
+		return "image_input_not_detected"
+	}
+	if mode != multimodalModeVisionToText {
+		return "policy_mode_not_vision_to_text"
+	}
+	if strings.TrimSpace(visionModel) == "" {
+		return "vision_model_not_configured"
+	}
+	return "not_applicable"
 }
 
 func (s *GatewayService) selectMultimodalVisionAccount(
@@ -157,6 +222,13 @@ func (s *GatewayService) describeMultimodalImage(
 		if openAIService == nil {
 			return "", "", ClaudeUsage{}, fmt.Errorf("OpenAI-compatible vision gateway is unavailable")
 		}
+		slog.Info("multimodal_bridge_upstream_request",
+			"vision_account_id", account.ID,
+			"vision_platform", account.Platform,
+			"vision_model", visionModel,
+			"image_index", index,
+			"protocol", "openai_chat_completions",
+		)
 		description, requestID, usage, err := openAIService.describeOpenAIImage(
 			ctx, c, account, visionModel, imageURL, index,
 		)
@@ -210,8 +282,16 @@ func (s *GatewayService) describeAnthropicImage(
 	if account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	slog.Info("multimodal_bridge_upstream_request",
+		"vision_account_id", account.ID,
+		"vision_platform", account.Platform,
+		"vision_model", visionModel,
+		"image_index", index,
+		"protocol", "anthropic_messages",
+	)
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
+		slog.Warn("multimodal_bridge_upstream_transport_failed", "vision_account_id", account.ID, "vision_model", visionModel, "image_index", index, "error", err)
 		return "", "", ClaudeUsage{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -225,6 +305,7 @@ func (s *GatewayService) describeAnthropicImage(
 		if message == "" {
 			message = fmt.Sprintf("vision model returned status %d", resp.StatusCode)
 		}
+		slog.Warn("multimodal_bridge_upstream_response_failed", "vision_account_id", account.ID, "vision_model", visionModel, "image_index", index, "status", resp.StatusCode, "error", message)
 		return "", "", ClaudeUsage{}, fmt.Errorf("%s", message)
 	}
 
@@ -246,6 +327,7 @@ func (s *GatewayService) describeAnthropicImage(
 	}
 	result := strings.TrimSpace(description.String())
 	if result == "" {
+		slog.Warn("multimodal_bridge_empty_description", "vision_account_id", account.ID, "vision_model", visionModel, "image_index", index)
 		return "", "", ClaudeUsage{}, fmt.Errorf("vision model returned an empty description")
 	}
 	return result, requestID, usage, nil
