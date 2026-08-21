@@ -166,7 +166,7 @@ func (s *Service) TrySubmit(req securityaudit.Request) {
 		return
 	}
 	cfg := s.config.Load()
-	if cfg == nil || !cfg.Enabled || cfg.excludes(req.UserID, req.UserEmail) || len(req.Body) == 0 || len(req.Body) > maxCapturedRequestBytes {
+	if cfg == nil || !cfg.Enabled || req.UserRole == service.RoleAdmin || cfg.excludes(req.UserID, req.UserEmail) || len(req.Body) == 0 || len(req.Body) > maxCapturedRequestBytes {
 		return
 	}
 	if !s.ingressSelected(*cfg, req, time.Now()) {
@@ -217,7 +217,7 @@ func (s *Service) consume(ctx context.Context) {
 
 func (s *Service) processCandidate(ctx context.Context, req securityaudit.Request) error {
 	cfg := s.config.Load()
-	if cfg == nil || !cfg.Enabled || cfg.excludes(req.UserID, req.UserEmail) {
+	if cfg == nil || !cfg.Enabled || req.UserRole == service.RoleAdmin || cfg.excludes(req.UserID, req.UserEmail) {
 		return nil
 	}
 	location, err := time.LoadLocation(cfg.Timezone)

@@ -25,6 +25,11 @@ func TestTrySubmitIsBoundedAndHonorsDisabledAndExcludedUsers(t *testing.T) {
 	cfg.ExcludedUserIDs = nil
 	cfg.SampleRate = 100
 	service.config.Store(&cfg)
+	request.UserRole = "admin"
+	service.TrySubmit(request)
+	require.Empty(t, service.queue)
+
+	request.UserRole = "user"
 	service.TrySubmit(request)
 	require.Len(t, service.queue, 1)
 	require.Equal(t, int64(1), service.queuedCount.Load())

@@ -215,6 +215,7 @@ func TestListUserRankingAggregatesBeforePagination(t *testing.T) {
 func TestDailyWhereExcludesUsageOnlyRows(t *testing.T) {
 	where, args := dailyWhere(DailyFilter{})
 	require.Contains(t, where, "d.sample_count > 0")
+	require.Contains(t, where, "u.role='admin'")
 	require.Empty(t, args)
 }
 

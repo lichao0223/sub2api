@@ -49,9 +49,10 @@ func (r *Repository) CreateDueBatches(ctx context.Context, now time.Time, cfg Co
 	}
 	defer func() { _ = tx.Rollback() }()
 	rows, err := tx.QueryContext(ctx, `WITH due_sessions AS (
-		SELECT user_id,local_date,active_session_id FROM ai_work_insight_samples
-		WHERE status='pending_batch' AND user_id IS NOT NULL
-		GROUP BY user_id,local_date,active_session_id
+		SELECT s.user_id,s.local_date,s.active_session_id FROM ai_work_insight_samples s
+		WHERE s.status='pending_batch' AND s.user_id IS NOT NULL
+		AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=s.user_id AND u.role='admin')
+		GROUP BY s.user_id,s.local_date,s.active_session_id
 		HAVING COUNT(*) >= $1 OR COALESCE(SUM(estimated_tokens),0) >= $2
 			OR ($3 AND (MIN(created_at) <= $4 OR MAX(created_at) <= $5))
 			OR ($6 AND MIN(created_at) <= $7) OR $8
@@ -227,6 +228,7 @@ func (r *Repository) ClaimBatch(ctx context.Context, now time.Time, lease time.D
 	row := r.db.QueryRowContext(ctx, `WITH candidate AS (
 		SELECT b.id FROM ai_work_insight_batches b
 		WHERE ((b.status IN ('queued','retry') AND b.next_attempt_at <= $1) OR (b.status='processing' AND b.updated_at <= $2))
+		AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=b.user_id AND u.role='admin')
 		AND NOT EXISTS (SELECT 1 FROM ai_work_insight_batches earlier WHERE earlier.user_id=b.user_id AND earlier.local_date=b.local_date
 			AND earlier.first_sample_id < b.first_sample_id AND earlier.status IN ('queued','processing','retry'))
 		AND NOT EXISTS (SELECT 1 FROM ai_work_insight_batches active WHERE active.user_id=b.user_id AND active.local_date=b.local_date

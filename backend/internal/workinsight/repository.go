@@ -337,7 +337,7 @@ func (r *Repository) ListDaily(ctx context.Context, f DailyFilter) ([]DailyInsig
 func dailyWhere(f DailyFilter) (string, []any) {
 	// Usage reconciliation also creates rows for days with no AI samples. Those rows
 	// are usage statistics, not insight results, and must stay out of insight views.
-	clauses, args := []string{"d.sample_count > 0"}, []any{}
+	clauses, args := []string{"d.sample_count > 0", "NOT EXISTS (SELECT 1 FROM users u WHERE u.id=d.user_id AND u.role='admin')"}, []any{}
 	if !f.Start.IsZero() {
 		args = append(args, f.Start)
 		clauses = append(clauses, fmt.Sprintf("d.insight_date >= $%d", len(args)))
@@ -374,7 +374,7 @@ func (r *Repository) Overview(ctx context.Context, f DailyFilter) (Overview, err
 	if err != nil {
 		return result, err
 	}
-	batchClauses, batchArgs := []string{"b.status='done'"}, []any{}
+	batchClauses, batchArgs := []string{"b.status='done'", "NOT EXISTS (SELECT 1 FROM users u WHERE u.id=b.user_id AND u.role='admin')"}, []any{}
 	if !f.Start.IsZero() {
 		batchArgs = append(batchArgs, f.Start)
 		batchClauses = append(batchClauses, fmt.Sprintf("b.local_date >= $%d", len(batchArgs)))
@@ -394,7 +394,8 @@ func (r *Repository) GetDaily(ctx context.Context, id int64) (*DailyInsight, err
 		business_cache_read_tokens,business_error_count,average_duration_ms,p95_duration_ms,model_usage,
 		sample_count,failed_sample_count,eligible_active_session_count,
 		covered_active_session_count,task_category_stats,explicit_projects,explicit_modules,change_types,business_topics,
-		daily_summary,last_analyzed_at,finalized_at FROM ai_user_daily_work_insights WHERE id=$1`, id).Scan(
+		daily_summary,last_analyzed_at,finalized_at FROM ai_user_daily_work_insights d WHERE d.id=$1
+		AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id=d.user_id AND u.role='admin')`, id).Scan(
 		&item.ID, &item.UserID, &item.Username, &item.Date, &item.BusinessRequestCount, &item.BusinessTotalTokens,
 		&item.BusinessInputTokens, &item.BusinessOutputTokens, &item.BusinessCacheCreationTokens,
 		&item.BusinessCacheReadTokens, &item.BusinessErrorCount, &item.AverageDurationMS, &item.P95DurationMS, &item.ModelUsage,

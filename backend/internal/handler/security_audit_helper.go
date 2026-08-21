@@ -168,6 +168,7 @@ func buildSecurityAuditRequest(c *gin.Context, apiKey *service.APIKey, subject m
 	}
 	if apiKey != nil && apiKey.User != nil {
 		request.Username = apiKey.User.Username
+		request.UserRole = apiKey.User.Role
 		if request.UserEmail == "" {
 			request.UserEmail = apiKey.User.Email
 		}

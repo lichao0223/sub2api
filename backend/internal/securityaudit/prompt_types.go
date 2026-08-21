@@ -73,6 +73,7 @@ type Request struct {
 	UserID          int64
 	Username        string
 	UserEmail       string
+	UserRole        string
 	APIKeyID        int64
 	APIKeyName      string
 	GroupID         *int64
