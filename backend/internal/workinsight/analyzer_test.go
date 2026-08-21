@@ -279,9 +279,10 @@ func TestAnalyzeChunkUsesInternalGatewayForManagedAPIKeyAccount(t *testing.T) {
 	require.Zero(t, directCalls.Load(), "managed accounts must not bypass the internal gateway")
 }
 
-func TestValidateBatchResultRejectsUnknownCategoryAndFiltersUnsupportedProject(t *testing.T) {
+func TestValidateBatchResultNormalizesUnknownCategoryAndFiltersUnsupportedProject(t *testing.T) {
 	base := BatchResult{WorkSummary: "摘要", TaskCategories: []string{"自造分类"}, EvidenceLevel: "unknown"}
-	require.ErrorContains(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}), "task category")
+	require.NoError(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}))
+	require.Equal(t, []string{"其他"}, base.TaskCategories)
 	base = BatchResult{WorkSummary: "摘要", TaskCategories: []string{"其他"}, ExplicitProjects: []string{"不存在项目"}, EvidenceLevel: "explicit"}
 	require.NoError(t, validateBatchResult(&base, []analysisInput{{ID: 1, Text: "canary"}}))
 	require.Empty(t, base.ExplicitProjects)

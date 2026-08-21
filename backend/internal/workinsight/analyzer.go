@@ -780,7 +780,7 @@ func validateList(values []string, categories bool) ([]string, error) {
 			return nil, errors.New("invalid result value")
 		}
 		if categories && !slices.Contains(TaskCategories, value) {
-			return nil, errors.New("invalid task category")
+			value = "其他"
 		}
 		result = append(result, value)
 	}
