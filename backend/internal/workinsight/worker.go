@@ -297,27 +297,27 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	}()
 	ctx = batchCtx
 	if batch.UserID == 0 {
-		s.finishBatchFailure(ctx, cfg, *batch, "user_deleted", false)
+		s.finishBatchFailure(ctx, cfg, *batch, "user_deleted", "", false)
 		return
 	}
 	samples, err := s.repo.LoadBatchSamples(ctx, batch.ID)
 	if err != nil {
-		s.finishBatchFailure(ctx, cfg, *batch, "sample_load_failed", true)
+		s.finishBatchFailure(ctx, cfg, *batch, "sample_load_failed", "", true)
 		return
 	}
 	if len(samples) == 0 {
-		s.finishBatchFailure(ctx, cfg, *batch, "samples_missing", false)
+		s.finishBatchFailure(ctx, cfg, *batch, "samples_missing", "", false)
 		return
 	}
 	if batchExpired(*batch, cfg, now) {
-		s.finishBatchFailure(ctx, cfg, *batch, "job_expired", false)
+		s.finishBatchFailure(ctx, cfg, *batch, "job_expired", "", false)
 		return
 	}
 	inputs := make([]analysisInput, 0, len(samples))
 	for _, sample := range samples {
 		payload, err := s.redis.Get(ctx, PayloadKeyPrefix+strconv.FormatInt(sample.ID, 10)).Result()
 		if err != nil {
-			s.finishBatchFailure(ctx, cfg, *batch, "payload_missing", false)
+			s.finishBatchFailure(ctx, cfg, *batch, "payload_missing", "", false)
 			return
 		}
 		for _, text := range decodePayload(payload) {
@@ -326,17 +326,17 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	}
 	chunks := buildAnalysisChunks(inputs, cfg.MaxInputTokens)
 	if len(chunks) == 0 {
-		s.finishBatchFailure(ctx, cfg, *batch, "payload_empty", false)
+		s.finishBatchFailure(ctx, cfg, *batch, "payload_empty", "", false)
 		return
 	}
 	endpoint, err := s.resolveAnalyzer(ctx, cfg)
 	if err != nil {
-		s.finishBatchFailure(ctx, cfg, *batch, "analyzer_config_invalid", false)
+		s.finishBatchFailure(ctx, cfg, *batch, "analyzer_config_invalid", "", false)
 		return
 	}
 	previous, _, err := s.repo.DailySummary(ctx, batch.UserID, batch.LocalDate)
 	if err != nil {
-		s.finishBatchFailure(ctx, cfg, *batch, "summary_load_failed", true)
+		s.finishBatchFailure(ctx, cfg, *batch, "summary_load_failed", "", true)
 		return
 	}
 	results := make([]BatchResult, 0, len(chunks))
@@ -345,7 +345,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	callCount := 0
 	for _, chunk := range chunks {
 		if batchExpired(*batch, cfg, time.Now()) {
-			s.finishBatchFailure(ctx, cfg, *batch, "job_expired", false)
+			s.finishBatchFailure(ctx, cfg, *batch, "job_expired", "", false)
 			return
 		}
 		result, in, out, calls, err := s.analyzeChunkResilient(ctx, endpoint, rollingSummary, chunk, true)
@@ -355,7 +355,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 				s.pauseAnalyzer(time.Now())
 			}
 			// 保留分析文本直到 TTL，管理员可以修正配置后重新分析。
-			s.finishBatchFailure(ctx, cfg, *batch, analyzerErrorCode(err), retryable)
+			s.finishBatchFailure(ctx, cfg, *batch, analyzerErrorCode(err), analyzerErrorDetail(err), retryable)
 			return
 		}
 		results, rollingSummary = append(results, result), result.WorkSummary
@@ -366,7 +366,7 @@ func (s *Service) processNextBatch(ctx context.Context, cfg storedConfig) {
 	result.WorkSummary = rollingSummary
 	if err := s.repo.CompleteBatch(ctx, *batch, result, cfg.AnalyzerModel, inputTokens, outputTokens, callCount, eligible, cfg.Timezone); err != nil {
 		logger.L().Error("work insight summary write failed", zap.Int64("batch_id", batch.ID), zap.Int64("user_id", batch.UserID), zap.String("local_date", batch.LocalDate.Format("2006-01-02")), zap.Error(err))
-		s.finishBatchFailure(ctx, cfg, *batch, summaryWriteErrorCode(err), true)
+		s.finishBatchFailure(ctx, cfg, *batch, summaryWriteErrorCode(err), err.Error(), true)
 		return
 	}
 	s.deletePayloads(ctx, samples)
@@ -387,17 +387,17 @@ func batchExpired(batch Batch, cfg storedConfig, now time.Time) bool {
 	return !now.Before(batch.CreatedAt.Add(time.Duration(cfg.MaxJobAgeMinutes) * time.Minute))
 }
 
-func (s *Service) finishBatchFailure(ctx context.Context, cfg storedConfig, batch Batch, code string, retryable bool) {
+func (s *Service) finishBatchFailure(ctx context.Context, cfg storedConfig, batch Batch, code, detail string, retryable bool) {
 	expires := batch.CreatedAt.Add(time.Duration(cfg.MaxJobAgeMinutes) * time.Minute)
 	next := time.Now().Add(time.Duration(1<<min(batch.Attempts, 5)) * time.Second)
 	if retryable && batch.Attempts < 3 && next.Before(expires) {
-		_ = s.repo.RetryBatch(ctx, batch, next, code)
+		_ = s.repo.RetryBatch(ctx, batch, next, code, detail)
 		return
 	}
 	if !time.Now().Before(expires) {
 		code = "job_expired"
 	}
-	_, _ = s.repo.DropBatch(ctx, batch, code)
+	_, _ = s.repo.DropBatch(ctx, batch, code, detail)
 }
 
 func (s *Service) pauseAnalyzer(now time.Time) {

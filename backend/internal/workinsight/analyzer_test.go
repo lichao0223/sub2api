@@ -354,3 +354,9 @@ func TestAnalyzerValidationErrorsAreNotReportedAsUnavailable(t *testing.T) {
 	require.Equal(t, "analyzer_invalid_result", analyzerErrorCode(errors.New("too many result values")))
 	require.Equal(t, "analyzer_invalid_result", analyzerErrorCode(errors.New("invalid result value")))
 }
+
+func TestAnalyzerFailureKeepsModelResponseDetail(t *testing.T) {
+	err := withAnalyzerDetail(errors.New("invalid analyzer JSON"), []byte(`{"choices":[{"message":{"content":"model returned this value"}}]}`))
+	require.Equal(t, "analyzer_invalid_result", analyzerErrorCode(err))
+	require.Equal(t, "model returned this value", analyzerErrorDetail(err))
+}

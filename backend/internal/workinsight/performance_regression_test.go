@@ -73,7 +73,7 @@ func TestListBatchesTreatsAdminStoppedAsPending(t *testing.T) {
 	mock.ExpectQuery(`(?s)FROM ai_work_insight_batches WHERE.*status='queued'.*admin_stopped.*ORDER BY id DESC`).
 		WithArgs(20, 0).WillReturnRows(sqlmock.NewRows([]string{
 		"id", "user_id", "username_snapshot", "local_date", "active_session_id", "sample_count", "trigger_reason", "status",
-		"attempts", "error_code", "analyzer_model", "analyzer_input_tokens", "analyzer_output_tokens", "analyzed_at", "created_at", "updated_at",
+		"attempts", "error_code", "error_detail", "analyzer_model", "analyzer_input_tokens", "analyzer_output_tokens", "analyzed_at", "created_at", "updated_at",
 	}))
 
 	items, total, err := NewRepository(db).ListBatches(context.Background(), 1, 20, "pending")

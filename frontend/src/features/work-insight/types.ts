@@ -92,6 +92,7 @@ export interface BatchSummary {
   status: string
   attempts: number
   error_code: string
+  error_detail: string
   analyzer_model: string
   analyzer_input_tokens: number
   analyzer_output_tokens: number

@@ -53,7 +53,7 @@ describe('WorkInsightView', () => {
       const common = { user_id: 9, username: '测试用户', sample_count: 1, trigger_reason: 'manual', attempts: 1, analyzer_input_tokens: 0, analyzer_output_tokens: 0, created_at: '2026-08-11T02:02:00Z' }
       if (kind === 'pending') return Promise.resolve({ items: [{ ...common, id: 11, status: 'dropped', error_code: 'admin_stopped', analyzer_model: '' }], total: 1, page: 1, page_size: 20, pages: 1 })
       if (kind === 'processing') return Promise.resolve({ items: [{ ...common, id: 13, status: 'processing', error_code: '', analyzer_model: '' }], total: 1, page: 1, page_size: 20, pages: 1 })
-      if (kind === 'errors') return Promise.resolve({ items: [{ ...common, id: 12, status: 'failed', attempts: 3, error_code: 'summary_write_conflict', analyzer_model: '' }], total: 21, page: 1, page_size: 20, pages: 2 })
+      if (kind === 'errors') return Promise.resolve({ items: [{ ...common, id: 12, status: 'failed', attempts: 3, error_code: 'summary_write_conflict', error_detail: 'model returned invalid JSON', analyzer_model: '' }], total: 21, page: 1, page_size: 20, pages: 2 })
       return Promise.resolve({ items: [{ ...common, id: 10, status: 'done', error_code: '', analyzer_model: 'model-canary', analyzer_input_tokens: 100, analyzer_output_tokens: 20 }], total: 31, page: 1, page_size: 20, pages: 2 })
     })
     api.listAnalyzerAccounts.mockResolvedValue([{ id: 1, name: '分析账号', platform: 'openai', models: ['model-canary'] }])
@@ -147,6 +147,8 @@ describe('WorkInsightView', () => {
     expect(wrapper.get('[role="dialog"]').text()).toContain('共 61 条')
     expect(wrapper.get('[role="dialog"]').text()).toContain('已完成记录')
     expect(wrapper.get('[role="dialog"]').text()).toContain('摘要写入版本冲突')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('查看模型返回')
+    expect(wrapper.get('[role="dialog"]').text()).toContain('model returned invalid JSON')
     const retry = wrapper.findAll('button').find(button => button.text() === '重新分析')
     expect(retry).toBeDefined()
     await retry!.trigger('click')

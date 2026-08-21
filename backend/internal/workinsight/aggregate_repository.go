@@ -38,7 +38,7 @@ func (r *Repository) CompleteBatch(ctx context.Context, batch Batch, result Batc
 	defer func() { _ = tx.Rollback() }()
 	update, err := tx.ExecContext(ctx, `UPDATE ai_work_insight_batches SET status='done',work_summary=$3,task_categories=$4,
 		explicit_projects=$5,explicit_modules=$6,change_types=$7,business_topics=$8,representative_items=$9,evidence_level=$10,
-		analyzer_model=$11,analyzer_input_tokens=$12,analyzer_output_tokens=$13,chunk_count=$14,analyzed_at=NOW(),error_code='',updated_at=NOW()
+		analyzer_model=$11,analyzer_input_tokens=$12,analyzer_output_tokens=$13,chunk_count=$14,analyzed_at=NOW(),error_code='',error_detail='',updated_at=NOW()
 		WHERE id=$1 AND status='processing' AND claim_version=$2`, batch.ID, batch.ClaimVersion, result.WorkSummary,
 		jsonValue(result.TaskCategories), jsonValue(result.ExplicitProjects), jsonValue(result.ExplicitModules), jsonValue(result.ChangeTypes),
 		jsonValue(result.BusinessTopics), jsonValue(result.RepresentativeItems), result.EvidenceLevel, model, inputTokens, outputTokens, chunks)

@@ -37,6 +37,14 @@ type analysisEndpoint struct {
 	account               *service.Account
 }
 
+type analyzerFailure struct {
+	cause  error
+	detail string
+}
+
+func (e *analyzerFailure) Error() string { return e.cause.Error() }
+func (e *analyzerFailure) Unwrap() error { return e.cause }
+
 func (s *Service) openAIAnalyzerAccount(ctx context.Context, id int64) (*service.Account, error) {
 	if s.accounts == nil {
 		return nil, errors.New("account repository unavailable")
@@ -304,13 +312,14 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 		if gatewayErr != nil {
 			logAnalyzerFailure(endpoint, "gateway", jsonMode, disableThinking, recorder.Body.Bytes(), gatewayErr)
 			if recorder.Code >= 400 {
-				return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", recorder.Code)
+				return BatchResult{}, 0, 0, withAnalyzerDetail(fmt.Errorf("analyzer_http_%d", recorder.Code), recorder.Body.Bytes())
 			}
-			return BatchResult{}, 0, 0, gatewayErr
+			return BatchResult{}, 0, 0, withAnalyzerDetail(gatewayErr, recorder.Body.Bytes())
 		}
 		result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(recorder.Body.Bytes(), validationSamples)
 		if parseErr != nil {
 			logAnalyzerFailure(endpoint, "parse", jsonMode, disableThinking, recorder.Body.Bytes(), parseErr)
+			parseErr = withAnalyzerDetail(parseErr, recorder.Body.Bytes())
 		}
 		return result, promptTokens, completionTokens, parseErr
 	}
@@ -333,21 +342,66 @@ func (s *Service) analyzeChunkWithMode(ctx context.Context, endpoint analysisEnd
 	if len(raw) > 256*1024 {
 		err := errors.New("analyzer response too large")
 		logAnalyzerFailure(endpoint, "response_limit", jsonMode, disableThinking, raw, err)
-		return BatchResult{}, 0, 0, err
+		return BatchResult{}, 0, 0, withAnalyzerDetail(err, raw)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logAnalyzerFailure(endpoint, fmt.Sprintf("http_%d", resp.StatusCode), jsonMode, disableThinking, raw, fmt.Errorf("analyzer_http_%d", resp.StatusCode))
 		lower := strings.ToLower(string(raw))
 		if resp.StatusCode == http.StatusRequestEntityTooLarge || strings.Contains(lower, "context_length") || strings.Contains(lower, "context length") || strings.Contains(lower, "maximum context") {
-			return BatchResult{}, 0, 0, errors.New("analyzer_context_length")
+			return BatchResult{}, 0, 0, withAnalyzerDetail(errors.New("analyzer_context_length"), raw)
 		}
-		return BatchResult{}, 0, 0, fmt.Errorf("analyzer_http_%d", resp.StatusCode)
+		return BatchResult{}, 0, 0, withAnalyzerDetail(fmt.Errorf("analyzer_http_%d", resp.StatusCode), raw)
 	}
 	result, promptTokens, completionTokens, parseErr := parseAnalyzerResponse(raw, validationSamples)
 	if parseErr != nil {
 		logAnalyzerFailure(endpoint, "parse", jsonMode, disableThinking, raw, parseErr)
+		parseErr = withAnalyzerDetail(parseErr, raw)
 	}
 	return result, promptTokens, completionTokens, parseErr
+}
+
+func withAnalyzerDetail(err error, raw []byte) error {
+	if err == nil {
+		return nil
+	}
+	detail := analyzerResponseDetail(raw)
+	if detail == "" {
+		return err
+	}
+	return &analyzerFailure{cause: err, detail: truncateRunes(detail, 4096)}
+}
+
+func analyzerResponseDetail(raw []byte) string {
+	var envelope struct {
+		Choices []struct {
+			Message struct {
+				Content          json.RawMessage `json:"content"`
+				ReasoningContent string          `json:"reasoning_content"`
+				Reasoning        string          `json:"reasoning"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if json.Unmarshal(raw, &envelope) == nil && len(envelope.Choices) > 0 {
+		message := envelope.Choices[0].Message
+		if content := strings.TrimSpace(analyzerMessageText(message.Content)); content != "" {
+			return content
+		}
+		if reasoning := strings.TrimSpace(message.ReasoningContent); reasoning != "" {
+			return reasoning
+		}
+		if reasoning := strings.TrimSpace(message.Reasoning); reasoning != "" {
+			return reasoning
+		}
+	}
+	return strings.TrimSpace(string(raw))
+}
+
+func analyzerErrorDetail(err error) string {
+	var failure *analyzerFailure
+	if errors.As(err, &failure) {
+		return failure.detail
+	}
+	return ""
 }
 
 func logAnalyzerFailure(endpoint analysisEndpoint, stage string, jsonMode, disableThinking bool, raw []byte, err error) {
