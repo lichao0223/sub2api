@@ -246,7 +246,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	usageCleanupRepository := repository.NewUsageCleanupRepository(client, db)
 	usageCleanupService := service.ProvideUsageCleanupService(usageCleanupRepository, timingWheelService, dashboardAggregationService, configConfig)
 	nonworkUsageRepository := repository.NewNonworkUsageRepository(db)
-	usageNonworkAggregationService := service.ProvideUsageNonworkAggregationService(nonworkUsageRepository, timingWheelService, configConfig)
+	usageNonworkAggregationService := service.ProvideUsageNonworkAggregationService(nonworkUsageRepository, timingWheelService, configConfig, settingService)
 	adminUsageHandler := admin.NewUsageHandler(usageService, apiKeyService, adminService, usageCleanupService, usageNonworkAggregationService)
 	costManagementRepository := repository.NewCostManagementRepository(db)
 	costManagementService := service.ProvideCostManagementService(costManagementRepository, timingWheelService)

@@ -26,7 +26,10 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 		internal_stats AS (
 			SELECT
 				COALESCE(m.target_user_id, u.user_id) AS user_id,
-				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
+				COALESCE(SUM(CASE
+					WHEN u.created_at >= COALESCE((SELECT NULLIF(value, '')::timestamptz FROM settings WHERE key = 'TOKEN_RANKING_RULES_EFFECTIVE_AT'), 'infinity'::timestamptz)
+					 AND EXISTS (SELECT 1 FROM regexp_split_to_table(COALESCE((SELECT value FROM settings WHERE key = 'TOKEN_RANKING_EXCLUDED_MODELS'), ''), E'\\n') p WHERE TRIM(p) <> '' AND (LOWER(COALESCE(u.model, '')) LIKE '%' || REPLACE(LOWER(TRIM(p)), '*', '%') || '%' OR LOWER(COALESCE(u.requested_model, '')) LIKE '%' || REPLACE(LOWER(TRIM(p)), '*', '%') || '%' OR LOWER(COALESCE(u.upstream_model, '')) LIKE '%' || REPLACE(LOWER(TRIM(p)), '*', '%') || '%'))
+					THEN 0 ELSE u.actual_cost END), 0) as actual_cost,
 				COALESCE(COUNT(u.id), 0) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
 			FROM usage_logs u

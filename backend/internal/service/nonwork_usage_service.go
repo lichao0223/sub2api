@@ -91,6 +91,7 @@ type NonworkUsageEvent struct {
 	CacheReadTokens     int64
 	TotalTokens         int64
 	ActualCost          float64
+	Model               string
 }
 
 type NonworkDailyUserStat struct {
@@ -111,12 +112,13 @@ type NonworkDailyUserStat struct {
 }
 
 type UsageNonworkAggregationService struct {
-	repo        NonworkUsageRepository
-	timingWheel *TimingWheelService
-	cfg         config.NonworkUsageConfig
-	httpClient  *http.Client
-	running     int32
-	backfilling int32
+	repo           NonworkUsageRepository
+	timingWheel    *TimingWheelService
+	cfg            config.NonworkUsageConfig
+	httpClient     *http.Client
+	settingService *SettingService
+	running        int32
+	backfilling    int32
 }
 
 type ManualCalendarDayInput struct {
@@ -125,21 +127,25 @@ type ManualCalendarDayInput struct {
 	HolidayName string
 }
 
-func NewUsageNonworkAggregationService(repo NonworkUsageRepository, timingWheel *TimingWheelService, cfg *config.Config) *UsageNonworkAggregationService {
+func NewUsageNonworkAggregationService(repo NonworkUsageRepository, timingWheel *TimingWheelService, cfg *config.Config, settings ...*SettingService) *UsageNonworkAggregationService {
 	var nonworkCfg config.NonworkUsageConfig
 	if cfg != nil {
 		nonworkCfg = cfg.NonworkUsage
 	}
-	return &UsageNonworkAggregationService{
+	svc := &UsageNonworkAggregationService{
 		repo:        repo,
 		timingWheel: timingWheel,
 		cfg:         nonworkCfg,
 		httpClient:  &http.Client{Timeout: 20 * time.Second},
 	}
+	if len(settings) > 0 {
+		svc.settingService = settings[0]
+	}
+	return svc
 }
 
-func ProvideUsageNonworkAggregationService(repo NonworkUsageRepository, timingWheel *TimingWheelService, cfg *config.Config) *UsageNonworkAggregationService {
-	svc := NewUsageNonworkAggregationService(repo, timingWheel, cfg)
+func ProvideUsageNonworkAggregationService(repo NonworkUsageRepository, timingWheel *TimingWheelService, cfg *config.Config, settingService *SettingService) *UsageNonworkAggregationService {
+	svc := NewUsageNonworkAggregationService(repo, timingWheel, cfg, settingService)
 	svc.Start()
 	return svc
 }
@@ -562,6 +568,10 @@ func (s *UsageNonworkAggregationService) AggregateRange(ctx context.Context, sta
 		return err
 	}
 
+	rankingSettings := TokenRankingSettings{}
+	if s.settingService != nil {
+		rankingSettings = s.settingService.GetTokenRankingSettings(ctx)
+	}
 	stats := make(map[string]*NonworkDailyUserStat)
 	for _, ev := range dedupeNonworkUsageEvents(events) {
 		localCreated := ev.CreatedAt.In(cfg.Location)
@@ -577,7 +587,9 @@ func (s *UsageNonworkAggregationService) AggregateRange(ctx context.Context, sta
 		row.CacheCreationTokens += ev.CacheCreationTokens
 		row.CacheReadTokens += ev.CacheReadTokens
 		row.TotalTokens += ev.TotalTokens
-		row.ActualCost += ev.ActualCost
+		if rankingSettings.RulesEffectiveAt.IsZero() || ev.CreatedAt.Before(rankingSettings.RulesEffectiveAt) || !tokenRankingModelExcluded(ev.Model, rankingSettings.ExcludedModels) {
+			row.ActualCost += ev.ActualCost
+		}
 		row.CalendarConfirmed = row.CalendarConfirmed && confirmed
 	}
 

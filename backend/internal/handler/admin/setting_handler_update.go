@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -22,6 +23,8 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
+	TokenRankingUSDToCNYRate   *float64 `json:"token_ranking_usd_to_cny_rate"`
+	TokenRankingExcludedModels []string `json:"token_ranking_excluded_models"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
@@ -2054,6 +2057,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if req.TokenRankingUSDToCNYRate != nil {
+		if err := h.settingService.UpdateTokenRankingSettings(c.Request.Context(), *req.TokenRankingUSDToCNYRate, req.TokenRankingExcludedModels, time.Now()); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 	if h.opsService != nil {
 		h.opsService.SetMonitoringEnabled(settings.OpsMonitoringEnabled)
 	}
@@ -2134,6 +2143,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if updatedPaymentCfg == nil {
 		updatedPaymentCfg = &service.PaymentConfig{}
 	}
+	tokenRankingSettings := h.settingService.GetTokenRankingSettings(c.Request.Context())
 	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
 	payload := dto.SystemSettings{
@@ -2365,6 +2375,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
+		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
+		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,

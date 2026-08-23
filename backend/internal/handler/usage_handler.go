@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,6 +43,13 @@ type userGroupStat struct {
 	TotalTokens int64   `json:"total_tokens"`
 	Cost        float64 `json:"cost"`
 	ActualCost  float64 `json:"actual_cost"`
+}
+
+func TokenRankingSettingsForHandler(s *service.SettingService, ctx context.Context) service.TokenRankingSettings {
+	if s == nil {
+		return service.TokenRankingSettings{USDToCNYRate: 7.2}
+	}
+	return s.GetTokenRankingSettings(ctx)
 }
 
 // UsageHandler handles usage-related requests
@@ -545,6 +553,7 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 	}
 
 	startTime, endTime := parseUserTimeRange(c)
+	rankingSettings := TokenRankingSettingsForHandler(h.settingService, c.Request.Context())
 	ranking, err := h.usageService.GetUserTokenRanking(c.Request.Context(), startTime, endTime, parseUserRankingLimit(c.Query("limit")))
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -557,6 +566,7 @@ func (h *UsageHandler) DashboardTokenRanking(c *gin.Context) {
 		"total_requests":        ranking.TotalRequests,
 		"total_tokens":          ranking.TotalTokens,
 		"zero_token_user_count": ranking.ZeroTokenUserCount,
+		"usd_to_cny_rate":       rankingSettings.USDToCNYRate,
 		"start_date":            startTime.Format("2006-01-02"),
 		"end_date":              endTime.Add(-24 * time.Hour).Format("2006-01-02"),
 	})
@@ -625,6 +635,7 @@ func (h *UsageHandler) DashboardNonworkTokenRanking(c *gin.Context) {
 		"total_requests":           ranking.TotalRequests,
 		"total_tokens":             ranking.TotalTokens,
 		"zero_token_user_count":    ranking.ZeroTokenUserCount,
+		"usd_to_cny_rate":          TokenRankingSettingsForHandler(h.settingService, c.Request.Context()).USDToCNYRate,
 		"total_nonwork_tokens":     ranking.TotalNonworkTokens,
 		"total_all_tokens":         ranking.TotalAllTokens,
 		"nonwork_token_ratio":      ranking.NonworkTokenRatio,

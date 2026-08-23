@@ -365,6 +365,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               paymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    paymentCfg.HelpImageURL,
 		PaymentHelpText:                                        paymentCfg.HelpText,
+		TokenRankingUSDToCNYRate:                               h.settingService.GetTokenRankingSettings(c.Request.Context()).USDToCNYRate,
+		TokenRankingExcludedModels:                             h.settingService.GetTokenRankingSettings(c.Request.Context()).ExcludedModels,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,

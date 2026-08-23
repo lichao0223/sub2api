@@ -385,7 +385,8 @@ func (r *nonworkUsageRepository) GetUsageEvents(ctx context.Context, start, end 
 			COALESCE(cache_creation_tokens, 0),
 			COALESCE(cache_read_tokens, 0),
 			COALESCE(input_tokens, 0) + COALESCE(output_tokens, 0) + COALESCE(cache_creation_tokens, 0) + COALESCE(cache_read_tokens, 0) AS total_tokens,
-			COALESCE(actual_cost, 0)
+			COALESCE(actual_cost, 0),
+			COALESCE(NULLIF(requested_model, ''), NULLIF(model, ''), '')
 		FROM usage_logs
 		WHERE created_at >= $1
 		  AND created_at < $2
@@ -410,6 +411,7 @@ func (r *nonworkUsageRepository) GetUsageEvents(ctx context.Context, start, end 
 			&ev.CacheReadTokens,
 			&ev.TotalTokens,
 			&ev.ActualCost,
+			&ev.Model,
 		); err != nil {
 			return nil, err
 		}

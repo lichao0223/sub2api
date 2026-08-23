@@ -211,7 +211,7 @@
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
-                    <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${{ formatCost(item.actual_cost) }}</td>
+                    <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">¥{{ formatCostCNY(item.actual_cost) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -393,6 +393,7 @@ const rankingScope = ref<'all' | 'nonwork'>('all')
 const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' | 'nonwork_active_duration'>('tokens')
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const rankingItems = ref<UserTokenRankingItem[]>([])
+const usdToCnyRate = ref(7.2)
 const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0 })
 const pagination = ref({
   page: 1,
@@ -522,6 +523,10 @@ function formatCost(value: number): string {
   if (value >= 1) return value.toFixed(2)
   if (value >= 0.01) return value.toFixed(3)
   return value.toFixed(4)
+}
+
+function formatCostCNY(value: number): string {
+  return formatCost((Number(value) || 0) * usdToCnyRate.value)
 }
 
 function formatPercent(value: number): string {
@@ -863,6 +868,7 @@ async function loadRanking() {
       sort_order: sortOrder.value
     })
     rankingItems.value = response.ranking || []
+    usdToCnyRate.value = Number(response.usd_to_cny_rate) > 0 ? Number(response.usd_to_cny_rate) : 7.2
     clampPagination()
     totals.value = {
       totalTokens: response.total_tokens || 0,
