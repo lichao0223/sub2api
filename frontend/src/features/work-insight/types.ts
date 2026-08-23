@@ -178,6 +178,13 @@ export interface DailyInsightDetail {
   representative_items: RepresentativeItem[]
   representative_item_count: number
   representative_items_expired: boolean
+  developer_tools: DeveloperTool[]
+}
+
+export interface DeveloperTool {
+  name: string
+  requests: number
+  last_seen: string
 }
 
 export interface UserInsightRanking {

@@ -292,8 +292,14 @@ func (h *AdminHandler) GetDaily(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	tools, err := h.service.repo.ListDeveloperTools(c.Request.Context(), item.UserID, item.Date)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 	response.Success(c, gin.H{
 		"insight": item, "representative_items": samples, "representative_item_count": total,
+		"developer_tools":              tools,
 		"representative_items_expired": total == 0 && time.Since(item.Date) > time.Duration(h.service.PublicConfig().SampleRetentionDays)*24*time.Hour,
 	})
 }

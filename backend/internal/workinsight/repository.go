@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -303,6 +304,61 @@ type UserRanking struct {
 	CoveredSessionCount  int64     `json:"covered_active_session_count"`
 	LatestSummary        string    `json:"latest_summary"`
 	Analyzed             bool      `json:"analyzed"`
+}
+
+type DeveloperTool struct {
+	Name     string    `json:"name"`
+	Requests int64     `json:"requests"`
+	LastSeen time.Time `json:"last_seen"`
+}
+
+func (r *Repository) ListDeveloperTools(ctx context.Context, userID *int64, date time.Time) ([]DeveloperTool, error) {
+	if r == nil || r.db == nil || userID == nil || *userID <= 0 {
+		return []DeveloperTool{}, nil
+	}
+	end := date.AddDate(0, 0, 1)
+	rows, err := r.db.QueryContext(ctx, `SELECT COALESCE(user_agent,''),COUNT(*),MAX(created_at)
+		FROM usage_logs WHERE user_id=$1 AND created_at >= $2 AND created_at < $3 GROUP BY user_agent`, *userID, date, end)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	type aggregate struct {
+		requests int64
+		lastSeen time.Time
+	}
+	counts := make(map[string]aggregate)
+	for rows.Next() {
+		var userAgent string
+		var item aggregate
+		if err := rows.Scan(&userAgent, &item.requests, &item.lastSeen); err != nil {
+			return nil, err
+		}
+		name := classifyDeveloperTool(userAgent)
+		current := counts[name]
+		current.requests += item.requests
+		if item.lastSeen.After(current.lastSeen) {
+			current.lastSeen = item.lastSeen
+		}
+		counts[name] = current
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]DeveloperTool, 0, len(counts))
+	for name, item := range counts {
+		result = append(result, DeveloperTool{Name: name, Requests: item.requests, LastSeen: item.lastSeen})
+	}
+	slices.SortFunc(result, func(a, b DeveloperTool) int {
+		if a.Requests != b.Requests {
+			if a.Requests > b.Requests {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return result, nil
 }
 
 func (r *Repository) ListUserRanking(ctx context.Context, f DailyFilter) ([]UserRanking, int64, error) {

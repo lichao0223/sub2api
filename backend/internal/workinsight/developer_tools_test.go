@@ -1,0 +1,20 @@
+package workinsight
+
+import "testing"
+
+func TestClassifyDeveloperTool(t *testing.T) {
+	tests := map[string]string{
+		"cursor/1.2.3":                         "Cursor",
+		"claude-code/2.1.7":                    "Claude Code",
+		"OpenAI-Codex-CLI/0.1":                 "Codex CLI",
+		"opencode/1.0":                         "OpenCode",
+		"Visual Studio Code/1.90 continue.dev": "Continue",
+		"Mozilla/5.0 (VSCode)":                 "VS Code",
+		"":                                     "未知客户端",
+	}
+	for userAgent, want := range tests {
+		if got := classifyDeveloperTool(userAgent); got != want {
+			t.Errorf("classifyDeveloperTool(%q) = %q, want %q", userAgent, got, want)
+		}
+	}
+}
