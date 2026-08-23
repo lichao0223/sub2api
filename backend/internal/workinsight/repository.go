@@ -247,7 +247,7 @@ func (r *Repository) ListUsageAlerts(ctx context.Context, threshold int, start, 
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]UsageAlert, 0, size)
 	for rows.Next() {
 		var item UsageAlert
