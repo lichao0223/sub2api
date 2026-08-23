@@ -26,7 +26,7 @@
             <label class="field"><span>日期</span><input v-model="selectedDate" type="date" class="input" /></label>
             <label class="field min-w-44 flex-1"><span>用户名</span><input v-model.trim="filters.user_name" class="input w-full" placeholder="用户名" /></label>
             <label class="field min-w-44 flex-1"><span>明确项目</span><input v-model.trim="filters.project_name" class="input w-full" placeholder="项目名称" /></label>
-            <label class="field min-w-44"><span>任务类型</span><select v-model="filters.task_category" class="input"><option value="">全部类型</option><option v-for="category in TASK_CATEGORIES" :key="category">{{ category }}</option></select></label>
+            <label class="field min-w-44"><span>任务类型</span><Select v-model="filters.task_category" :options="taskCategoryOptions" /></label>
             <button type="submit" class="btn btn-primary">查询</button>
           </form>
         </section>
@@ -81,7 +81,7 @@
               <NumberField v-model="draft.session_idle_minutes" label="会话空闲阈值" suffix="分钟" :min="1" />
               <NumberField v-model="draft.user_daily_limit" label="单用户每日上限" suffix="次" :min="1" :max="100000" />
               <NumberField v-model="draft.global_daily_limit" label="全局每日上限" suffix="次" :min="1" :max="500000" />
-              <label class="field"><span>统计时区</span><select v-model="draft.timezone" class="input"><option>Asia/Shanghai</option><option>UTC</option><option>Asia/Tokyo</option></select></label>
+              <label class="field"><span>统计时区</span><Select v-model="draft.timezone" :options="timezoneOptions" /></label>
               <label class="field"><span>排除用户 ID</span><input :value="draft.excluded_user_ids.join(',')" class="input" placeholder="1,2,3" @input="draft.excluded_user_ids = parseIDs(($event.target as HTMLInputElement).value)" /></label>
               <label class="field sm:col-span-2"><span>排除用户邮箱</span><input :value="draft.excluded_user_emails.join(',')" class="input" placeholder="user@example.com" @input="draft.excluded_user_emails = splitList(($event.target as HTMLInputElement).value)" /></label>
             </div>
@@ -93,10 +93,10 @@
               <button type="button" role="radio" :aria-checked="draft.analyzer_source === 'custom'" class="btn" :class="draft.analyzer_source === 'custom' ? 'btn-primary' : 'btn-secondary'" @click="draft.analyzer_source = 'custom'">自定义节点</button>
             </div>
             <div class="form-grid">
-              <label v-if="draft.analyzer_source === 'account'" class="field"><span>OpenAI 平台分析账号</span><select v-model.number="draft.analyzer_account_id" class="input"><option :value="0" disabled>请选择 OpenAI 平台账号</option><option v-for="account in analyzerAccounts" :key="account.id" :value="account.id">{{ account.name }}</option></select><small v-if="!analyzerAccounts.length">账号管理中暂无可用的 OpenAI 平台账号</small></label>
+              <label v-if="draft.analyzer_source === 'account'" class="field"><span>OpenAI 平台分析账号</span><Select v-model="draft.analyzer_account_id" :options="analyzerAccountOptions" placeholder="请选择 OpenAI 平台账号" /><small v-if="!analyzerAccounts.length">账号管理中暂无可用的 OpenAI 平台账号</small></label>
               <label v-else class="field sm:col-span-2"><span>OpenAI 兼容 API Endpoint</span><input v-model.trim="draft.analyzer_base_url" class="input" placeholder="https://example.com/v1" /></label>
               <label v-if="draft.analyzer_source === 'custom'" class="field"><span>API Key</span><input v-model.trim="draft.analyzer_token" type="password" class="input" :placeholder="draft.analyzer_token_set ? '已配置，留空保持不变' : '输入 API Key'" autocomplete="new-password" /></label>
-              <label class="field"><span>分析模型</span><select v-if="selectedAccount?.models.length" v-model="draft.analyzer_model" class="input"><option v-for="model in selectedAccount.models" :key="model">{{ model }}</option></select><input v-else v-model.trim="draft.analyzer_model" class="input" placeholder="qwen3.6-35b" /></label>
+              <label class="field"><span>分析模型</span><Select v-if="selectedAccount?.models.length" v-model="draft.analyzer_model" :options="analyzerModelOptions" placeholder="请选择分析模型" /><input v-else v-model.trim="draft.analyzer_model" class="input" placeholder="qwen3.6-35b" /></label>
               <button type="button" class="btn btn-secondary self-end" :disabled="probing" @click="probeAnalyzer">{{ probing ? '检测中…' : '测试连接' }}</button>
             </div>
           </ConfigCard>
@@ -104,7 +104,7 @@
           <ConfigCard title="分析调度与上下文" description="按用户归桶；原始样本只分析一次，历史只合并结构化摘要">
             <div class="mb-4 flex items-center justify-between gap-4 rounded-lg bg-gray-50 p-3 dark:bg-dark-800"><span class="text-sm"><strong>手动触发</strong><small>将当前待分析样本立即归入批次，由后台异步处理</small></span><button type="button" class="btn btn-primary" data-test="analyze-now" :disabled="analyzing || dirty || !draft.enabled" @click="analyzeNow">{{ analyzing ? '正在创建批次…' : '立即分析' }}</button></div>
             <div class="form-grid">
-              <label class="field"><span>触发策略</span><select v-model="draft.analysis_trigger_mode" class="input"><option value="hybrid">混合触发（推荐）</option><option value="fixed_interval">固定间隔</option><option value="fixed_time">固定时点</option></select></label>
+              <label class="field"><span>触发策略</span><Select v-model="draft.analysis_trigger_mode" :options="analysisTriggerOptions" /></label>
               <NumberField v-if="draft.analysis_trigger_mode === 'hybrid'" v-model="draft.analysis_idle_minutes" label="用户空闲触发" suffix="分钟" :min="1" />
               <NumberField v-if="draft.analysis_trigger_mode === 'hybrid'" v-model="draft.analysis_max_wait_minutes" label="批次最长等待" suffix="分钟" :min="1" />
               <NumberField v-if="draft.analysis_trigger_mode === 'fixed_interval'" v-model="draft.analysis_fixed_interval_minutes" label="分析间隔" suffix="分钟" :min="1" />
@@ -257,6 +257,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
+import Select from '@/components/common/Select.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import { adminAPI } from '@/api/admin'
@@ -288,6 +289,9 @@ const messageError = ref(false)
 const runtime = ref<WorkInsightRuntime | null>(null)
 const overview = ref<WorkInsightOverview | null>(null)
 const analyzerAccounts = ref<AnalyzerAccount[]>([])
+const taskCategoryOptions = [{ value: '', label: '全部类型' }, ...TASK_CATEGORIES.map(category => ({ value: category, label: category }))]
+const timezoneOptions = ['Asia/Shanghai', 'UTC', 'Asia/Tokyo'].map(value => ({ value, label: value }))
+const analysisTriggerOptions = [{ value: 'hybrid', label: '混合触发（推荐）' }, { value: 'fixed_interval', label: '固定间隔' }, { value: 'fixed_time', label: '固定时点' }]
 const savedConfig = ref<WorkInsightConfig | null>(null)
 const draft = ref<WorkInsightConfig | null>(null)
 const page = reactive<UserInsightRankingPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
@@ -351,6 +355,8 @@ const safeInputBudget = computed(() => draft.value ? draft.value.context_window_
 const budgetSafe = computed(() => !!draft.value && draft.value.max_input_tokens <= safeInputBudget.value)
 const visibleSamples = computed(() => showAllSamples.value ? detail.value?.representative_items ?? [] : detail.value?.representative_items.slice(0, 4) ?? [])
 const selectedAccount = computed(() => analyzerAccounts.value.find(account => account.id === draft.value?.analyzer_account_id))
+const analyzerAccountOptions = computed(() => analyzerAccounts.value.map(account => ({ value: account.id, label: account.name })))
+const analyzerModelOptions = computed(() => (selectedAccount.value?.models ?? []).map(model => ({ value: model, label: model })))
 
 const sampleReasonLabels: Record<string, string> = { session_coverage: '新会话首请求必采', rate: '采样率命中', compact: '会话压缩快照' }
 const triggerReasonLabels: Record<string, string> = { idle: '用户空闲触发', max_wait: '达到最长等待时间', sample_limit: '达到单批样本上限', token_limit: '达到单批 Token 上限', fixed: '定时策略触发', manual: '管理员手动触发', finalize: '每日收口触发' }
