@@ -57,7 +57,8 @@
 
       <BaseDialog :show="usageDetailOpen" :title="usageDetailUser ? `${usageDetailUser.username || `用户 ${usageDetailUser.user_id}`} 的预警使用记录` : '预警使用记录'" width="wide" close-on-click-outside @close="usageDetailOpen = false">
         <div class="mb-4 text-xs text-gray-500">输入 Token &gt; {{ formatNumber(draft?.usage_alert_input_tokens ?? 100000) }}，共 {{ usageDetailLogs.length }} 条当前页记录</div>
-        <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">请求时间</th><th class="p-3">模型</th><th class="p-3 text-right">输入 Token</th><th class="p-3 text-right">输出 Token</th><th class="p-3 text-right">缓存 Token</th><th class="p-3 text-right">实际费用</th><th class="p-3">请求 ID</th></tr></thead><tbody><tr v-for="log in usageDetailLogs" :key="log.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(log.created_at) }}</td><td class="p-3"><strong>{{ log.model || '—' }}</strong><p v-if="log.upstream_model" class="text-gray-400">上游：{{ log.upstream_model }}</p></td><td class="p-3 text-right font-medium text-red-600">{{ formatNumber(log.input_tokens) }}</td><td class="p-3 text-right">{{ formatNumber(log.output_tokens) }}</td><td class="p-3 text-right">{{ formatNumber((log.cache_creation_tokens || 0) + (log.cache_read_tokens || 0)) }}</td><td class="p-3 text-right">${{ Number(log.actual_cost || 0).toFixed(4) }}</td><td class="p-3 max-w-48 truncate" :title="log.request_id">{{ log.request_id || '—' }}</td></tr><tr v-if="!usageDetailLoading && !usageDetailLogs.length"><td colspan="7" class="p-8 text-center text-gray-400">暂无符合条件的使用记录</td></tr></tbody></table></div>
+        <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">请求时间</th><th class="p-3">客户端</th><th class="p-3">模型</th><th class="p-3">推理强度</th><th class="p-3 text-right">输入 Token</th><th class="p-3 text-right">输出 Token</th><th class="p-3 text-right">缓存 Token</th><th class="p-3 text-right">实际费用（人民币）</th><th class="p-3">请求 ID</th></tr></thead><tbody><tr v-for="log in usageDetailLogs" :key="log.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(log.created_at) }}</td><td class="p-3">{{ clientLabel(log.user_agent) }}</td><td class="p-3"><strong>{{ log.model || '—' }}</strong><p v-if="log.upstream_model" class="text-gray-400">上游：{{ log.upstream_model }}</p></td><td class="p-3">{{ log.reasoning_effort || log.requested_reasoning_effort || '—' }}</td><td class="p-3 text-right font-medium text-red-600">{{ formatNumber(log.input_tokens) }}</td><td class="p-3 text-right">{{ formatNumber(log.output_tokens) }}</td><td class="p-3 text-right">{{ formatNumber((log.cache_creation_tokens || 0) + (log.cache_read_tokens || 0)) }}</td><td class="p-3 text-right text-emerald-600">¥{{ formatCostCNY(log.actual_cost) }}</td><td class="p-3 max-w-48 truncate" :title="log.request_id">{{ log.request_id || '—' }}</td></tr><tr v-if="!usageDetailLoading && !usageDetailLogs.length"><td colspan="9" class="p-8 text-center text-gray-400">暂无符合条件的使用记录</td></tr></tbody></table></div>
+        <Pagination :total="usageDetailPage.total" :page="usageDetailPage.page" :page-size="usageDetailPage.page_size" @update:page="changeUsageDetailPage" @update:page-size="changeUsageDetailPageSize" />
         <p v-if="usageDetailLoading" class="py-6 text-center text-sm text-gray-500">正在加载使用记录…</p>
       </BaseDialog>
 
@@ -258,6 +259,7 @@ import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import { adminAPI } from '@/api/admin'
 import type { Column } from '@/components/common/types'
 import { formatCompactNumber } from '@/utils/format'
 import api from './api'
@@ -296,7 +298,9 @@ const alertEndDate = ref(todayISO())
 const usageDetailOpen = ref(false)
 const usageDetailLoading = ref(false)
 const usageDetailLogs = ref<AdminUsageLog[]>([])
+const usageDetailPage = reactive<LogPage<AdminUsageLog>>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
 const usageDetailUser = ref<UsageAlert | null>(null)
+const usdToCnyRate = ref(7.2)
 function todayISO(): string {
   const date = new Date()
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -369,6 +373,21 @@ function formatBytes(value: number): string { return value >= 1048576 ? `${(valu
 function formatDate(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value)) : '—' }
 function rankingPosition(row: UserInsightRanking): number { return (page.page - 1) * page.page_size + page.items.indexOf(row) + 1 }
 function formatDateTime(value: string): string { return value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'short', timeStyle: 'medium' }).format(new Date(value)) : '—' }
+function formatCostCNY(value: number): string { return ((Number(value) || 0) * usdToCnyRate.value).toFixed(4) }
+function clientLabel(userAgent: string | null): string {
+  const ua = (userAgent || '').toLowerCase()
+  const clients: Array<[string, string[]]> = [
+    ['Cursor', ['cursor']], ['Claude Code', ['claude-code', 'claude_code', 'claude code']], ['Claude Desktop', ['claude desktop']],
+    ['Codex Desktop', ['codex desktop', 'chatgpt desktop']], ['Codex CLI', ['codex-cli', 'codex_cli', 'openai-codex']],
+    ['OpenCode', ['opencode']], ['OpenClaw', ['openclaw', 'open-claw', 'open_claw']], ['Hermes', ['hermes-agent', 'hermes_agent', 'hermes-cli', 'hermes cli']],
+    ['Pi Agent', ['pi-agent', 'pi_agent', 'pi agent', 'pi-coding-agent']], ['WorkBuddy', ['workbuddy', 'work-buddy', 'work_buddy']], ['Windsurf', ['windsurf']],
+    ['GitHub Copilot', ['github-copilot', 'copilot-chat', 'copilot/']], ['Cline', ['cline']], ['Roo Code', ['roo-code', 'roo_code']], ['Kilo Code', ['kilo-code', 'kilocode']],
+    ['Continue', ['continue.dev', 'continue/']], ['Codeium', ['codeium']], ['Tabnine', ['tabnine']], ['Aider', ['aider']], ['Gemini CLI', ['gemini-cli', 'gemini_cli']],
+    ['JetBrains AI', ['jetbrains', 'intellij', 'pycharm']], ['Zed', ['zed/', 'zed-editor']], ['Neovim', ['neovim', 'nvim']], ['VS Code', ['visual studio code', 'vscode', 'code/']],
+  ]
+  for (const [name, keys] of clients) if (keys.some(key => ua.includes(key))) return name
+  return ua ? '其他客户端' : '未知客户端'
+}
 function formatDuration(value: number): string { return value > 0 ? `${formatNumber(value)} ms` : '—' }
 function successRate(row: DailyInsight): string { const total = row.business_request_count + row.business_error_count; return total ? `${(row.business_request_count / total * 100).toFixed(1)}%` : '—' }
 function sampleReasonLabel(value: string): string { return sampleReasonLabels[value] ?? `其他采样原因（${value || '未记录'}）` }
@@ -393,6 +412,7 @@ function sampleErrorLabel(value: string): string {
 function showMessage(text: string, error = false) { message.value = text; messageError.value = error }
 
 async function loadConfig() { const value = await api.getConfig(); savedConfig.value = clone(value); draft.value = clone(value) }
+async function loadRankingSettings() { const settings = await adminAPI.settings.getSettings(); usdToCnyRate.value = Number(settings.token_ranking_usd_to_cny_rate) > 0 ? Number(settings.token_ranking_usd_to_cny_rate) : 7.2 }
 async function loadRuntime() { runtime.value = await api.getRuntime() }
 async function loadDaily() { Object.assign(page, await api.listRanking(appliedFilters.value, page.page, page.page_size)) }
 async function loadOverview() { overview.value = await api.getOverview(appliedFilters.value) }
@@ -400,18 +420,23 @@ async function loadAlerts() { Object.assign(alertPage, await api.listUsageAlerts
 async function openUsageDetails(row: UsageAlert) {
   usageDetailUser.value = row
   usageDetailOpen.value = true
+  usageDetailPage.page = 1
+  await loadUsageDetails()
+}
+async function loadUsageDetails() {
+  if (!usageDetailUser.value) return
   usageDetailLoading.value = true
   try {
-    const result = await adminUsageAPI.list({ user_id: row.user_id, start_date: alertStartDate.value, end_date: alertEndDate.value, min_input_tokens: draft.value?.usage_alert_input_tokens ?? 100000, page: 1, page_size: 100, exact_total: true, sort_by: 'created_at', sort_order: 'desc' })
+    const result = await adminUsageAPI.list({ user_id: usageDetailUser.value.user_id, start_date: alertStartDate.value, end_date: alertEndDate.value, min_input_tokens: draft.value?.usage_alert_input_tokens ?? 100000, page: usageDetailPage.page, page_size: usageDetailPage.page_size, exact_total: true, sort_by: 'created_at', sort_order: 'desc' })
+    Object.assign(usageDetailPage, result)
     usageDetailLogs.value = result.items
-  } catch {
-    usageDetailLogs.value = []
-    showMessage('使用记录加载失败', true)
-  } finally { usageDetailLoading.value = false }
+  } catch { usageDetailLogs.value = []; showMessage('使用记录加载失败', true) } finally { usageDetailLoading.value = false }
 }
+async function changeUsageDetailPage(value: number) { usageDetailPage.page = value; await loadUsageDetails() }
+async function changeUsageDetailPageSize(value: number) { usageDetailPage.page_size = value; usageDetailPage.page = 1; await loadUsageDetails() }
 async function refresh() {
   loading.value = true
-  try { const [, , , , accounts] = await Promise.all([loadConfig(), loadRuntime(), loadDaily(), loadOverview(), api.listAnalyzerAccounts(), loadAlerts()]); analyzerAccounts.value = accounts; message.value = '' }
+  try { const [, , , , accounts] = await Promise.all([loadConfig(), loadRuntime(), loadDaily(), loadOverview(), api.listAnalyzerAccounts(), loadAlerts(), loadRankingSettings()]); analyzerAccounts.value = accounts; message.value = '' }
   catch (error) { showMessage(error instanceof Error ? error.message : '数据加载失败', true) }
   finally { loading.value = false }
 }
