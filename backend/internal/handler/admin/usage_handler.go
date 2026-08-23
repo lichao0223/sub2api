@@ -147,6 +147,15 @@ func (h *UsageHandler) List(c *gin.Context) {
 	model := c.Query("model")
 	requestID := strings.TrimSpace(c.Query("request_id"))
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
+	minInputTokens := 0
+	if raw := strings.TrimSpace(c.Query("min_input_tokens")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 {
+			response.BadRequest(c, "Invalid min_input_tokens")
+			return
+		}
+		minInputTokens = value
+	}
 
 	var requestType *int16
 	var stream *bool
@@ -229,6 +238,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		Stream:                stream,
 		BillingType:           billingType,
 		BillingMode:           billingMode,
+		MinInputTokens:        minInputTokens,
 		UpstreamModelMismatch: upstreamModelMismatch,
 		StartTime:             startTime,
 		EndTime:               endTime,

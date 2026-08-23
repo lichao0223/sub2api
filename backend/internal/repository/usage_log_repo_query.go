@@ -127,6 +127,10 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		args = append(args, int16(*filters.BillingType))
 	}
 	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
+	if filters.MinInputTokens > 0 {
+		conditions = append(conditions, fmt.Sprintf("input_tokens > $%d", len(args)+1))
+		args = append(args, filters.MinInputTokens)
+	}
 	if filters.UpstreamModelMismatch != nil {
 		conditions = append(conditions, upstreamModelMismatchCondition("upstream_model_mismatch", *filters.UpstreamModelMismatch))
 	}

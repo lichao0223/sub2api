@@ -444,6 +444,7 @@ type UsageLogFilters struct {
 	Stream                *bool
 	BillingType           *int8
 	BillingMode           string
+	MinInputTokens        int
 	UpstreamModelMismatch *bool
 	StartTime             *time.Time
 	EndTime               *time.Time

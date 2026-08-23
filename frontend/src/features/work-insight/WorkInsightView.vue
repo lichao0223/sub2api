@@ -52,8 +52,14 @@
 
       <section v-show="tab === 'alerts'" id="work-alert-panel" role="tabpanel" aria-labelledby="work-alert-tab" class="space-y-5">
         <section class="card p-4"><form class="flex flex-wrap items-end gap-3" @submit.prevent="searchAlerts"><label class="field"><span>开始日期</span><input v-model="alertStartDate" type="date" class="input" /></label><label class="field"><span>结束日期</span><input v-model="alertEndDate" type="date" class="input" /></label><button type="submit" class="btn btn-primary">查询预警</button><span class="text-xs text-gray-500">当前阈值：输入 Token &gt; {{ formatNumber(draft?.usage_alert_input_tokens ?? 100000) }}</span></form></section>
-        <section class="card overflow-hidden"><div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-950 dark:text-white">异常用户</h2><p class="mt-1 text-xs text-gray-500">每次请求的输入 Token 超过阈值即计为一次预警，数据直接来自使用记录。</p></div><DataTable :columns="alertColumns" :data="alertPage.items" :loading="alertsLoading" row-key="user_id"><template #cell-user="{ row }"><div><strong>{{ row.username || `用户 ${row.user_id}` }}</strong><p class="text-xs text-gray-400">{{ row.email || `ID ${row.user_id}` }}</p></div></template><template #cell-count="{ row }"><strong>{{ formatNumber(row.count) }}</strong> 次</template><template #cell-first_at="{ row }">{{ formatDateTime(row.first_at) }}</template><template #cell-latest_at="{ row }">{{ formatDateTime(row.latest_at) }}</template><template #cell-max_input_tokens="{ row }">{{ formatNumber(row.max_input_tokens) }}</template></DataTable><Pagination :total="alertPage.total" :page="alertPage.page" :page-size="alertPage.page_size" @update:page="changeAlertPage" @update:page-size="changeAlertPageSize" /></section>
+        <section class="card overflow-hidden"><div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-950 dark:text-white">异常用户</h2><p class="mt-1 text-xs text-gray-500">每次请求的输入 Token 超过阈值即计为一次预警，数据直接来自使用记录。</p></div><DataTable :columns="alertColumns" :data="alertPage.items" :loading="alertsLoading" row-key="user_id"><template #cell-user="{ row }"><div><strong>{{ row.username || `用户 ${row.user_id}` }}</strong><p class="text-xs text-gray-400">{{ row.email || `ID ${row.user_id}` }}</p></div></template><template #cell-count="{ row }"><strong>{{ formatNumber(row.count) }}</strong> 次</template><template #cell-first_at="{ row }">{{ formatDateTime(row.first_at) }}</template><template #cell-latest_at="{ row }">{{ formatDateTime(row.latest_at) }}</template><template #cell-max_input_tokens="{ row }">{{ formatNumber(row.max_input_tokens) }}</template><template #cell-actions="{ row }"><button type="button" class="btn btn-secondary btn-xs" :disabled="usageDetailLoading" @click.stop="openUsageDetails(row)">详情</button></template></DataTable><Pagination :total="alertPage.total" :page="alertPage.page" :page-size="alertPage.page_size" @update:page="changeAlertPage" @update:page-size="changeAlertPageSize" /></section>
       </section>
+
+      <BaseDialog :show="usageDetailOpen" :title="usageDetailUser ? `${usageDetailUser.username || `用户 ${usageDetailUser.user_id}`} 的预警使用记录` : '预警使用记录'" width="wide" close-on-click-outside @close="usageDetailOpen = false">
+        <div class="mb-4 text-xs text-gray-500">输入 Token &gt; {{ formatNumber(draft?.usage_alert_input_tokens ?? 100000) }}，共 {{ usageDetailLogs.length }} 条当前页记录</div>
+        <div class="overflow-x-auto"><table class="w-full text-left text-xs"><thead><tr class="border-b dark:border-dark-700"><th class="p-3">请求时间</th><th class="p-3">模型</th><th class="p-3 text-right">输入 Token</th><th class="p-3 text-right">输出 Token</th><th class="p-3 text-right">缓存 Token</th><th class="p-3 text-right">实际费用</th><th class="p-3">请求 ID</th></tr></thead><tbody><tr v-for="log in usageDetailLogs" :key="log.id" class="border-b last:border-0 dark:border-dark-800"><td class="p-3 whitespace-nowrap">{{ formatDateTime(log.created_at) }}</td><td class="p-3"><strong>{{ log.model || '—' }}</strong><p v-if="log.upstream_model" class="text-gray-400">上游：{{ log.upstream_model }}</p></td><td class="p-3 text-right font-medium text-red-600">{{ formatNumber(log.input_tokens) }}</td><td class="p-3 text-right">{{ formatNumber(log.output_tokens) }}</td><td class="p-3 text-right">{{ formatNumber((log.cache_creation_tokens || 0) + (log.cache_read_tokens || 0)) }}</td><td class="p-3 text-right">${{ Number(log.actual_cost || 0).toFixed(4) }}</td><td class="p-3 max-w-48 truncate" :title="log.request_id">{{ log.request_id || '—' }}</td></tr><tr v-if="!usageDetailLoading && !usageDetailLogs.length"><td colspan="7" class="p-8 text-center text-gray-400">暂无符合条件的使用记录</td></tr></tbody></table></div>
+        <p v-if="usageDetailLoading" class="py-6 text-center text-sm text-gray-500">正在加载使用记录…</p>
+      </BaseDialog>
 
       <section v-if="draft" v-show="tab === 'config'" id="work-config-panel" role="tabpanel" aria-labelledby="work-config-tab" class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div class="space-y-5">
@@ -254,8 +260,10 @@ import Toggle from '@/components/common/Toggle.vue'
 import type { Column } from '@/components/common/types'
 import { formatCompactNumber } from '@/utils/format'
 import api from './api'
+import { adminUsageAPI } from '@/api/admin/usage'
 import { TASK_CATEGORIES } from './types'
-import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, LogPage, SampleSummary, UserInsightRanking, UserInsightRankingPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
+import type { AdminUsageLog } from '@/types'
+import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, DailyInsightFilters, LogPage, SampleSummary, UsageAlert, UserInsightRanking, UserInsightRankingPage, WorkInsightConfig, WorkInsightOverview, WorkInsightRuntime } from './types'
 
 const ConfigCard = defineComponent({ props: { title: { type: String, required: true }, description: { type: String, required: true } }, setup: (props, { slots }) => () => h('section', { class: 'card p-5' }, [h('div', { class: 'mb-5' }, [h('h2', { class: 'font-semibold text-gray-950 dark:text-white' }, props.title), h('p', { class: 'mt-1 text-xs text-gray-500' }, props.description)]), slots.default?.()]) })
 const NumberField = defineComponent({ props: { modelValue: { type: Number, default: 0 }, label: { type: String, required: true }, suffix: { type: String, default: '' }, min: { type: Number, default: 0 }, max: { type: Number, default: undefined } }, emits: ['update:modelValue'], setup: (props, { emit }) => () => h('label', { class: 'field' }, [h('span', props.label), h('div', { class: 'relative' }, [h('input', { type: 'number', min: props.min, max: props.max, value: props.modelValue ?? 0, class: 'input w-full pr-16', onInput: (event: Event) => emit('update:modelValue', Number((event.target as HTMLInputElement).value)) }), props.suffix && h('em', { class: 'pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs not-italic text-gray-400' }, props.suffix)])]) })
@@ -284,6 +292,10 @@ const alertPage = reactive<import('./types').UsageAlertPage>({ items: [], total:
 const alertsLoading = ref(false)
 const alertStartDate = ref(todayISO())
 const alertEndDate = ref(todayISO())
+const usageDetailOpen = ref(false)
+const usageDetailLoading = ref(false)
+const usageDetailLogs = ref<AdminUsageLog[]>([])
+const usageDetailUser = ref<UsageAlert | null>(null)
 function todayISO(): string {
   const date = new Date()
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -316,7 +328,7 @@ const columns: Column[] = [
 ]
 const alertColumns: Column[] = [
   { key: 'user', label: '用户' }, { key: 'count', label: '预警次数' }, { key: 'first_at', label: '首次发生' },
-  { key: 'latest_at', label: '最近发生' }, { key: 'max_input_tokens', label: '单次最高输入 Token' },
+  { key: 'latest_at', label: '最近发生' }, { key: 'max_input_tokens', label: '单次最高输入 Token' }, { key: 'actions', label: '操作' },
 ]
 const metrics = computed(() => {
   const eligible = overview.value?.active_sessions ?? 0
@@ -384,6 +396,18 @@ async function loadRuntime() { runtime.value = await api.getRuntime() }
 async function loadDaily() { Object.assign(page, await api.listRanking(appliedFilters.value, page.page, page.page_size)) }
 async function loadOverview() { overview.value = await api.getOverview(appliedFilters.value) }
 async function loadAlerts() { Object.assign(alertPage, await api.listUsageAlerts({ start_date: alertStartDate.value, end_date: alertEndDate.value, user_name: '', task_category: '', project_name: '' }, alertPage.page, alertPage.page_size)) }
+async function openUsageDetails(row: UsageAlert) {
+  usageDetailUser.value = row
+  usageDetailOpen.value = true
+  usageDetailLoading.value = true
+  try {
+    const result = await adminUsageAPI.list({ user_id: row.user_id, start_date: alertStartDate.value, end_date: alertEndDate.value, min_input_tokens: draft.value?.usage_alert_input_tokens ?? 100000, page: 1, page_size: 100, exact_total: true, sort_by: 'created_at', sort_order: 'desc' })
+    usageDetailLogs.value = result.items
+  } catch {
+    usageDetailLogs.value = []
+    showMessage('使用记录加载失败', true)
+  } finally { usageDetailLoading.value = false }
+}
 async function refresh() {
   loading.value = true
   try { const [, , , , accounts] = await Promise.all([loadConfig(), loadRuntime(), loadDaily(), loadOverview(), api.listAnalyzerAccounts(), loadAlerts()]); analyzerAccounts.value = accounts; message.value = '' }
