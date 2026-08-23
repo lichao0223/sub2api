@@ -6884,6 +6884,25 @@
               </button>
             </div>
           </div>
+
+          <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
+            <div class="border-b border-gray-200 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Token 使用排名</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">金额展示与模型排除规则，独立于支付功能。</p>
+            </div>
+            <div class="grid grid-cols-1 gap-5 p-6 lg:grid-cols-2">
+              <div>
+                <label class="input-label">USD → CNY 汇率</label>
+                <input v-model.number="form.token_ranking_usd_to_cny_rate" type="number" min="0.0001" step="0.0001" class="input" placeholder="7.2" />
+                <p class="mt-1 text-xs text-gray-400">默认 7.2，仅用于 Token 使用排名的金额展示。</p>
+              </div>
+              <div>
+                <label class="input-label">金额排除模型</label>
+                <textarea :value="(form.token_ranking_excluded_models || []).join('\n')" @input="form.token_ranking_excluded_models = ($event.target as HTMLTextAreaElement).value.split('\n').map(v => v.trim()).filter(Boolean)" class="input min-h-24 resize-y" placeholder="每行一个，例如：gpt-* 或 openai/o" />
+                <p class="mt-1 text-xs text-gray-400">支持名称包含匹配和 * 通配符；只排除金额，Token 数和请求数仍会统计。</p>
+              </div>
+            </div>
+          </div>
 	        </div>
 	        <!-- /Tab: General -->
 
@@ -7831,16 +7850,6 @@
               <template v-if="form.payment_enabled">
                 <!-- Row 1: Product name -->
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label class="input-label">Token 排名 USD→CNY 汇率</label>
-                    <input v-model.number="form.token_ranking_usd_to_cny_rate" type="number" min="0.0001" step="0.0001" class="input" placeholder="7.2" />
-                    <p class="mt-0.5 text-xs text-gray-400">仅用于 Token 使用排名金额展示，不影响实际扣费。</p>
-                  </div>
-                  <div>
-                    <label class="input-label">Token 排名金额排除模型</label>
-                    <textarea :value="(form.token_ranking_excluded_models || []).join('\n')" @input="form.token_ranking_excluded_models = ($event.target as HTMLTextAreaElement).value.split('\n').map(v => v.trim()).filter(Boolean)" class="input min-h-20" placeholder="每行一个，例如：gpt-* 或 openai/o" />
-                    <p class="mt-0.5 text-xs text-gray-400">每行一个；默认按名称包含匹配，支持 * 通配符。只排除金额，Token 数仍统计。</p>
-                  </div>
                   <div>
                     <label class="input-label">{{
                       t("admin.settings.payment.productNamePrefix")
