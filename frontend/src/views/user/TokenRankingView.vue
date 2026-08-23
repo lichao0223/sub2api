@@ -211,7 +211,7 @@
                     <td class="px-4 py-3 text-right text-gray-700 dark:text-gray-300">{{ formatTokens(item.nonwork_tokens ?? 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.active_duration_ms || 0) }}</td>
                     <td class="px-4 py-3 text-right whitespace-nowrap text-gray-700 dark:text-gray-300">{{ formatDuration(item.nonwork_active_ms || 0) }}</td>
-                    <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">¥{{ formatCostCNY(item.actual_cost) }}</td>
+                    <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">{{ usageCurrencySymbol() }}{{ formatCostCNY(item.actual_cost) }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -370,7 +370,7 @@ import * as adminUsageAPI from '@/api/admin/usage'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
-import { formatDateTime } from '@/utils/format'
+import { formatDateTime, formatUsageCost, usageCurrencySymbol } from '@/utils/format'
 import type { SelectOption } from '@/components/common/Select.vue'
 import type { NonworkStatsCoverage, UserTokenRankingItem } from '@/types'
 import type { ExternalUsageImportBatch, ExternalUsageImportPreview, ExternalUsageImportRow } from '@/api/admin/usage'
@@ -518,15 +518,8 @@ function formatTokens(value: number): string {
   return value.toLocaleString()
 }
 
-function formatCost(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
-  if (value >= 1) return value.toFixed(2)
-  if (value >= 0.01) return value.toFixed(3)
-  return value.toFixed(4)
-}
-
 function formatCostCNY(value: number): string {
-  return formatCost((Number(value) || 0) * usdToCnyRate.value)
+  return formatUsageCost(value, usdToCnyRate.value)
 }
 
 function formatPercent(value: number): string {

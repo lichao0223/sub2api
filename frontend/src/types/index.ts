@@ -239,6 +239,8 @@ export interface PublicSettings {
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
+  usage_display_currency?: 'USD' | 'CNY' | string
+  usage_display_usd_to_cny_rate?: number
   risk_control_enabled: boolean
   table_default_page_size: number
   table_page_size_options: number[]

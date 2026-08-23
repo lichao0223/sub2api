@@ -436,7 +436,16 @@ func parseAnalyzerResponse(raw []byte, samples []analysisInput) (BatchResult, in
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil || len(envelope.Choices) != 1 {
-		return BatchResult{}, 0, 0, errors.New("invalid analyzer response")
+		// Some OpenAI-compatible providers return the structured result directly
+		// instead of wrapping it in choices[0].message.content.
+		result, decodeErr := decodeAnalyzerResult(string(raw))
+		if decodeErr != nil {
+			return BatchResult{}, 0, 0, errors.New("invalid analyzer response")
+		}
+		if validateErr := validateBatchResult(&result, samples); validateErr != nil {
+			return BatchResult{}, 0, 0, validateErr
+		}
+		return result, 0, 0, nil
 	}
 	choice := envelope.Choices[0]
 	result, err := decodeAnalyzerResult(analyzerMessageText(choice.Message.Content))

@@ -6892,6 +6892,11 @@
             </div>
             <div class="grid grid-cols-1 gap-5 p-6 lg:grid-cols-2">
               <div>
+                <label class="input-label">用量金额展示币种</label>
+                <Select v-model="form.usage_display_currency" :options="[{ value: 'CNY', label: '人民币（CNY）' }, { value: 'USD', label: '美元（USD）' }]" />
+                <p class="mt-1 text-xs text-gray-400">统一控制用量、预警、洞察和 Token 排名中的费用展示；计费数据仍以 USD 保存。</p>
+              </div>
+              <div>
                 <label class="input-label">USD → CNY 汇率</label>
                 <input v-model.number="form.token_ranking_usd_to_cny_rate" type="number" min="0.0001" step="0.0001" class="input" placeholder="7.2" />
                 <p class="mt-1 text-xs text-gray-400">默认 7.2，仅用于 Token 使用排名的金额展示。</p>
@@ -9692,6 +9697,8 @@ const form = reactive<SettingsForm>({
   payment_subscription_usd_to_cny_rate: 0,
   token_ranking_usd_to_cny_rate: 7.2,
   token_ranking_excluded_models: [],
+  usage_display_currency: "CNY",
+  usage_display_usd_to_cny_rate: 7.2,
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
   payment_help_image_url: "",
@@ -11506,6 +11513,7 @@ async function saveSettings() {
       token_ranking_usd_to_cny_rate:
         Number(form.token_ranking_usd_to_cny_rate) || 7.2,
       token_ranking_excluded_models: form.token_ranking_excluded_models,
+      usage_display_currency: form.usage_display_currency,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,

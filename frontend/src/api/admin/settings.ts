@@ -665,6 +665,8 @@ export interface SystemSettings {
   payment_subscription_usd_to_cny_rate: number;
   token_ranking_usd_to_cny_rate: number;
   token_ranking_excluded_models: string[];
+  usage_display_currency: 'USD' | 'CNY' | string;
+  usage_display_usd_to_cny_rate: number;
   payment_recharge_fee_rate: number;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
@@ -982,6 +984,7 @@ export interface UpdateSettingsRequest {
   payment_subscription_usd_to_cny_rate?: number;
   token_ranking_usd_to_cny_rate?: number;
   token_ranking_excluded_models?: string[];
+  usage_display_currency?: 'USD' | 'CNY' | string;
   payment_recharge_fee_rate?: number;
   payment_load_balance_strategy?: string;
   payment_product_name_prefix?: string;

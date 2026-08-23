@@ -33,9 +33,9 @@
           {{ item.isOther ? t('admin.users.platformOther') : platformLabel(item.platform) }}
         </span>
         <span class="font-mono">
-          ${{ item.today_actual_cost.toFixed(4) }}
+          {{ usageCurrencySymbol() }}{{ formatUsageCost(item.today_actual_cost) }}
           <span class="opacity-50">/</span>
-          ${{ item.total_actual_cost.toFixed(4) }}
+          {{ usageCurrencySymbol() }}{{ formatUsageCost(item.total_actual_cost) }}
         </span>
       </div>
     </div>
@@ -47,6 +47,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { PlatformUsage } from '@/api/admin/dashboard'
+import { formatUsageCost, usageCurrencySymbol } from '@/utils/format'
 
 const props = defineProps<{
   today: number

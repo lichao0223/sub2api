@@ -225,6 +225,15 @@ func TestParseAnalyzerResponseNormalizesRepresentativeStringFields(t *testing.T)
 	require.Equal(t, []string{"其他"}, result.RepresentativeItems[0].TaskCategories)
 }
 
+func TestParseAnalyzerResponseAcceptsChineseInquiryResult(t *testing.T) {
+	content := `{"work_summary":["咨询游戏《完蛋我被男同学包围了》的开发知识及相关分析","咨询将素材替换为 AI 生成的校园立绘/背景并制作完整 demo 的方法","咨询完整复现游戏成就与玩法的方法","咨询访问 localhost:8000 地址无法打开游戏的问题"],"task_categories":["咨询","问题排查"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":["游戏开发","本地服务访问"],"representative_items":[{"source_sample_ids":["58843"],"summary":"咨询访问 localhost:8000 地址无法打开游戏的问题","task_categories":["问题排查"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
+	raw := []byte(`{"choices":[{"message":{"content":` + strconv.Quote(content) + `}}]}`)
+	samples := []analysisInput{{ID: 58843, Text: "咨询访问 localhost:8000 地址无法打开游戏的问题"}}
+	result, _, _, err := parseAnalyzerResponse(raw, samples)
+	require.NoError(t, err)
+	require.Contains(t, result.WorkSummary, "游戏")
+}
+
 func TestParseAnalyzerResponseReportsTruncatedOutput(t *testing.T) {
 	_, _, _, err := parseAnalyzerResponse([]byte(`{"choices":[{"message":{"content":"{\\\"work_summary\\\":"},"finish_reason":"length"}]}`), nil)
 	require.EqualError(t, err, "analyzer output truncated")

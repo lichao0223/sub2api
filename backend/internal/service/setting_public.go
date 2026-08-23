@@ -238,6 +238,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyAffiliateEnabled,
 		SettingKeyRiskControlEnabled,
 		SettingKeyAllowUserViewErrorRequests,
+		SettingKeyUsageDisplayCurrency,
 	}
 
 	settings, err := s.settingRepo.GetMultiple(ctx, keys)
@@ -343,6 +344,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMobileEnabled:            weChatMobileEnabled,
 		BackendModeEnabled:                  settings[SettingKeyBackendModeEnabled] == "true",
 		PaymentEnabled:                      settings[SettingPaymentEnabled] == "true",
+		UsageDisplayCurrency:                normalizeUsageDisplayCurrency(settings[SettingKeyUsageDisplayCurrency]),
+		UsageDisplayUSDToCNYRate:            s.GetTokenRankingSettings(ctx).USDToCNYRate,
 		OIDCOAuthEnabled:                    oidcEnabled,
 		OIDCOAuthProviderName:               oidcProviderName,
 		GitHubOAuthEnabled:                  gitHubEnabled,
@@ -619,13 +622,15 @@ type PublicSettingsInjectionPayload struct {
 	ChannelMonitorHideThroughput bool `json:"channel_monitor_hide_throughput"`
 	// ChannelMonitorShowQuota gates the user-facing quota/balance display on
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
-	ChannelMonitorShowQuota    bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled   bool `json:"available_channels_enabled"`
-	ModelPlazaEnabled          bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth      bool `json:"model_plaza_require_auth"`
-	AffiliateEnabled           bool `json:"affiliate_enabled"`
-	RiskControlEnabled         bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests bool `json:"allow_user_view_error_requests"`
+	ChannelMonitorShowQuota    bool    `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled   bool    `json:"available_channels_enabled"`
+	ModelPlazaEnabled          bool    `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth      bool    `json:"model_plaza_require_auth"`
+	AffiliateEnabled           bool    `json:"affiliate_enabled"`
+	RiskControlEnabled         bool    `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests bool    `json:"allow_user_view_error_requests"`
+	UsageDisplayCurrency       string  `json:"usage_display_currency"`
+	UsageDisplayUSDToCNYRate   float64 `json:"usage_display_usd_to_cny_rate"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -687,6 +692,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
 		PaymentEnabled:                      settings.PaymentEnabled,
+		UsageDisplayCurrency:                settings.UsageDisplayCurrency,
+		UsageDisplayUSDToCNYRate:            settings.UsageDisplayUSDToCNYRate,
 		Version:                             s.version,
 		ServerTimezone:                      timezone.Name(),
 		ServerUTCOffset:                     timezone.UTCOffset(),

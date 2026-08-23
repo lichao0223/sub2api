@@ -14,13 +14,47 @@ const (
 	SettingKeyTokenRankingUSDToCNYRate     = "TOKEN_RANKING_USD_TO_CNY_RATE"
 	SettingKeyTokenRankingExcludedModels   = "TOKEN_RANKING_EXCLUDED_MODELS"
 	SettingKeyTokenRankingRulesEffectiveAt = "TOKEN_RANKING_RULES_EFFECTIVE_AT"
+	SettingKeyUsageDisplayCurrency         = "USAGE_DISPLAY_CURRENCY"
 	defaultTokenRankingUSDToCNYRate        = 7.2
+	defaultUsageDisplayCurrency            = "CNY"
 )
 
 type TokenRankingSettings struct {
 	USDToCNYRate     float64   `json:"usd_to_cny_rate"`
 	ExcludedModels   []string  `json:"excluded_models"`
 	RulesEffectiveAt time.Time `json:"rules_effective_at"`
+}
+
+func (s *SettingService) GetUsageDisplayCurrency(ctx context.Context) string {
+	if s == nil || s.settingRepo == nil {
+		return defaultUsageDisplayCurrency
+	}
+	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyUsageDisplayCurrency})
+	if err != nil {
+		return defaultUsageDisplayCurrency
+	}
+	if strings.EqualFold(strings.TrimSpace(values[SettingKeyUsageDisplayCurrency]), "USD") {
+		return "USD"
+	}
+	return defaultUsageDisplayCurrency
+}
+
+func (s *SettingService) UpdateUsageDisplayCurrency(ctx context.Context, currency string) error {
+	currency = strings.ToUpper(strings.TrimSpace(currency))
+	if currency != "USD" && currency != "CNY" {
+		return fmt.Errorf("usage display currency must be USD or CNY")
+	}
+	if s == nil || s.settingRepo == nil {
+		return fmt.Errorf("setting repository unavailable")
+	}
+	return s.settingRepo.SetMultiple(ctx, map[string]string{SettingKeyUsageDisplayCurrency: currency})
+}
+
+func normalizeUsageDisplayCurrency(currency string) string {
+	if strings.EqualFold(strings.TrimSpace(currency), "USD") {
+		return "USD"
+	}
+	return defaultUsageDisplayCurrency
 }
 
 func (s *SettingService) GetTokenRankingSettings(ctx context.Context) TokenRankingSettings {

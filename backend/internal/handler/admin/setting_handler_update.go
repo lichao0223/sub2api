@@ -23,6 +23,7 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
+	UsageDisplayCurrency       string   `json:"usage_display_currency"`
 	TokenRankingUSDToCNYRate   *float64 `json:"token_ranking_usd_to_cny_rate"`
 	TokenRankingExcludedModels []string `json:"token_ranking_excluded_models"`
 	// 注册设置
@@ -2063,6 +2064,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if strings.TrimSpace(req.UsageDisplayCurrency) != "" {
+		if err := h.settingService.UpdateUsageDisplayCurrency(c.Request.Context(), req.UsageDisplayCurrency); err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
+	}
 	if h.opsService != nil {
 		h.opsService.SetMonitoringEnabled(settings.OpsMonitoringEnabled)
 	}
@@ -2144,6 +2151,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		updatedPaymentCfg = &service.PaymentConfig{}
 	}
 	tokenRankingSettings := h.settingService.GetTokenRankingSettings(c.Request.Context())
+	usageDisplayCurrency := h.settingService.GetUsageDisplayCurrency(c.Request.Context())
 	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
 	payload := dto.SystemSettings{
@@ -2377,6 +2385,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
 		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
+		UsageDisplayCurrency:                                   usageDisplayCurrency,
+		UsageDisplayUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,

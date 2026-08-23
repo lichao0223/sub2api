@@ -4,6 +4,23 @@
  */
 
 import { i18n, getLocale } from '@/i18n'
+import { useAppStore } from '@/stores/app'
+
+export function usageDisplayCurrency(): 'USD' | 'CNY' {
+  return useAppStore().cachedPublicSettings?.usage_display_currency === 'USD' ? 'USD' : 'CNY'
+}
+
+export function formatUsageCost(value: number | null | undefined, usdToCnyRate = 7.2, fractionDigits = 4): string {
+  const amount = Number(value) || 0
+  const currency = usageDisplayCurrency()
+  const configuredRate = useAppStore().cachedPublicSettings?.usage_display_usd_to_cny_rate
+  const converted = currency === 'CNY' ? amount * (Number(configuredRate || usdToCnyRate) > 0 ? Number(configuredRate || usdToCnyRate) : 7.2) : amount
+  return converted.toFixed(fractionDigits)
+}
+
+export function usageCurrencySymbol(): string {
+  return usageDisplayCurrency() === 'CNY' ? '¥' : '$'
+}
 
 /**
  * 格式化相对时间
