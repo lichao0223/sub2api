@@ -161,6 +161,8 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/integrations/users/sync":                              "integrations.users.sync",
 	"DELETE /api/v1/integrations/users":                                 "integrations.users.delete_all",
 	"DELETE /api/v1/integrations/users/:external_user_id":               "integrations.users.delete",
+	"GET /api/v1/integrations/users/:external_user_id/subscriptions":    "integrations.users.subscriptions.list",
+	"GET /api/v1/integrations/users/:external_user_id/usage":            "integrations.users.usage.list",
 	"POST /api/v1/integrations/users/:external_user_id/api-keys/rotate": "integrations.users.api_keys.rotate",
 	"POST /api/v1/admin/users/:id/api-keys/rotate":                      "admin.users.api_keys.rotate",
 	"POST /api/v1/admin/api-keys/batch-update":                          "admin.api_keys.batch_update",

@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -28,6 +33,141 @@ type externalUserServicePort interface {
 	DeleteAll(c context.Context) (*service.ExternalUserDeleteAllResult, error)
 	Sync(c context.Context, input service.ExternalUserSyncInput) (*service.ExternalUserSyncResult, error)
 	RotateAPIKeysByExternalID(c context.Context, externalUserID string) (*service.ExternalUserRotateAPIKeysResult, error)
+}
+
+type externalUserQueryPort interface {
+	ListSubscriptionsByExternalID(context.Context, string) ([]service.UserSubscription, error)
+	ListUsageByExternalID(context.Context, string, pagination.PaginationParams, usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error)
+}
+
+func (h *IntegrationUserHandler) ListSubscriptions(c *gin.Context) {
+	queryService, ok := h.externalUserService.(externalUserQueryPort)
+	if !ok {
+		response.Error(c, 503, "integration query service not available")
+		return
+	}
+	externalUserID, ok := validateExternalUserIDParam(c)
+	if !ok {
+		return
+	}
+	subs, err := queryService.ListSubscriptionsByExternalID(c.Request.Context(), externalUserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.AdminUserSubscription, 0, len(subs))
+	for i := range subs {
+		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subs[i]))
+	}
+	response.Success(c, out)
+}
+
+func (h *IntegrationUserHandler) ListUsage(c *gin.Context) {
+	queryService, ok := h.externalUserService.(externalUserQueryPort)
+	if !ok {
+		response.Error(c, 503, "integration query service not available")
+		return
+	}
+	externalUserID, ok := validateExternalUserIDParam(c)
+	if !ok {
+		return
+	}
+	filters, ok := parseIntegrationUsageFilters(c)
+	if !ok {
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: c.DefaultQuery("sort_by", "created_at"), SortOrder: c.DefaultQuery("sort_order", "desc")}
+	logs, result, err := queryService.ListUsageByExternalID(c.Request.Context(), externalUserID, params, filters)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.UsageLog, 0, len(logs))
+	for i := range logs {
+		out = append(out, *dto.UsageLogFromService(&logs[i]))
+	}
+	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+func validateExternalUserIDParam(c *gin.Context) (string, bool) {
+	id := strings.TrimSpace(c.Param("external_user_id"))
+	if id == "" || len(id) > externalUserIDMaxLen {
+		response.ErrorFrom(c, invalidExternalUserArgument("external_user_id", "invalid external_user_id"))
+		return "", false
+	}
+	return id, true
+}
+
+func parseIntegrationUsageFilters(c *gin.Context) (usagestats.UsageLogFilters, bool) {
+	var f usagestats.UsageLogFilters
+	f.Model = strings.TrimSpace(c.Query("model"))
+	f.ModelFilterSource = usagestats.ModelSourceRequested
+	f.BillingMode = strings.TrimSpace(c.Query("billing_mode"))
+	if f.BillingMode != "" && !service.BillingMode(f.BillingMode).IsValidUsageFilter() {
+		response.BadRequest(c, "Invalid billing_mode")
+		return f, false
+	}
+	if v := strings.TrimSpace(c.Query("api_key_id")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid api_key_id")
+			return f, false
+		}
+		f.APIKeyID = n
+	}
+	if v := strings.TrimSpace(c.Query("group_id")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid group_id")
+			return f, false
+		}
+		f.GroupID = n
+	}
+	if v := strings.TrimSpace(c.Query("request_type")); v != "" {
+		n, err := service.ParseUsageRequestType(v)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return f, false
+		}
+		x := int16(n)
+		f.RequestType = &x
+	} else if v := strings.TrimSpace(c.Query("stream")); v != "" {
+		x, err := strconv.ParseBool(v)
+		if err != nil {
+			response.BadRequest(c, "Invalid stream value, use true or false")
+			return f, false
+		}
+		f.Stream = &x
+	}
+	if v := strings.TrimSpace(c.Query("billing_type")); v != "" {
+		n, err := strconv.ParseInt(v, 10, 8)
+		if err != nil {
+			response.BadRequest(c, "Invalid billing_type")
+			return f, false
+		}
+		x := int8(n)
+		f.BillingType = &x
+	}
+	userTZ := c.Query("timezone")
+	if v := strings.TrimSpace(c.Query("start_date")); v != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", v, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid start_date format, use YYYY-MM-DD")
+			return f, false
+		}
+		f.StartTime = &t
+	}
+	if v := strings.TrimSpace(c.Query("end_date")); v != "" {
+		t, err := timezone.ParseInUserLocation("2006-01-02", v, userTZ)
+		if err != nil {
+			response.BadRequest(c, "Invalid end_date format, use YYYY-MM-DD")
+			return f, false
+		}
+		t = t.AddDate(0, 0, 1)
+		f.EndTime = &t
+	}
+	return f, true
 }
 
 type IntegrationUserHandler struct {

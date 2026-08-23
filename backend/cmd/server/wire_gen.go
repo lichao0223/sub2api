@@ -310,7 +310,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	paymentWebhookHandler := handler.NewPaymentWebhookHandler(paymentService, registry)
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	externalUserMappingRepository := repository.NewExternalUserMappingRepository(client)
-	externalUserService := service.NewExternalUserService(adminService, apiKeyService, externalUserMappingRepository)
+	externalUserService := service.NewExternalUserService(adminService, apiKeyService, externalUserMappingRepository, subscriptionService, usageService)
 	integrationUserHandler := handler.ProvideIntegrationUserHandler(externalUserService)
 	integrationHandlers := handler.ProvideIntegrationHandlers(integrationUserHandler)
 	modelPlazaHandler := handler.NewModelPlazaHandler(channelService, apiKeyService, settingService)

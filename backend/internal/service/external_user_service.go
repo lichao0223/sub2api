@@ -8,6 +8,7 @@ import (
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 )
 
 const (
@@ -72,22 +73,73 @@ type externalUserAPIKeyPort interface {
 	RotateUserKeys(ctx context.Context, userID int64) ([]APIKey, error)
 }
 
+type externalUserSubscriptionPort interface {
+	ListUserSubscriptions(ctx context.Context, userID int64) ([]UserSubscription, error)
+}
+
+type externalUserUsagePort interface {
+	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error)
+}
+
 type ExternalUserService struct {
-	adminService  externalUserAdminPort
-	apiKeyService externalUserAPIKeyPort
-	mappingRepo   ExternalUserMappingRepository
+	adminService        externalUserAdminPort
+	apiKeyService       externalUserAPIKeyPort
+	mappingRepo         ExternalUserMappingRepository
+	subscriptionService externalUserSubscriptionPort
+	usageService        externalUserUsagePort
 }
 
 func NewExternalUserService(
 	adminService AdminService,
 	apiKeyService *APIKeyService,
 	mappingRepo ExternalUserMappingRepository,
+	subscriptionService externalUserSubscriptionPort,
+	usageService externalUserUsagePort,
 ) *ExternalUserService {
 	return &ExternalUserService{
-		adminService:  adminService,
-		apiKeyService: apiKeyService,
-		mappingRepo:   mappingRepo,
+		adminService:        adminService,
+		apiKeyService:       apiKeyService,
+		mappingRepo:         mappingRepo,
+		subscriptionService: subscriptionService,
+		usageService:        usageService,
 	}
+}
+
+func (s *ExternalUserService) ListSubscriptionsByExternalID(ctx context.Context, externalUserID string) ([]UserSubscription, error) {
+	mapping, err := s.mappingRepo.GetByExternalUserID(ctx, strings.TrimSpace(externalUserID))
+	if err != nil {
+		if errors.Is(err, ErrExternalUserMappingNotFound) {
+			return nil, err
+		}
+		return nil, ErrExternalUserInternal.WithCause(err)
+	}
+	if s.subscriptionService == nil {
+		return nil, ErrExternalUserInternal
+	}
+	subs, err := s.subscriptionService.ListUserSubscriptions(ctx, mapping.UserID)
+	if err != nil {
+		return nil, ErrExternalUserInternal.WithCause(err)
+	}
+	return subs, nil
+}
+
+func (s *ExternalUserService) ListUsageByExternalID(ctx context.Context, externalUserID string, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {
+	mapping, err := s.mappingRepo.GetByExternalUserID(ctx, strings.TrimSpace(externalUserID))
+	if err != nil {
+		if errors.Is(err, ErrExternalUserMappingNotFound) {
+			return nil, nil, err
+		}
+		return nil, nil, ErrExternalUserInternal.WithCause(err)
+	}
+	if s.usageService == nil {
+		return nil, nil, ErrExternalUserInternal
+	}
+	filters.UserID = mapping.UserID
+	logs, result, err := s.usageService.ListWithFilters(ctx, params, filters)
+	if err != nil {
+		return nil, nil, ErrExternalUserInternal.WithCause(err)
+	}
+	return logs, result, nil
 }
 
 type ExternalUserInput struct {

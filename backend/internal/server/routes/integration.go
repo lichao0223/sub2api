@@ -21,6 +21,8 @@ func RegisterIntegrationRoutes(
 		{
 			users.POST("", h.Integration.User.Create)
 			users.DELETE("", h.Integration.User.DeleteAll)
+			users.GET("/:external_user_id/subscriptions", h.Integration.User.ListSubscriptions)
+			users.GET("/:external_user_id/usage", h.Integration.User.ListUsage)
 			users.DELETE("/:external_user_id", h.Integration.User.DeleteByExternalID)
 			users.POST("/:external_user_id/api-keys/rotate", h.Integration.User.RotateAPIKeys)
 			users.POST("/sync", h.Integration.User.Sync)
