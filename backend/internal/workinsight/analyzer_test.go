@@ -216,6 +216,15 @@ func TestParseAnalyzerResponseAcceptsSummaryArrayAndStringSampleIDs(t *testing.T
 	require.Equal(t, []int64{1}, result.RepresentativeItems[0].SourceSampleIDs)
 }
 
+func TestParseAnalyzerResponseNormalizesRepresentativeStringFields(t *testing.T) {
+	content := `{"work_summary":"咨询故障状态。","task_categories":["其他"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":[],"representative_items":[{"source_sample_ids":["58786"],"summary":"咨询故障状态。","task_categories":"其他","explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
+	raw := []byte(`{"choices":[{"message":{"content":` + strconv.Quote(content) + `},"finish_reason":"stop"}]}`)
+
+	result, _, _, err := parseAnalyzerResponse(raw, []analysisInput{{ID: 58786, Text: "咨询故障状态"}})
+	require.NoError(t, err)
+	require.Equal(t, []string{"其他"}, result.RepresentativeItems[0].TaskCategories)
+}
+
 func TestParseAnalyzerResponseReportsTruncatedOutput(t *testing.T) {
 	_, _, _, err := parseAnalyzerResponse([]byte(`{"choices":[{"message":{"content":"{\\\"work_summary\\\":"},"finish_reason":"length"}]}`), nil)
 	require.EqualError(t, err, "analyzer output truncated")

@@ -539,6 +539,17 @@ func normalizeAnalyzerResult(raw json.RawMessage) (json.RawMessage, error) {
 	var representativeItems []map[string]json.RawMessage
 	if value, ok := object["representative_items"]; ok && json.Unmarshal(value, &representativeItems) == nil {
 		for _, item := range representativeItems {
+			for _, field := range []string{"task_categories", "explicit_projects", "explicit_modules"} {
+				if value, ok := item[field]; ok {
+					var values []string
+					if json.Unmarshal(value, &values) != nil {
+						var single string
+						if json.Unmarshal(value, &single) == nil && strings.TrimSpace(single) != "" {
+							item[field], _ = json.Marshal([]string{strings.TrimSpace(single)})
+						}
+					}
+				}
+			}
 			var values []json.RawMessage
 			if json.Unmarshal(item["source_sample_ids"], &values) != nil {
 				continue
