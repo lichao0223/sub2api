@@ -4,6 +4,7 @@
       <header class="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div role="tablist" aria-label="AI 使用洞察" class="tabs inline-flex">
           <button id="work-insight-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'insights' }" :aria-selected="tab === 'insights'" :tabindex="tab === 'insights' ? 0 : -1" aria-controls="work-insight-panel" @click="tab = 'insights'">洞察分析</button>
+          <button id="work-alert-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'alerts' }" :aria-selected="tab === 'alerts'" :tabindex="tab === 'alerts' ? 0 : -1" aria-controls="work-alert-panel" @click="tab = 'alerts'">使用预警</button>
           <button id="work-config-tab" role="tab" type="button" class="tab" :class="{ 'tab-active': tab === 'config' }" :aria-selected="tab === 'config'" :tabindex="tab === 'config' ? 0 : -1" aria-controls="work-config-panel" @click="tab = 'config'">运行配置</button>
         </div>
         <div class="flex gap-2"><button type="button" class="btn btn-secondary" data-test="open-logs" :disabled="logsLoading" @click="openLogs">采样与分析日志</button><button type="button" class="btn btn-secondary" :disabled="loading" @click="refresh">刷新数据</button></div>
@@ -49,6 +50,11 @@
         </section>
       </section>
 
+      <section v-show="tab === 'alerts'" id="work-alert-panel" role="tabpanel" aria-labelledby="work-alert-tab" class="space-y-5">
+        <section class="card p-4"><form class="flex flex-wrap items-end gap-3" @submit.prevent="searchAlerts"><label class="field"><span>开始日期</span><input v-model="alertStartDate" type="date" class="input" /></label><label class="field"><span>结束日期</span><input v-model="alertEndDate" type="date" class="input" /></label><button type="submit" class="btn btn-primary">查询预警</button><span class="text-xs text-gray-500">当前阈值：输入 Token &gt; {{ formatNumber(draft?.usage_alert_input_tokens ?? 100000) }}</span></form></section>
+        <section class="card overflow-hidden"><div class="border-b border-gray-200 px-5 py-4 dark:border-dark-700"><h2 class="font-semibold text-gray-950 dark:text-white">异常用户</h2><p class="mt-1 text-xs text-gray-500">每次请求的输入 Token 超过阈值即计为一次预警，数据直接来自使用记录。</p></div><DataTable :columns="alertColumns" :data="alertPage.items" :loading="alertsLoading" row-key="user_id"><template #cell-user="{ row }"><div><strong>{{ row.username || `用户 ${row.user_id}` }}</strong><p class="text-xs text-gray-400">{{ row.email || `ID ${row.user_id}` }}</p></div></template><template #cell-count="{ row }"><strong>{{ formatNumber(row.count) }}</strong> 次</template><template #cell-first_at="{ row }">{{ formatDateTime(row.first_at) }}</template><template #cell-latest_at="{ row }">{{ formatDateTime(row.latest_at) }}</template><template #cell-max_input_tokens="{ row }">{{ formatNumber(row.max_input_tokens) }}</template></DataTable><Pagination :total="alertPage.total" :page="alertPage.page" :page-size="alertPage.page_size" @update:page="changeAlertPage" @update:page-size="changeAlertPageSize" /></section>
+      </section>
+
       <section v-if="draft" v-show="tab === 'config'" id="work-config-panel" role="tabpanel" aria-labelledby="work-config-tab" class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div class="space-y-5">
           <ConfigCard title="采样开关" description="控制新的业务请求是否进入异步采样队列">
@@ -57,6 +63,10 @@
               <NumberField v-model="draft.sample_rate" label="请求采样率" suffix="%" :min="0" :max="100" />
               <p class="mt-2 text-xs text-gray-500">每个新会话的首个请求必定采样，后续请求按此比例采样；默认 20%。</p>
             </div>
+          </ConfigCard>
+
+          <ConfigCard title="使用预警" description="从使用记录中找出单次输入 Token 超过阈值的用户，历史记录无需重建">
+            <div class="form-grid"><label class="flex items-center gap-3"><Toggle v-model="draft.usage_alert_enabled" aria-label="启用使用预警" /><span><strong>启用使用预警</strong><small>仅影响预警列表，不影响请求处理</small></span></label><NumberField v-model="draft.usage_alert_input_tokens" label="单次输入 Token 阈值" suffix="Token" :min="1" :max="1000000000" /></div>
           </ConfigCard>
 
           <ConfigCard title="采样限制与排除" description="按用户活跃会话采样，同一用户的多个 API Key 共享状态">
@@ -250,7 +260,7 @@ import type { AnalyzerAccount, BatchSummary, DailyInsight, DailyInsightDetail, D
 const ConfigCard = defineComponent({ props: { title: { type: String, required: true }, description: { type: String, required: true } }, setup: (props, { slots }) => () => h('section', { class: 'card p-5' }, [h('div', { class: 'mb-5' }, [h('h2', { class: 'font-semibold text-gray-950 dark:text-white' }, props.title), h('p', { class: 'mt-1 text-xs text-gray-500' }, props.description)]), slots.default?.()]) })
 const NumberField = defineComponent({ props: { modelValue: { type: Number, default: 0 }, label: { type: String, required: true }, suffix: { type: String, default: '' }, min: { type: Number, default: 0 }, max: { type: Number, default: undefined } }, emits: ['update:modelValue'], setup: (props, { emit }) => () => h('label', { class: 'field' }, [h('span', props.label), h('div', { class: 'relative' }, [h('input', { type: 'number', min: props.min, max: props.max, value: props.modelValue ?? 0, class: 'input w-full pr-16', onInput: (event: Event) => emit('update:modelValue', Number((event.target as HTMLInputElement).value)) }), props.suffix && h('em', { class: 'pointer-events-none absolute inset-y-0 right-3 flex items-center text-xs not-italic text-gray-400' }, props.suffix)])]) })
 
-const tab = ref<'insights' | 'config'>('insights')
+const tab = ref<'insights' | 'alerts' | 'config'>('insights')
 const loading = ref(false)
 const saving = ref(false)
 const probing = ref(false)
@@ -270,6 +280,10 @@ const analyzerAccounts = ref<AnalyzerAccount[]>([])
 const savedConfig = ref<WorkInsightConfig | null>(null)
 const draft = ref<WorkInsightConfig | null>(null)
 const page = reactive<UserInsightRankingPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+const alertPage = reactive<import('./types').UsageAlertPage>({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
+const alertsLoading = ref(false)
+const alertStartDate = ref(todayISO())
+const alertEndDate = ref(todayISO())
 function todayISO(): string {
   const date = new Date()
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -299,6 +313,10 @@ const columns: Column[] = [
   { key: 'rank', label: '排名' }, { key: 'user', label: '用户' }, { key: 'usage', label: 'Token 用量' },
   { key: 'sample_count', label: '采样数' }, { key: 'coverage', label: '会话覆盖' }, { key: 'days', label: '洞察日期' },
   { key: 'summary', label: '最新工作摘要' }, { key: 'status', label: '状态' },
+]
+const alertColumns: Column[] = [
+  { key: 'user', label: '用户' }, { key: 'count', label: '预警次数' }, { key: 'first_at', label: '首次发生' },
+  { key: 'latest_at', label: '最近发生' }, { key: 'max_input_tokens', label: '单次最高输入 Token' },
 ]
 const metrics = computed(() => {
   const eligible = overview.value?.active_sessions ?? 0
@@ -365,13 +383,17 @@ async function loadConfig() { const value = await api.getConfig(); savedConfig.v
 async function loadRuntime() { runtime.value = await api.getRuntime() }
 async function loadDaily() { Object.assign(page, await api.listRanking(appliedFilters.value, page.page, page.page_size)) }
 async function loadOverview() { overview.value = await api.getOverview(appliedFilters.value) }
+async function loadAlerts() { Object.assign(alertPage, await api.listUsageAlerts({ start_date: alertStartDate.value, end_date: alertEndDate.value, user_name: '', task_category: '', project_name: '' }, alertPage.page, alertPage.page_size)) }
 async function refresh() {
   loading.value = true
-  try { const [, , , , accounts] = await Promise.all([loadConfig(), loadRuntime(), loadDaily(), loadOverview(), api.listAnalyzerAccounts()]); analyzerAccounts.value = accounts; message.value = '' }
+  try { const [, , , , accounts] = await Promise.all([loadConfig(), loadRuntime(), loadDaily(), loadOverview(), api.listAnalyzerAccounts(), loadAlerts()]); analyzerAccounts.value = accounts; message.value = '' }
   catch (error) { showMessage(error instanceof Error ? error.message : '数据加载失败', true) }
   finally { loading.value = false }
 }
 async function search() { appliedFilters.value = { ...filters }; page.page = 1; loading.value = true; try { await Promise.all([loadDaily(), loadOverview()]) } catch { showMessage('洞察列表加载失败', true) } finally { loading.value = false } }
+async function searchAlerts() { alertPage.page = 1; alertsLoading.value = true; try { await loadAlerts() } catch { showMessage('使用预警加载失败', true) } finally { alertsLoading.value = false } }
+async function changeAlertPage(value: number) { alertPage.page = value; await loadAlerts() }
+async function changeAlertPageSize(value: number) { alertPage.page_size = value; alertPage.page = 1; await loadAlerts() }
 async function changePage(value: number) { page.page = value; await loadDaily() }
 async function changePageSize(value: number) { page.page_size = value; page.page = 1; await loadDaily() }
 async function openDetail(row: UserInsightRanking) { detail.value = null; showAllSamples.value = false; detailOpen.value = true; try { detail.value = await api.getDaily(row.latest_insight_id) } catch { detailOpen.value = false; showMessage('洞察详情加载失败', true) } }

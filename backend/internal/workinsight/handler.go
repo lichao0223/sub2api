@@ -218,6 +218,28 @@ func (h *AdminHandler) GetOverview(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *AdminHandler) ListUsageAlerts(c *gin.Context) {
+	page, size := response.ParsePagination(c)
+	filter, ok := parseDailyFilter(c)
+	if !ok {
+		return
+	}
+	cfg := h.service.PublicConfig()
+	if !cfg.UsageAlertEnabled {
+		response.Paginated(c, []UsageAlert{}, 0, page, size)
+		return
+	}
+	if !filter.End.IsZero() {
+		filter.End = filter.End.AddDate(0, 0, 1)
+	}
+	items, total, err := h.service.repo.ListUsageAlerts(c.Request.Context(), cfg.UsageAlertInputTokens, filter.Start, filter.End, page, size)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Paginated(c, items, total, page, size)
+}
+
 func parseDailyFilter(c *gin.Context) (DailyFilter, bool) {
 	search := c.Query("user_name")
 	if search == "" {

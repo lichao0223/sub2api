@@ -5,6 +5,8 @@ export const TASK_CATEGORIES = [
 
 export interface WorkInsightConfig {
   enabled: boolean
+  usage_alert_enabled: boolean
+  usage_alert_input_tokens: number
   config_version: number
   sample_rate: number
   session_idle_minutes: number
@@ -42,6 +44,16 @@ export interface WorkInsightConfig {
   analyzer_token_set: boolean
   updated_at: string
   updated_by: number
+}
+
+export interface UsageAlert {
+  user_id: number
+  username: string
+  email: string
+  count: number
+  first_at: string
+  latest_at: string
+  max_input_tokens: number
 }
 
 export interface WorkInsightRuntime {
@@ -106,6 +118,8 @@ export interface LogPage<T> {
   page_size: number
   pages: number
 }
+
+export type UsageAlertPage = LogPage<UsageAlert>
 
 export interface ProbeResult {
   ok: boolean

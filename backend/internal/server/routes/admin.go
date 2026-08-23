@@ -156,6 +156,7 @@ func registerWorkInsightRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		insights.DELETE("/batches/:id", h.Admin.WorkInsight.DeleteFailedBatch)
 		insights.DELETE("/logs", h.Admin.WorkInsight.ClearLogs)
 		insights.GET("/overview", h.Admin.WorkInsight.GetOverview)
+		insights.GET("/alerts", h.Admin.WorkInsight.ListUsageAlerts)
 		insights.GET("/ranking", h.Admin.WorkInsight.ListRanking)
 		insights.GET("/daily", h.Admin.WorkInsight.ListDaily)
 		insights.GET("/daily/:id", h.Admin.WorkInsight.GetDaily)

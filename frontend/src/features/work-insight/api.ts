@@ -12,6 +12,7 @@ import type {
   BatchSummary,
   LogPage,
   UserInsightRankingPage,
+  UsageAlertPage,
 } from './types'
 
 const basePath = '/admin/ai-work-insights'
@@ -98,6 +99,12 @@ export async function getOverview(filters: DailyInsightFilters): Promise<WorkIns
   return data
 }
 
+export async function listUsageAlerts(filters: DailyInsightFilters, page: number, pageSize: number): Promise<UsageAlertPage> {
+  const params = Object.fromEntries(Object.entries({ start_date: filters.start_date, end_date: filters.end_date, page, page_size: pageSize }).filter(([, value]) => value !== ''))
+  const { data } = await apiClient.get<UsageAlertPage>(`${basePath}/alerts`, { params })
+  return data
+}
+
 export async function getDaily(id: number): Promise<DailyInsightDetail> {
   const { data } = await apiClient.get<DailyInsightDetail>(`${basePath}/daily/${id}`)
   return data
@@ -108,4 +115,4 @@ export async function listRepresentativeItems(id: number, page: number, pageSize
   return data
 }
 
-export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, retryBatch, retryAllBatches, stopBatch, deleteBatch, deleteAllFailedBatches, listAnalyzerAccounts, probe, listRanking, getOverview, getDaily, listRepresentativeItems }
+export default { getConfig, updateConfig, getRuntime, analyzeNow, listSamples, listBatches, clearLogs, retryBatch, retryAllBatches, stopBatch, deleteBatch, deleteAllFailedBatches, listAnalyzerAccounts, probe, listRanking, listUsageAlerts, getOverview, getDaily, listRepresentativeItems }

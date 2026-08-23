@@ -54,6 +54,8 @@ var TaskCategories = []string{
 
 type Config struct {
 	Enabled                bool      `json:"enabled"`
+	UsageAlertEnabled      bool      `json:"usage_alert_enabled"`
+	UsageAlertInputTokens  int       `json:"usage_alert_input_tokens"`
 	ConfigVersion          int64     `json:"config_version"`
 	SampleRate             int       `json:"sample_rate"`
 	SessionIdleMinutes     int       `json:"session_idle_minutes"`
@@ -101,7 +103,8 @@ type storedConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		ConfigVersion: 1, SampleRate: 20, SessionIdleMinutes: 5,
-		UserDailyLimit: 5000, GlobalDailyLimit: 200000, Timezone: "Asia/Shanghai",
+		UsageAlertInputTokens: 100000,
+		UserDailyLimit:        5000, GlobalDailyLimit: 200000, Timezone: "Asia/Shanghai",
 		QueueCapacity: 10000, WorkerCount: 4, AnalysisIdleMinutes: 15,
 		AnalysisMaxWaitMinutes: 60, AnalysisTriggerMode: "hybrid", FixedIntervalMinutes: 30,
 		MaxSamplesPerBatch: 50, ContextWindowTokens: 128000, MaxInputTokens: 64000,
@@ -115,6 +118,9 @@ func DefaultConfig() Config {
 
 func (c *Config) normalize() {
 	defaults := DefaultConfig()
+	if c.UsageAlertInputTokens == 0 {
+		c.UsageAlertInputTokens = defaults.UsageAlertInputTokens
+	}
 	if c.AnalysisTriggerMode == "" {
 		c.AnalysisTriggerMode = defaults.AnalysisTriggerMode
 	}
@@ -167,6 +173,9 @@ func (c Config) validate() error {
 	}
 	if c.UserDailyLimit < 1 || c.UserDailyLimit > 100000 || c.GlobalDailyLimit < c.UserDailyLimit || c.GlobalDailyLimit > 500000 || c.QueueCapacity < 100 || c.QueueCapacity > DefaultIngressLimit {
 		return errors.New("invalid sampling limits")
+	}
+	if c.UsageAlertInputTokens < 1 || c.UsageAlertInputTokens > 1000000000 {
+		return errors.New("invalid usage alert threshold")
 	}
 	if _, err := time.LoadLocation(c.Timezone); err != nil {
 		return errors.New("invalid timezone")

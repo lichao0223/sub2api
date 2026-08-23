@@ -213,6 +213,52 @@ type Overview struct {
 	AnalyzerOutputTokens int64 `json:"analyzer_output_tokens"`
 }
 
+type UsageAlert struct {
+	UserID         int64     `json:"user_id"`
+	Username       string    `json:"username"`
+	Email          string    `json:"email"`
+	Count          int64     `json:"count"`
+	FirstAt        time.Time `json:"first_at"`
+	LatestAt       time.Time `json:"latest_at"`
+	MaxInputTokens int64     `json:"max_input_tokens"`
+}
+
+func (r *Repository) ListUsageAlerts(ctx context.Context, threshold int, start, end time.Time, page, size int) ([]UsageAlert, int64, error) {
+	if threshold < 1 {
+		return []UsageAlert{}, 0, nil
+	}
+	clauses, args := []string{"ul.input_tokens > $1", "u.role <> 'admin'"}, []any{threshold}
+	if !start.IsZero() {
+		args = append(args, start)
+		clauses = append(clauses, fmt.Sprintf("ul.created_at >= $%d", len(args)))
+	}
+	if !end.IsZero() {
+		args = append(args, end)
+		clauses = append(clauses, fmt.Sprintf("ul.created_at < $%d", len(args)))
+	}
+	where := strings.Join(clauses, " AND ")
+	var total int64
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM (SELECT ul.user_id FROM usage_logs ul JOIN users u ON u.id=ul.user_id WHERE `+where+` GROUP BY ul.user_id) x`, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	args = append(args, size, (page-1)*size)
+	rows, err := r.db.QueryContext(ctx, `SELECT ul.user_id,COALESCE(MAX(u.username),''),COALESCE(MAX(u.email),''),COUNT(*),MIN(ul.created_at),MAX(ul.created_at),MAX(ul.input_tokens)
+		FROM usage_logs ul JOIN users u ON u.id=ul.user_id WHERE `+where+` GROUP BY ul.user_id ORDER BY MAX(ul.created_at) DESC LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	items := make([]UsageAlert, 0, size)
+	for rows.Next() {
+		var item UsageAlert
+		if err := rows.Scan(&item.UserID, &item.Username, &item.Email, &item.Count, &item.FirstAt, &item.LatestAt, &item.MaxInputTokens); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, item)
+	}
+	return items, total, rows.Err()
+}
+
 type DailyInsight struct {
 	ID                          int64           `json:"id"`
 	UserID                      *int64          `json:"user_id"`
