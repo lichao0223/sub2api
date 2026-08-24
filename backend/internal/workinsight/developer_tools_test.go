@@ -6,7 +6,7 @@ func TestClassifyDeveloperTool(t *testing.T) {
 	tests := map[string]string{
 		"cursor/1.2.3":                         "Cursor",
 		"claude-code/2.1.7":                    "Claude Code",
-		"claude-cli/2.1.241 (external, cli)":  "Claude Code",
+		"claude-cli/2.1.241 (external, cli)":   "Claude Code",
 		"OpenAI-Codex-CLI/0.1":                 "Codex CLI",
 		"codex_cli_rs/0.40.0":                  "Codex CLI",
 		"ChatGPT Desktop/1.0":                  "Codex Desktop",
