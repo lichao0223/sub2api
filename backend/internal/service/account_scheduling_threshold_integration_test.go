@@ -134,3 +134,34 @@ func TestOpenAIGatewayService_ListSchedulableAccounts_FiltersThresholdBlockedAcc
 	require.Equal(t, int64(4102), accounts[0].ID)
 	require.Equal(t, 1, accountRepo.tempCalls)
 }
+
+func TestGatewayService_AnthropicSchedulingWindowFiltersCandidates(t *testing.T) {
+	repo := &thresholdSelectionAccountRepoStub{
+		accounts: []Account{{
+			ID: 5101, Platform: PlatformAnthropic, Status: StatusActive, Schedulable: true,
+			Extra: map[string]any{SchedulingScheduleExtraKey: map[string]any{
+				"enabled": true, "timezone": "UTC", "weekly_windows": map[string]any{},
+			}},
+		}},
+	}
+	svc := &GatewayService{accountRepo: repo, cfg: &config.Config{}}
+	accounts, useMixed, err := svc.listSchedulableAccounts(context.Background(), nil, PlatformAnthropic, true)
+	require.NoError(t, err)
+	require.False(t, useMixed)
+	require.Empty(t, accounts)
+}
+
+func TestOpenAIGatewayService_SchedulingWindowFiltersCandidates(t *testing.T) {
+	repo := &thresholdSelectionAccountRepoStub{
+		accounts: []Account{{
+			ID: 5102, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true,
+			Extra: map[string]any{SchedulingScheduleExtraKey: map[string]any{
+				"enabled": true, "timezone": "UTC", "weekly_windows": map[string]any{},
+			}},
+		}},
+	}
+	svc := &OpenAIGatewayService{accountRepo: repo, cfg: &config.Config{}}
+	accounts, err := svc.listSchedulableAccounts(context.Background(), nil, PlatformOpenAI)
+	require.NoError(t, err)
+	require.Empty(t, accounts)
+}

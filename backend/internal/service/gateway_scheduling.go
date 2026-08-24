@@ -996,6 +996,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
+			accounts = s.filterAccountsBySchedulingWindow(accounts)
 			accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
 			if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 				accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
@@ -1061,6 +1062,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 					"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 			}
 		}
+		filtered = s.filterAccountsBySchedulingWindow(filtered)
 		return s.filterAccountsBySchedulingThreshold(ctx, filtered), useMixed, nil
 	}
 
@@ -1096,11 +1098,30 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 				"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 		}
 	}
+	accounts = s.filterAccountsBySchedulingWindow(accounts)
 	accounts = s.filterAccountsBySchedulingThreshold(ctx, accounts)
 	if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 		accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
 	}
 	return accounts, useMixed, nil
+}
+
+func (s *GatewayService) filterAccountsBySchedulingWindow(accounts []Account) []Account {
+	return filterAccountsBySchedulingWindow(accounts)
+}
+
+func filterAccountsBySchedulingWindow(accounts []Account) []Account {
+	if len(accounts) == 0 {
+		return accounts
+	}
+	now := time.Now()
+	filtered := make([]Account, 0, len(accounts))
+	for i := range accounts {
+		if accounts[i].IsWithinSchedulingWindow(now) {
+			filtered = append(filtered, accounts[i])
+		}
+	}
+	return filtered
 }
 
 // IsSingleAntigravityAccountGroup 检查指定分组是否只有一个 antigravity 平台的可调度账号。
@@ -1482,6 +1503,9 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 	}
 	if err != nil || account == nil {
 		return account, err
+	}
+	if !account.IsWithinSchedulingWindow(time.Now()) {
+		return nil, nil
 	}
 	if s.isAccountBlockedBySchedulingThreshold(ctx, account) {
 		return nil, nil

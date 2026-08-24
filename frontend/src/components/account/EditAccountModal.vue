@@ -5262,6 +5262,12 @@ const handleSubmit = async () => {
       updatePayload.credentials = credentials
     }
 
+    // Keep the scheduling editor value after platform-specific extra builders run.
+    const finalExtra = { ...((updatePayload.extra as Record<string, unknown>) || {}) }
+    if (schedulingSchedule.value) finalExtra.scheduling_schedule = schedulingSchedule.value
+    else delete finalExtra.scheduling_schedule
+    updatePayload.extra = finalExtra
+
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)
     })
