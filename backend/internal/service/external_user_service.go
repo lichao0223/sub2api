@@ -73,28 +73,20 @@ type externalUserAPIKeyPort interface {
 	RotateUserKeys(ctx context.Context, userID int64) ([]APIKey, error)
 }
 
-type externalUserSubscriptionPort interface {
-	ListUserSubscriptions(ctx context.Context, userID int64) ([]UserSubscription, error)
-}
-
-type externalUserUsagePort interface {
-	ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error)
-}
-
 type ExternalUserService struct {
 	adminService        externalUserAdminPort
 	apiKeyService       externalUserAPIKeyPort
 	mappingRepo         ExternalUserMappingRepository
-	subscriptionService externalUserSubscriptionPort
-	usageService        externalUserUsagePort
+	subscriptionService *SubscriptionService
+	usageService        UsageLogRepository
 }
 
 func NewExternalUserService(
 	adminService AdminService,
 	apiKeyService *APIKeyService,
 	mappingRepo ExternalUserMappingRepository,
-	subscriptionService externalUserSubscriptionPort,
-	usageService externalUserUsagePort,
+	subscriptionService *SubscriptionService,
+	usageService UsageLogRepository,
 ) *ExternalUserService {
 	return &ExternalUserService{
 		adminService:        adminService,
