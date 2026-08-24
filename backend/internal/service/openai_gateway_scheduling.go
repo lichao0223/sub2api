@@ -434,7 +434,7 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 		return "model_not_supported"
 	}
 	if isMultimodalRequest(ctx) && !account.acceptsMultimodalRequest(requestedModel) {
-		return false
+		return "multimodal_unsupported"
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
 		if account.IsGrok() && requiredCapability == OpenAIEndpointCapabilityGrokMediaGeneration {
