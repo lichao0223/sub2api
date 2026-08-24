@@ -37,6 +37,7 @@ func ProvideAdminHandlers(
 	userAttributeHandler *admin.UserAttributeHandler,
 	errorPassthroughHandler *admin.ErrorPassthroughHandler,
 	tlsFingerprintProfileHandler *admin.TLSFingerprintProfileHandler,
+	pluginHandler *admin.PluginHandler,
 	apiKeyHandler *admin.AdminAPIKeyHandler,
 	scheduledTestHandler *admin.ScheduledTestHandler,
 	channelHandler *admin.ChannelHandler,
@@ -80,6 +81,7 @@ func ProvideAdminHandlers(
 		UserAttribute:          userAttributeHandler,
 		ErrorPassthrough:       errorPassthroughHandler,
 		TLSFingerprintProfile:  tlsFingerprintProfileHandler,
+		Plugin:                 pluginHandler,
 		APIKey:                 apiKeyHandler,
 		ScheduledTest:          scheduledTestHandler,
 		Channel:                channelHandler,
@@ -123,6 +125,7 @@ func ProvideGatewayHandler(
 func ProvideOpenAIGatewayHandler(
 	gatewayService *service.OpenAIGatewayService,
 	multimodalGatewayService *service.GatewayService,
+	pluginManager *service.PluginManager,
 	concurrencyService *service.ConcurrencyService,
 	billingCacheService *service.BillingCacheService,
 	apiKeyService *service.APIKeyService,
@@ -134,6 +137,7 @@ func ProvideOpenAIGatewayHandler(
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 ) *OpenAIGatewayHandler {
+	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
 		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
 	h.multimodalGatewayService = multimodalGatewayService
@@ -283,7 +287,8 @@ var ProviderSet = wire.NewSet(
 	admin.NewUserAttributeHandler,
 	admin.NewErrorPassthroughHandler,
 	admin.NewTLSFingerprintProfileHandler,
-	ProvideAdminAPIKeyHandler,
+	admin.NewPluginHandler,
+	admin.NewAdminAPIKeyHandler,
 	admin.NewScheduledTestHandler,
 	admin.NewChannelHandler,
 	admin.NewChannelMonitorHandler,
