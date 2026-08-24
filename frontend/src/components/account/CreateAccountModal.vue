@@ -2319,6 +2319,8 @@
         </template>
       </div>
 
+      <AccountSchedulingEditor v-model="schedulingSchedule" />
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -3773,6 +3775,7 @@ import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import AccountSchedulingEditor from '@/components/account/AccountSchedulingEditor.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
@@ -4492,6 +4495,7 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+const schedulingSchedule = ref<{ enabled: boolean; timezone: string; weekly_windows: Record<string, string[][]> } | null>(null)
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
@@ -5274,6 +5278,9 @@ const buildModelProviderExtra = (base?: Record<string, unknown>): Record<string,
 
 // Helper function to create account with mixed channel warning handling
 const doCreateAccount = async (payload: CreateAccountRequest) => {
+  if (schedulingSchedule.value) {
+    payload = { ...payload, extra: { ...(payload.extra || {}), scheduling_schedule: schedulingSchedule.value } }
+  }
   const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
     await submitCreateAccount(payload)
   })
@@ -5705,6 +5712,7 @@ const createAccountAndFinish = async (
       finalExtra = quotaExtra
     }
   }
+  if (schedulingSchedule.value) finalExtra = { ...(finalExtra || {}), scheduling_schedule: schedulingSchedule.value }
   if (platform === 'openai') {
     if (type === 'apikey') {
       applyOpenAIEndpointCapabilities(credentials)

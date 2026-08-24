@@ -1302,6 +1302,8 @@
         </div>
       </div>
 
+      <AccountSchedulingEditor v-model="schedulingSchedule" />
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -2811,6 +2813,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import AccountSchedulingEditor from '@/components/account/AccountSchedulingEditor.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
@@ -3523,6 +3526,10 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+const schedulingSchedule = ref<{ enabled: boolean; timezone: string; weekly_windows: Record<string, string[][]> } | null>(null)
+watch(() => props.account, (account) => {
+  schedulingSchedule.value = (account?.extra?.scheduling_schedule as { enabled: boolean; timezone: string; weekly_windows: Record<string, string[][]> } | undefined) || null
+}, { immediate: true })
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   upstreamBillingRateSyncEnabled.value = enabled
@@ -4555,6 +4562,10 @@ const handleSubmit = async () => {
   }
 
   const updatePayload: Record<string, unknown> = { ...form }
+  const scheduleExtra = { ...((props.account.extra as Record<string, unknown>) || {}) }
+  if (schedulingSchedule.value) scheduleExtra.scheduling_schedule = schedulingSchedule.value
+  else delete scheduleExtra.scheduling_schedule
+  updatePayload.extra = scheduleExtra
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {

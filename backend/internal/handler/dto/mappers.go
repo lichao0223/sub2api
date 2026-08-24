@@ -232,6 +232,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 	}
 	redactedCreds, credsStatus := RedactCredentials(a.Credentials)
 	extra := redactAccountManagedExtra(a.Extra)
+	now := time.Now()
 	var ollamaCloudUsage *service.OllamaCloudUsageState
 	if state := service.OllamaCloudUsageStateFromAccount(a); state.Eligible {
 		ollamaCloudUsage = state
@@ -261,6 +262,9 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		CreatedAt:               a.CreatedAt,
 		UpdatedAt:               a.UpdatedAt,
 		Schedulable:             a.Schedulable,
+		CurrentlySchedulable:    a.IsSchedulable(),
+		ScheduleStatus:          a.ScheduleStatus(now),
+		NextScheduleStart:       a.NextSchedulingWindowStart(now),
 		RateLimitedAt:           a.RateLimitedAt,
 		RateLimitResetAt:        a.RateLimitResetAt,
 		OverloadUntil:           a.OverloadUntil,
@@ -272,6 +276,9 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		GroupIDs:                a.GroupIDs,
 		ParentAccountID:         a.ParentAccountID,
 		QuotaDimension:          a.QuotaDimension,
+	}
+	if schedule, err := a.SchedulingSchedule(); err == nil && schedule != nil {
+		out.ScheduleTimezone = schedule.Timezone
 	}
 
 	// 提取 5h 窗口费用控制和会话数量控制配置（仅 Anthropic OAuth/SetupToken 账号有效）
