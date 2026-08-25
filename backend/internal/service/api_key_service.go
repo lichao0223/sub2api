@@ -174,9 +174,9 @@ func (s *APIKeyService) ListGroupAPIKeyCandidates(ctx context.Context, groupID i
 	if group.IsSubscriptionType() {
 		filters.SubscriptionGroupID = groupID
 	}
-	users, pageResult, err := s.userRepo.ListWithFilters(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize}, filters)
+	users, err := s.listAllUsers(ctx, filters)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("list batch create candidates: %w", err)
 	}
 	result := make([]APIKeyBatchCandidate, 0, len(users))
 	for _, user := range users {
@@ -184,9 +184,20 @@ func (s *APIKeyService) ListGroupAPIKeyCandidates(ctx context.Context, groupID i
 		if err != nil {
 			return nil, 0, err
 		}
-		result = append(result, APIKeyBatchCandidate{User: user, HasAPIKey: len(keys) > 0})
+		if len(keys) == 0 {
+			result = append(result, APIKeyBatchCandidate{User: user})
+		}
 	}
-	return result, pageResult.Total, nil
+	pageResult := apiKeyPaginationResult(int64(len(result)), pagination.PaginationParams{Page: page, PageSize: pageSize})
+	start := (pageResult.Page - 1) * pageResult.PageSize
+	if start >= len(result) {
+		return []APIKeyBatchCandidate{}, int64(len(result)), nil
+	}
+	end := start + pageResult.PageSize
+	if end > len(result) {
+		end = len(result)
+	}
+	return result[start:end], int64(len(result)), nil
 }
 
 func (s *APIKeyService) listAllByUserID(ctx context.Context, userID, groupID int64) ([]APIKey, error) {
