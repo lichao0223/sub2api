@@ -1,6 +1,7 @@
 package service
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -94,6 +95,27 @@ func TestSchedulingScheduleValidationAndNextStart(t *testing.T) {
 	utcMorning := time.Date(2026, 8, 24, 0, 0, 0, 0, time.UTC)
 	if !tokyo.IsWithin(utcMorning) {
 		t.Fatal("timezone conversion should evaluate in the configured location")
+	}
+}
+
+func TestSchedulingScheduleMidnightEndDoesNotOverlapNextMorning(t *testing.T) {
+	windows := map[string]any{}
+	for day := 1; day <= 5; day++ {
+		windows[fmt.Sprint(day)] = []any{
+			[]any{"09:00", "12:00"},
+			[]any{"14:00", "18:00"},
+			[]any{"22:00", "00:00"},
+			[]any{"00:00", "08:00"},
+		}
+	}
+	schedule, err := ParseSchedulingSchedule(scheduleExtra(true, "Asia/Shanghai", windows))
+	if err != nil {
+		t.Fatal(err)
+	}
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	at, _ := time.ParseInLocation("2006-01-02 15:04", "2026-08-25 15:22", loc)
+	if !schedule.IsWithin(at) {
+		t.Fatal("Tuesday afternoon should be within the configured window")
 	}
 }
 

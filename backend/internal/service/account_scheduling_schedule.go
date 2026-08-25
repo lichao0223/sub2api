@@ -99,6 +99,9 @@ func (s *SchedulingSchedule) validate() error {
 	for day, windows := range s.WeeklyWindows {
 		dayNumber, _ := strconv.Atoi(day)
 		for _, pair := range windows {
+			if pair[0] == pair[1] {
+				return fmt.Errorf("scheduling weekday %s cannot use an empty window", day)
+			}
 			start, err := parseScheduleMinute(pair[0], false)
 			if err != nil {
 				return fmt.Errorf("scheduling weekday %s: %w", day, err)
@@ -106,9 +109,6 @@ func (s *SchedulingSchedule) validate() error {
 			end, err := parseScheduleMinute(pair[1], true)
 			if err != nil {
 				return fmt.Errorf("scheduling weekday %s: %w", day, err)
-			}
-			if start == end {
-				return fmt.Errorf("scheduling weekday %s cannot use an empty window", day)
 			}
 			if end < start {
 				byDay[dayNumber] = append(byDay[dayNumber], schedulingWindow{start, 1440})
@@ -130,6 +130,9 @@ func (s *SchedulingSchedule) validate() error {
 }
 
 func parseScheduleMinute(value string, allow24 bool) (int, error) {
+	if allow24 && value == "00:00" {
+		return 1440, nil
+	}
 	parts := strings.Split(value, ":")
 	if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 2 {
 		return 0, fmt.Errorf("invalid time %q", value)
