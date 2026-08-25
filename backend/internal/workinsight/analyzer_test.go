@@ -319,6 +319,17 @@ func TestValidateBatchResultDoesNotTurnAQueryIntoTroubleshooting(t *testing.T) {
 	require.Equal(t, "查询南昌天气", accurate.RepresentativeItems[0].Summary)
 }
 
+func TestValidateBatchResultAllowsInquirySummaryWithImplementationTopic(t *testing.T) {
+	result := BatchResult{
+		WorkSummary:    "- 咨询在 Fjwz 模块中实现 Excel 导入并插入数据到表中",
+		TaskCategories: []string{"咨询"},
+		EvidenceLevel:  "explicit",
+	}
+	samples := []analysisInput{{ID: 71778, Text: "咨询在 Fjwz 模块中实现 Excel 导入并插入数据到表中"}}
+	require.NoError(t, validateBatchResult(&result, samples))
+	require.Equal(t, []string{"咨询"}, result.TaskCategories)
+}
+
 func TestMergeBatchResultsDeduplicatesRepresentativeItems(t *testing.T) {
 	item := RepresentativeItem{SourceSampleIDs: []int64{1}, Summary: "整理安全规范流程", TaskCategories: []string{"文档写作"}}
 	merged := mergeBatchResults([]BatchResult{{RepresentativeItems: []RepresentativeItem{item}}, {RepresentativeItems: []RepresentativeItem{{SourceSampleIDs: []int64{2}, Summary: "整理  安全规范流程", TaskCategories: []string{"其他"}}}}})

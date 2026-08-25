@@ -23,7 +23,7 @@ func TestDefaultConfigMatchesProductContract(t *testing.T) {
 	require.Equal(t, "hybrid", cfg.AnalysisTriggerMode)
 	require.Equal(t, []string{
 		"代码开发", "问题排查", "测试用例", "接口文档", "需求分析", "方案设计", "数据分析", "SQL/报表",
-		"运维部署", "日志分析", "文档写作", "翻译润色", "会议纪要", "客服支持", "培训学习", "其他",
+		"运维部署", "日志分析", "文档写作", "翻译润色", "会议纪要", "客服支持", "培训学习", "咨询", "其他",
 	}, TaskCategories)
 }
 
