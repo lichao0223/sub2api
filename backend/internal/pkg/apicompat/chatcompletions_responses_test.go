@@ -817,6 +817,28 @@ func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testin
 	assert.Contains(t, parts[0].Text, "final answer")
 }
 
+func TestChatCompletionsToResponses_DeepSeekReasoningInputItem(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model: "deepseek-v4-flash",
+		Messages: []ChatMessage{
+			{Role: "user", Content: json.RawMessage(`"Hi"`)},
+			{Role: "assistant", ReasoningContent: "internal plan", Content: json.RawMessage(`"answer"`)},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponsesWithOptions(req, &ChatCompletionsToResponsesOptions{
+		ReasoningContentAsInputItem: true,
+	})
+	require.NoError(t, err)
+
+	var items []ResponsesInputItem
+	require.NoError(t, json.Unmarshal(resp.Input, &items))
+	require.Len(t, items, 3)
+	assert.Equal(t, "reasoning", items[1].Type)
+	assert.JSONEq(t, `[{"type":"reasoning_text","text":"internal plan"}]`, string(items[1].Content))
+	assert.Equal(t, "assistant", items[2].Role)
+}
+
 // ---------------------------------------------------------------------------
 // ResponsesToChatCompletions tests
 // ---------------------------------------------------------------------------

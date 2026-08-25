@@ -210,7 +210,13 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 	} else {
 		// Normal path: convert Chat Completions → Responses.
 		// ChatCompletionsToResponses always sets Stream=true (upstream always streams).
-		responsesReq, err = apicompat.ChatCompletionsToResponses(&chatReq)
+		conversionOptions := (*apicompat.ChatCompletionsToResponsesOptions)(nil)
+		if strings.HasPrefix(strings.ToLower(upstreamModel), "deepseek-") {
+			conversionOptions = &apicompat.ChatCompletionsToResponsesOptions{
+				ReasoningContentAsInputItem: true,
+			}
+		}
+		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptions(&chatReq, conversionOptions)
 		if err != nil {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}

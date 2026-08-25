@@ -16,7 +16,20 @@ type chatMessageContent struct {
 // true. store is always false and reasoning.encrypted_content is always
 // included so that the response translator has full context.
 func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
-	input, err := convertChatMessagesToResponsesInput(req.Messages)
+	return ChatCompletionsToResponsesWithOptions(req, nil)
+}
+
+// ChatCompletionsToResponsesOptions controls provider-specific input details.
+type ChatCompletionsToResponsesOptions struct {
+	// ReasoningContentAsInputItem preserves reasoning_content for Responses
+	// providers such as DeepSeek that require a reasoning_text input item.
+	ReasoningContentAsInputItem bool
+}
+
+// ChatCompletionsToResponsesWithOptions converts Chat Completions with optional
+// provider-specific compatibility behavior.
+func ChatCompletionsToResponsesWithOptions(req *ChatCompletionsRequest, opts *ChatCompletionsToResponsesOptions) (*ResponsesRequest, error) {
+	input, err := convertChatMessagesToResponsesInput(req.Messages, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -99,10 +112,10 @@ func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest,
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
 // array into a Responses API input items array.
-func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
+func convertChatMessagesToResponsesInput(msgs []ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
 	for _, m := range msgs {
-		items, err := chatMessageToResponsesItems(m)
+		items, err := chatMessageToResponsesItems(m, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -113,14 +126,14 @@ func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputIt
 
 // chatMessageToResponsesItems converts a single ChatMessage into one or more
 // ResponsesInputItem values.
-func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
+func chatMessageToResponsesItems(m ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	switch m.Role {
 	case "system":
 		return chatSystemToResponses(m)
 	case "user":
 		return chatUserToResponses(m)
 	case "assistant":
-		return chatAssistantToResponses(m)
+		return chatAssistantToResponses(m, opts)
 	case "tool":
 		return chatToolToResponses(m)
 	case "function":
@@ -161,11 +174,20 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 // text content and tool_calls, the text is emitted as an assistant message
 // first, then each tool_call becomes a function_call item. If the content is
 // empty/nil and there are tool_calls, only function_call items are emitted.
-func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+func chatAssistantToResponses(m ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
 	content := ""
 
-	if m.ReasoningContent != "" {
+	if m.ReasoningContent != "" && opts != nil && opts.ReasoningContentAsInputItem {
+		reasoningContent, err := json.Marshal([]map[string]string{{
+			"type": "reasoning_text",
+			"text": m.ReasoningContent,
+		}})
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, ResponsesInputItem{Type: "reasoning", Content: reasoningContent})
+	} else if m.ReasoningContent != "" {
 		content = "<thinking>" + m.ReasoningContent + "</thinking>"
 	}
 
