@@ -149,6 +149,8 @@ type CreateUserInput struct {
 	Concurrency   int
 	RPMLimit      int
 	AllowedGroups []int64
+	// SkipDefaultSubscriptions 由需要自行精确分配订阅的内部调用方使用。
+	SkipDefaultSubscriptions bool
 	// ActorAdminID 执行本次操作的管理员ID(来自JWT)，仅用于权限敏感操作的审计日志。
 	ActorAdminID int64
 }

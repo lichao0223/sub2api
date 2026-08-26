@@ -22613,7 +22613,7 @@ func (m *ExternalUserMappingMutation) APIKeyID() (r int64, exists bool) {
 // OldAPIKeyID returns the old "api_key_id" field's value of the ExternalUserMapping entity.
 // If the ExternalUserMapping object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *ExternalUserMappingMutation) OldAPIKeyID(ctx context.Context) (v int64, err error) {
+func (m *ExternalUserMappingMutation) OldAPIKeyID(ctx context.Context) (v *int64, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldAPIKeyID is only allowed on UpdateOne operations")
 	}
@@ -22627,9 +22627,22 @@ func (m *ExternalUserMappingMutation) OldAPIKeyID(ctx context.Context) (v int64,
 	return oldValue.APIKeyID, nil
 }
 
+// ClearAPIKeyID clears the value of the "api_key_id" field.
+func (m *ExternalUserMappingMutation) ClearAPIKeyID() {
+	m.api_key = nil
+	m.clearedFields[externalusermapping.FieldAPIKeyID] = struct{}{}
+}
+
+// APIKeyIDCleared returns if the "api_key_id" field was cleared in this mutation.
+func (m *ExternalUserMappingMutation) APIKeyIDCleared() bool {
+	_, ok := m.clearedFields[externalusermapping.FieldAPIKeyID]
+	return ok
+}
+
 // ResetAPIKeyID resets all changes to the "api_key_id" field.
 func (m *ExternalUserMappingMutation) ResetAPIKeyID() {
 	m.api_key = nil
+	delete(m.clearedFields, externalusermapping.FieldAPIKeyID)
 }
 
 // SetUsernameSnapshot sets the "username_snapshot" field.
@@ -22703,7 +22716,7 @@ func (m *ExternalUserMappingMutation) ClearAPIKey() {
 
 // APIKeyCleared reports if the "api_key" edge to the APIKey entity was cleared.
 func (m *ExternalUserMappingMutation) APIKeyCleared() bool {
-	return m.clearedapi_key
+	return m.APIKeyIDCleared() || m.clearedapi_key
 }
 
 // APIKeyIDs returns the "api_key" edge IDs in the mutation.
@@ -22931,6 +22944,9 @@ func (m *ExternalUserMappingMutation) ClearedFields() []string {
 	if m.FieldCleared(externalusermapping.FieldDeletedAt) {
 		fields = append(fields, externalusermapping.FieldDeletedAt)
 	}
+	if m.FieldCleared(externalusermapping.FieldAPIKeyID) {
+		fields = append(fields, externalusermapping.FieldAPIKeyID)
+	}
 	return fields
 }
 
@@ -22947,6 +22963,9 @@ func (m *ExternalUserMappingMutation) ClearField(name string) error {
 	switch name {
 	case externalusermapping.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case externalusermapping.FieldAPIKeyID:
+		m.ClearAPIKeyID()
 		return nil
 	}
 	return fmt.Errorf("unknown ExternalUserMapping nullable field %s", name)

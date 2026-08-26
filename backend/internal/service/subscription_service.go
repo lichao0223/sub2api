@@ -18,9 +18,9 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// MaxExpiresAt is the maximum allowed expiration date (year 2099)
+// MaxExpiresAt is the maximum RFC3339-compatible expiration date.
 // This prevents time.Time JSON serialization errors (RFC 3339 requires year <= 9999)
-var MaxExpiresAt = time.Date(2099, 12, 31, 23, 59, 59, 0, time.UTC)
+var MaxExpiresAt = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
 
 // MaxValidityDays is the maximum allowed validity days for subscriptions (100 years)
 const MaxValidityDays = 36500

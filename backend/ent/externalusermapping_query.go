@@ -482,7 +482,10 @@ func (_q *ExternalUserMappingQuery) loadAPIKey(ctx context.Context, query *APIKe
 	ids := make([]int64, 0, len(nodes))
 	nodeids := make(map[int64][]*ExternalUserMapping)
 	for i := range nodes {
-		fk := nodes[i].APIKeyID
+		if nodes[i].APIKeyID == nil {
+			continue
+		}
+		fk := *nodes[i].APIKeyID
 		if _, ok := nodeids[fk]; !ok {
 			ids = append(ids, fk)
 		}

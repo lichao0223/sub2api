@@ -83,6 +83,73 @@ func TestExternalUserService_Create_CreatesUserWithDefaultsAndAPIKey(t *testing.
 	require.Equal(t, "张三", mapping.UsernameSnapshot)
 }
 
+func TestExternalUserService_Create_WithoutPublicGroupCreatesUserWithoutAPIKey(t *testing.T) {
+	admin := &externalUserAdminStub{
+		groups:   []Group{{ID: 8, Name: "专属", Status: StatusActive, IsExclusive: true}},
+		nextUser: &User{ID: 101},
+	}
+	mappings := newExternalUserMappingStub()
+	svc := &ExternalUserService{adminService: admin, apiKeyService: &externalUserAPIKeyStub{}, mappingRepo: mappings}
+
+	result, err := svc.Create(context.Background(), ExternalUserInput{ExternalUserID: "u-only-exclusive", ExternalOrganizationID: "org-1", Username: "张三"})
+
+	require.NoError(t, err)
+	require.Equal(t, ExternalUserStatusCreated, result.Status)
+	require.Empty(t, result.APIKeys)
+	require.Empty(t, admin.createInputs[0].AllowedGroups)
+	mapping, err := mappings.GetByExternalUserID(context.Background(), "u-only-exclusive")
+	require.NoError(t, err)
+	require.Zero(t, mapping.APIKeyID)
+}
+
+func TestExternalUserService_Create_AssignsCompositeSubscriptionBeforeCreatingKey(t *testing.T) {
+	groupID := int64(8)
+	admin := &externalUserAdminStub{
+		groups: []Group{{
+			ID: groupID, Name: "Composite 订阅", Platform: PlatformComposite, Status: StatusActive,
+			IsExclusive: true, SubscriptionType: SubscriptionTypeSubscription,
+		}},
+		nextUser: &User{ID: 101},
+	}
+	apiKeys := &externalUserAPIKeyStub{nextKeys: []APIKey{{ID: 201, Key: "sk-composite", Status: StatusAPIKeyActive}}}
+	subscriptions := &externalUserSubscriptionStub{}
+	svc := &ExternalUserService{adminService: admin, apiKeyService: apiKeys, mappingRepo: newExternalUserMappingStub(), subscriptionService: subscriptions}
+
+	result, err := svc.Create(context.Background(), ExternalUserInput{ExternalUserID: "u-composite", ExternalOrganizationID: "org-1", Username: "张三"})
+
+	require.NoError(t, err)
+	require.Len(t, subscriptions.assignInputs, 1)
+	require.Equal(t, int64(101), subscriptions.assignInputs[0].UserID)
+	require.Equal(t, groupID, subscriptions.assignInputs[0].GroupID)
+	require.Equal(t, externalUserSubscriptionDays, subscriptions.assignInputs[0].ValidityDays)
+	require.True(t, admin.createInputs[0].SkipDefaultSubscriptions)
+	require.Equal(t, []int64{groupID}, admin.createInputs[0].AllowedGroups)
+	require.Len(t, result.APIKeys, 1)
+	require.Equal(t, "sk-composite", result.APIKeys[0].Key)
+	require.Equal(t, groupID, *result.APIKeys[0].GroupID)
+}
+
+func TestExternalUserService_Create_ExistingWithoutPublicGroupReturnsExclusiveKeys(t *testing.T) {
+	exclusiveGroupID := int64(8)
+	admin := &externalUserAdminStub{
+		groups: []Group{{ID: exclusiveGroupID, Name: "专属", Status: StatusActive, IsExclusive: true}},
+		users:  map[int64]*User{101: {ID: 101, Username: "李四"}},
+	}
+	apiKeys := &externalUserAPIKeyStub{keys: map[int64]*APIKey{
+		201: {ID: 201, UserID: 101, Key: "sk-exclusive", GroupID: &exclusiveGroupID, Group: &admin.groups[0], Status: StatusAPIKeyActive},
+	}}
+	mappings := newExternalUserMappingStub()
+	require.NoError(t, mappings.Create(context.Background(), &ExternalUserMapping{ID: 1, ExternalUserID: "existing-exclusive", ExternalOrganizationID: "org-1", UserID: 101, APIKeyID: 201}))
+	svc := &ExternalUserService{adminService: admin, apiKeyService: apiKeys, mappingRepo: mappings}
+
+	result, err := svc.Create(context.Background(), ExternalUserInput{ExternalUserID: "existing-exclusive", ExternalOrganizationID: "org-1", Username: "李四"})
+
+	require.NoError(t, err)
+	require.Equal(t, ExternalUserStatusSkipped, result.Status)
+	require.Len(t, result.APIKeys, 1)
+	require.Equal(t, "sk-exclusive", result.APIKeys[0].Key)
+}
+
 func TestExternalUserService_Create_ExistingReturnsSkippedWithAPIKey(t *testing.T) {
 	groupID := int64(7)
 	admin := &externalUserAdminStub{
@@ -360,6 +427,19 @@ type externalUserAdminStub struct {
 	deleteErr    error
 	createInputs []*CreateUserInput
 	deletedIDs   []int64
+}
+
+type externalUserSubscriptionStub struct {
+	assignInputs []AssignSubscriptionInput
+}
+
+func (s *externalUserSubscriptionStub) ListUserSubscriptions(context.Context, int64) ([]UserSubscription, error) {
+	return nil, nil
+}
+
+func (s *externalUserSubscriptionStub) AssignSubscription(_ context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
+	s.assignInputs = append(s.assignInputs, *input)
+	return &UserSubscription{UserID: input.UserID, GroupID: input.GroupID}, nil
 }
 
 func (s *externalUserAdminStub) CreateUser(_ context.Context, input *CreateUserInput) (*User, error) {

@@ -153,7 +153,9 @@ func (s *adminServiceImpl) CreateUser(ctx context.Context, input *CreateUserInpu
 		logger.LegacyPrintf("service.admin", "audit: admin user created actor_admin_id=%d target_user_id=%d",
 			input.ActorAdminID, user.ID)
 	}
-	s.assignDefaultSubscriptions(ctx, user.ID)
+	if !input.SkipDefaultSubscriptions {
+		s.assignDefaultSubscriptions(ctx, user.ID)
+	}
 	return user, nil
 }
 

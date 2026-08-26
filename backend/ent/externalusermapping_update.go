@@ -112,6 +112,12 @@ func (_u *ExternalUserMappingUpdate) SetNillableAPIKeyID(v *int64) *ExternalUser
 	return _u
 }
 
+// ClearAPIKeyID clears the value of the "api_key_id" field.
+func (_u *ExternalUserMappingUpdate) ClearAPIKeyID() *ExternalUserMappingUpdate {
+	_u.mutation.ClearAPIKeyID()
+	return _u
+}
+
 // SetUsernameSnapshot sets the "username_snapshot" field.
 func (_u *ExternalUserMappingUpdate) SetUsernameSnapshot(v string) *ExternalUserMappingUpdate {
 	_u.mutation.SetUsernameSnapshot(v)
@@ -214,9 +220,6 @@ func (_u *ExternalUserMappingUpdate) check() error {
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "ExternalUserMapping.user"`)
-	}
-	if _u.mutation.APIKeyCleared() && len(_u.mutation.APIKeyIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "ExternalUserMapping.api_key"`)
 	}
 	return nil
 }
@@ -411,6 +414,12 @@ func (_u *ExternalUserMappingUpdateOne) SetNillableAPIKeyID(v *int64) *ExternalU
 	return _u
 }
 
+// ClearAPIKeyID clears the value of the "api_key_id" field.
+func (_u *ExternalUserMappingUpdateOne) ClearAPIKeyID() *ExternalUserMappingUpdateOne {
+	_u.mutation.ClearAPIKeyID()
+	return _u
+}
+
 // SetUsernameSnapshot sets the "username_snapshot" field.
 func (_u *ExternalUserMappingUpdateOne) SetUsernameSnapshot(v string) *ExternalUserMappingUpdateOne {
 	_u.mutation.SetUsernameSnapshot(v)
@@ -526,9 +535,6 @@ func (_u *ExternalUserMappingUpdateOne) check() error {
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
 		return errors.New(`ent: clearing a required unique edge "ExternalUserMapping.user"`)
-	}
-	if _u.mutation.APIKeyCleared() && len(_u.mutation.APIKeyIDs()) > 0 {
-		return errors.New(`ent: clearing a required unique edge "ExternalUserMapping.api_key"`)
 	}
 	return nil
 }

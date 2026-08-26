@@ -38,7 +38,9 @@ func (ExternalUserMapping) Fields() []ent.Field {
 			MaxLen(255).
 			NotEmpty(),
 		field.Int64("user_id"),
-		field.Int64("api_key_id"),
+		field.Int64("api_key_id").
+			Optional().
+			Nillable(),
 		field.String("username_snapshot").
 			MaxLen(100).
 			Default(""),
@@ -55,7 +57,6 @@ func (ExternalUserMapping) Edges() []ent.Edge {
 		edge.From("api_key", APIKey.Type).
 			Ref("external_user_mappings").
 			Field("api_key_id").
-			Required().
 			Unique(),
 	}
 }

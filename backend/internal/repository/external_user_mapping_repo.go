@@ -52,13 +52,15 @@ func (r *externalUserMappingRepository) Create(ctx context.Context, mapping *ser
 	if mapping == nil {
 		return nil
 	}
-	m, err := clientFromContext(ctx, r.client).ExternalUserMapping.Create().
+	create := clientFromContext(ctx, r.client).ExternalUserMapping.Create().
 		SetExternalUserID(mapping.ExternalUserID).
 		SetExternalOrganizationID(mapping.ExternalOrganizationID).
 		SetUserID(mapping.UserID).
-		SetAPIKeyID(mapping.APIKeyID).
-		SetUsernameSnapshot(mapping.UsernameSnapshot).
-		Save(ctx)
+		SetUsernameSnapshot(mapping.UsernameSnapshot)
+	if mapping.APIKeyID > 0 {
+		create.SetAPIKeyID(mapping.APIKeyID)
+	}
+	m, err := create.Save(ctx)
 	if err != nil {
 		return translatePersistenceError(err, nil, service.ErrExternalUserMappingExists)
 	}
@@ -111,7 +113,7 @@ func externalUserMappingEntityToService(m *dbent.ExternalUserMapping) *service.E
 		ExternalUserID:         m.ExternalUserID,
 		ExternalOrganizationID: m.ExternalOrganizationID,
 		UserID:                 m.UserID,
-		APIKeyID:               m.APIKeyID,
+		APIKeyID:               externalUserMappingAPIKeyID(m.APIKeyID),
 		UsernameSnapshot:       m.UsernameSnapshot,
 		CreatedAt:              m.CreatedAt,
 		UpdatedAt:              m.UpdatedAt,
@@ -127,9 +129,16 @@ func applyExternalUserMappingEntity(out *service.ExternalUserMapping, m *dbent.E
 	out.ExternalUserID = m.ExternalUserID
 	out.ExternalOrganizationID = m.ExternalOrganizationID
 	out.UserID = m.UserID
-	out.APIKeyID = m.APIKeyID
+	out.APIKeyID = externalUserMappingAPIKeyID(m.APIKeyID)
 	out.UsernameSnapshot = m.UsernameSnapshot
 	out.CreatedAt = m.CreatedAt
 	out.UpdatedAt = m.UpdatedAt
 	out.DeletedAt = m.DeletedAt
+}
+
+func externalUserMappingAPIKeyID(id *int64) int64 {
+	if id == nil {
+		return 0
+	}
+	return *id
 }

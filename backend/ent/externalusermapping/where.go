@@ -395,6 +395,16 @@ func APIKeyIDNotIn(vs ...int64) predicate.ExternalUserMapping {
 	return predicate.ExternalUserMapping(sql.FieldNotIn(FieldAPIKeyID, vs...))
 }
 
+// APIKeyIDIsNil applies the IsNil predicate on the "api_key_id" field.
+func APIKeyIDIsNil() predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldIsNull(FieldAPIKeyID))
+}
+
+// APIKeyIDNotNil applies the NotNil predicate on the "api_key_id" field.
+func APIKeyIDNotNil() predicate.ExternalUserMapping {
+	return predicate.ExternalUserMapping(sql.FieldNotNull(FieldAPIKeyID))
+}
+
 // UsernameSnapshotEQ applies the EQ predicate on the "username_snapshot" field.
 func UsernameSnapshotEQ(v string) predicate.ExternalUserMapping {
 	return predicate.ExternalUserMapping(sql.FieldEQ(FieldUsernameSnapshot, v))

@@ -146,3 +146,18 @@ func TestAdminService_CreateUser_AssignsDefaultSubscriptions(t *testing.T) {
 	require.Equal(t, int64(5), assigner.calls[0].GroupID)
 	require.Equal(t, 30, assigner.calls[0].ValidityDays)
 }
+
+func TestAdminService_CreateUser_CanSkipDefaultSubscriptions(t *testing.T) {
+	repo := &userRepoStub{nextID: 21}
+	assigner := &defaultSubscriptionAssignerStub{}
+	svc := &adminServiceImpl{
+		userRepo:           repo,
+		settingService:     NewSettingService(&settingRepoStub{values: map[string]string{SettingKeyDefaultSubscriptions: `[{"group_id":5,"validity_days":30}]`}}, &config.Config{}),
+		defaultSubAssigner: assigner,
+	}
+
+	_, err := svc.CreateUser(context.Background(), &CreateUserInput{Email: "external@test.com", Password: "password", SkipDefaultSubscriptions: true})
+
+	require.NoError(t, err)
+	require.Empty(t, assigner.calls)
+}

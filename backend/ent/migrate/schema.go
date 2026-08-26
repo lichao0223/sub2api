@@ -910,7 +910,7 @@ var (
 		{Name: "external_user_id", Type: field.TypeString, Size: 255},
 		{Name: "external_organization_id", Type: field.TypeString, Size: 255},
 		{Name: "username_snapshot", Type: field.TypeString, Size: 100, Default: ""},
-		{Name: "api_key_id", Type: field.TypeInt64},
+		{Name: "api_key_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "user_id", Type: field.TypeInt64},
 	}
 	// ExternalUserMappingsTable holds the schema information for the "external_user_mappings" table.
@@ -923,7 +923,7 @@ var (
 				Symbol:     "external_user_mappings_api_keys_external_user_mappings",
 				Columns:    []*schema.Column{ExternalUserMappingsColumns[7]},
 				RefColumns: []*schema.Column{APIKeysColumns[0]},
-				OnDelete:   schema.NoAction,
+				OnDelete:   schema.SetNull,
 			},
 			{
 				Symbol:     "external_user_mappings_users_external_user_mappings",

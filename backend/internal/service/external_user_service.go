@@ -19,6 +19,7 @@ const (
 
 	externalUserDefaultBalance     = 100000
 	externalUserDefaultConcurrency = 2
+	externalUserSubscriptionDays   = 30000
 	externalUserMaxBatchSize       = 500
 )
 
@@ -31,8 +32,8 @@ var (
 	ErrExternalUserMappingNotFound = infraerrors.NotFound("EXTERNAL_USER_NOT_FOUND", "external user mapping not found")
 	ErrExternalUserMappingExists   = infraerrors.Conflict("EXTERNAL_USER_EXISTS", "external user mapping already exists")
 
-	ErrExternalUserNoActiveGroup       = infraerrors.InternalServer("NO_ACTIVE_GROUP", "no active group available")
 	ErrExternalUserCreateUserFailed    = infraerrors.InternalServer("CREATE_USER_FAILED", "create user failed")
+	ErrExternalUserAssignSubFailed     = infraerrors.InternalServer("ASSIGN_SUBSCRIPTION_FAILED", "assign subscription failed")
 	ErrExternalUserCreateAPIKeyFailed  = infraerrors.InternalServer("CREATE_API_KEY_FAILED", "create api key failed")
 	ErrExternalUserCreateMappingFailed = infraerrors.InternalServer("CREATE_MAPPING_FAILED", "create mapping failed")
 	ErrExternalUserDeleteFailed        = infraerrors.InternalServer("DELETE_USER_FAILED", "delete user failed")
@@ -73,11 +74,16 @@ type externalUserAPIKeyPort interface {
 	RotateUserKeys(ctx context.Context, userID int64) ([]APIKey, error)
 }
 
+type externalUserSubscriptionPort interface {
+	ListUserSubscriptions(ctx context.Context, userID int64) ([]UserSubscription, error)
+	AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error)
+}
+
 type ExternalUserService struct {
 	adminService        externalUserAdminPort
 	apiKeyService       externalUserAPIKeyPort
 	mappingRepo         ExternalUserMappingRepository
-	subscriptionService *SubscriptionService
+	subscriptionService externalUserSubscriptionPort
 	usageService        UsageLogRepository
 }
 
@@ -229,7 +235,7 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
 
-	groups, err := s.activeNonExclusiveGroups(ctx)
+	groups, err := s.newExternalUserGroups(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -237,15 +243,20 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 
 	balance := float64(externalUserDefaultBalance)
 	user, err := s.adminService.CreateUser(ctx, &CreateUserInput{
-		Email:         generatedExternalEmail(input.ExternalUserID),
-		Password:      generatedExternalPassword(input.ExternalUserID),
-		Username:      input.Username,
-		Balance:       &balance,
-		Concurrency:   externalUserDefaultConcurrency,
-		AllowedGroups: allowedGroups,
+		Email:                    generatedExternalEmail(input.ExternalUserID),
+		Password:                 generatedExternalPassword(input.ExternalUserID),
+		Username:                 input.Username,
+		Balance:                  &balance,
+		Concurrency:              externalUserDefaultConcurrency,
+		AllowedGroups:            allowedGroups,
+		SkipDefaultSubscriptions: true,
 	})
 	if err != nil {
 		return nil, ErrExternalUserCreateUserFailed.WithCause(err)
+	}
+	if err := s.assignCompositeSubscriptions(ctx, user.ID, groups); err != nil {
+		_ = s.adminService.DeleteUser(ctx, user.ID)
+		return nil, ErrExternalUserAssignSubFailed.WithCause(err)
 	}
 
 	apiKeys, err := s.createDefaultAPIKeys(ctx, user.ID, input.Username, groups, nil)
@@ -254,12 +265,16 @@ func (s *ExternalUserService) Create(ctx context.Context, input ExternalUserInpu
 		return nil, ErrExternalUserCreateAPIKeyFailed.WithCause(err)
 	}
 	firstKey := externalUserFirstAPIKey(apiKeys)
+	var firstKeyID int64
+	if firstKey != nil {
+		firstKeyID = firstKey.ID
+	}
 
 	mapping := &ExternalUserMapping{
 		ExternalUserID:         input.ExternalUserID,
 		ExternalOrganizationID: input.ExternalOrganizationID,
 		UserID:                 user.ID,
-		APIKeyID:               firstKey.ID,
+		APIKeyID:               firstKeyID,
 		UsernameSnapshot:       input.Username,
 	}
 	if err := s.mappingRepo.Create(ctx, mapping); err != nil {
@@ -431,10 +446,42 @@ func (s *ExternalUserService) activeNonExclusiveGroups(ctx context.Context) ([]G
 			out = append(out, group)
 		}
 	}
-	if len(out) == 0 {
-		return nil, ErrExternalUserNoActiveGroup
+	return out, nil
+}
+
+func (s *ExternalUserService) newExternalUserGroups(ctx context.Context) ([]Group, error) {
+	groups, err := s.adminService.GetAllGroups(ctx)
+	if err != nil {
+		return nil, ErrExternalUserInternal.WithCause(err)
+	}
+	out := make([]Group, 0, len(groups))
+	for _, group := range groups {
+		if group.IsActive() && (!group.IsExclusive || group.Platform == PlatformComposite) {
+			out = append(out, group)
+		}
 	}
 	return out, nil
+}
+
+func (s *ExternalUserService) assignCompositeSubscriptions(ctx context.Context, userID int64, groups []Group) error {
+	for i := range groups {
+		group := groups[i]
+		if group.Platform != PlatformComposite || !group.IsSubscriptionType() {
+			continue
+		}
+		if s.subscriptionService == nil {
+			return errors.New("subscription service unavailable")
+		}
+		if _, err := s.subscriptionService.AssignSubscription(ctx, &AssignSubscriptionInput{
+			UserID:       userID,
+			GroupID:      group.ID,
+			ValidityDays: externalUserSubscriptionDays,
+			Notes:        "auto assigned by external user sync",
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *ExternalUserService) createDefaultAPIKey(ctx context.Context, userID int64, name string, groupID int64) (*APIKey, error) {

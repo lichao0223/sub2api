@@ -90,6 +90,14 @@ func (_c *ExternalUserMappingCreate) SetAPIKeyID(v int64) *ExternalUserMappingCr
 	return _c
 }
 
+// SetNillableAPIKeyID sets the "api_key_id" field if the given value is not nil.
+func (_c *ExternalUserMappingCreate) SetNillableAPIKeyID(v *int64) *ExternalUserMappingCreate {
+	if v != nil {
+		_c.SetAPIKeyID(*v)
+	}
+	return _c
+}
+
 // SetUsernameSnapshot sets the "username_snapshot" field.
 func (_c *ExternalUserMappingCreate) SetUsernameSnapshot(v string) *ExternalUserMappingCreate {
 	_c.mutation.SetUsernameSnapshot(v)
@@ -199,9 +207,6 @@ func (_c *ExternalUserMappingCreate) check() error {
 	if _, ok := _c.mutation.UserID(); !ok {
 		return &ValidationError{Name: "user_id", err: errors.New(`ent: missing required field "ExternalUserMapping.user_id"`)}
 	}
-	if _, ok := _c.mutation.APIKeyID(); !ok {
-		return &ValidationError{Name: "api_key_id", err: errors.New(`ent: missing required field "ExternalUserMapping.api_key_id"`)}
-	}
 	if _, ok := _c.mutation.UsernameSnapshot(); !ok {
 		return &ValidationError{Name: "username_snapshot", err: errors.New(`ent: missing required field "ExternalUserMapping.username_snapshot"`)}
 	}
@@ -212,9 +217,6 @@ func (_c *ExternalUserMappingCreate) check() error {
 	}
 	if len(_c.mutation.UserIDs()) == 0 {
 		return &ValidationError{Name: "user", err: errors.New(`ent: missing required edge "ExternalUserMapping.user"`)}
-	}
-	if len(_c.mutation.APIKeyIDs()) == 0 {
-		return &ValidationError{Name: "api_key", err: errors.New(`ent: missing required edge "ExternalUserMapping.api_key"`)}
 	}
 	return nil
 }
@@ -298,7 +300,7 @@ func (_c *ExternalUserMappingCreate) createSpec() (*ExternalUserMapping, *sqlgra
 		for _, k := range nodes {
 			edge.Target.Nodes = append(edge.Target.Nodes, k)
 		}
-		_node.APIKeyID = nodes[0]
+		_node.APIKeyID = &nodes[0]
 		_spec.Edges = append(_spec.Edges, edge)
 	}
 	return _node, _spec
@@ -428,6 +430,12 @@ func (u *ExternalUserMappingUpsert) SetAPIKeyID(v int64) *ExternalUserMappingUps
 // UpdateAPIKeyID sets the "api_key_id" field to the value that was provided on create.
 func (u *ExternalUserMappingUpsert) UpdateAPIKeyID() *ExternalUserMappingUpsert {
 	u.SetExcluded(externalusermapping.FieldAPIKeyID)
+	return u
+}
+
+// ClearAPIKeyID clears the value of the "api_key_id" field.
+func (u *ExternalUserMappingUpsert) ClearAPIKeyID() *ExternalUserMappingUpsert {
+	u.SetNull(externalusermapping.FieldAPIKeyID)
 	return u
 }
 
@@ -576,6 +584,13 @@ func (u *ExternalUserMappingUpsertOne) SetAPIKeyID(v int64) *ExternalUserMapping
 func (u *ExternalUserMappingUpsertOne) UpdateAPIKeyID() *ExternalUserMappingUpsertOne {
 	return u.Update(func(s *ExternalUserMappingUpsert) {
 		s.UpdateAPIKeyID()
+	})
+}
+
+// ClearAPIKeyID clears the value of the "api_key_id" field.
+func (u *ExternalUserMappingUpsertOne) ClearAPIKeyID() *ExternalUserMappingUpsertOne {
+	return u.Update(func(s *ExternalUserMappingUpsert) {
+		s.ClearAPIKeyID()
 	})
 }
 
@@ -892,6 +907,13 @@ func (u *ExternalUserMappingUpsertBulk) SetAPIKeyID(v int64) *ExternalUserMappin
 func (u *ExternalUserMappingUpsertBulk) UpdateAPIKeyID() *ExternalUserMappingUpsertBulk {
 	return u.Update(func(s *ExternalUserMappingUpsert) {
 		s.UpdateAPIKeyID()
+	})
+}
+
+// ClearAPIKeyID clears the value of the "api_key_id" field.
+func (u *ExternalUserMappingUpsertBulk) ClearAPIKeyID() *ExternalUserMappingUpsertBulk {
+	return u.Update(func(s *ExternalUserMappingUpsert) {
+		s.ClearAPIKeyID()
 	})
 }
 

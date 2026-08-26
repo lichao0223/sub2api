@@ -32,7 +32,7 @@ type ExternalUserMapping struct {
 	// UserID holds the value of the "user_id" field.
 	UserID int64 `json:"user_id,omitempty"`
 	// APIKeyID holds the value of the "api_key_id" field.
-	APIKeyID int64 `json:"api_key_id,omitempty"`
+	APIKeyID *int64 `json:"api_key_id,omitempty"`
 	// UsernameSnapshot holds the value of the "username_snapshot" field.
 	UsernameSnapshot string `json:"username_snapshot,omitempty"`
 	// Edges holds the relations/edges for other nodes in the graph.
@@ -147,7 +147,8 @@ func (_m *ExternalUserMapping) assignValues(columns []string, values []any) erro
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field api_key_id", values[i])
 			} else if value.Valid {
-				_m.APIKeyID = value.Int64
+				_m.APIKeyID = new(int64)
+				*_m.APIKeyID = value.Int64
 			}
 		case externalusermapping.FieldUsernameSnapshot:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -221,8 +222,10 @@ func (_m *ExternalUserMapping) String() string {
 	builder.WriteString("user_id=")
 	builder.WriteString(fmt.Sprintf("%v", _m.UserID))
 	builder.WriteString(", ")
-	builder.WriteString("api_key_id=")
-	builder.WriteString(fmt.Sprintf("%v", _m.APIKeyID))
+	if v := _m.APIKeyID; v != nil {
+		builder.WriteString("api_key_id=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("username_snapshot=")
 	builder.WriteString(_m.UsernameSnapshot)
