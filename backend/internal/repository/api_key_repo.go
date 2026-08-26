@@ -449,6 +449,30 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 	return nil
 }
 
+func (r *apiKeyRepository) DeleteUngrouped(ctx context.Context) ([]string, error) {
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	keys, err := tx.APIKey.Query().Where(apikey.GroupIDIsNil(), apikey.DeletedAtIsNil()).Select(apikey.FieldID, apikey.FieldKey).ForUpdate().All(ctx)
+	if err != nil {
+		return nil, err
+	}
+	originalKeys := make([]string, 0, len(keys))
+	for _, key := range keys {
+		originalKeys = append(originalKeys, key.Key)
+		tombstoneKey := fmt.Sprintf("__deleted__%d__%d", key.ID, time.Now().UnixNano())
+		if err := r.deleteWithTombstone(ctx, tx.Client(), key.ID, tombstoneKey); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return originalKeys, nil
+}
+
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
 	res, err := exec.ExecContext(ctx, `
 		UPDATE api_keys

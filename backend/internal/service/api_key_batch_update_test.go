@@ -15,6 +15,23 @@ type batchUpdateAPIKeyRepoStub struct {
 	fields  APIKeyBatchUpdateFields
 }
 
+type ungroupedDeleteAPIKeyRepoStub struct {
+	APIKeyRepository
+	keys []string
+}
+
+func (s *ungroupedDeleteAPIKeyRepoStub) DeleteUngrouped(context.Context) ([]string, error) {
+	return s.keys, nil
+}
+
+func TestAdminDeleteUngroupedReturnsDeletedCount(t *testing.T) {
+	repo := &ungroupedDeleteAPIKeyRepoStub{keys: []string{"key-1", "key-2"}}
+	svc := &APIKeyService{apiKeyRepo: repo}
+	deleted, err := svc.AdminDeleteUngrouped(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 2, deleted)
+}
+
 func (s *batchUpdateAPIKeyRepoStub) BatchUpdateByGroup(_ context.Context, groupID int64, ids []int64, all bool, fields APIKeyBatchUpdateFields, _ func() (string, error)) (int, []string, error) {
 	s.groupID, s.ids, s.all, s.fields = groupID, ids, all, fields
 	return 2, nil, nil

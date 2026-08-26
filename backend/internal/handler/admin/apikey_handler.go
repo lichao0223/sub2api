@@ -188,6 +188,20 @@ func (h *AdminAPIKeyHandler) BatchUpdate(c *gin.Context) {
 	response.Success(c, gin.H{"affected": affected, "created": created})
 }
 
+// DeleteUngrouped deletes all active API keys without a group.
+func (h *AdminAPIKeyHandler) DeleteUngrouped(c *gin.Context) {
+	if h.apiKeyService == nil {
+		response.InternalError(c, "API key service unavailable")
+		return
+	}
+	deleted, err := h.apiKeyService.AdminDeleteUngrouped(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": deleted})
+}
+
 // Create handles creating an API key for a user.
 // POST /api/v1/admin/users/:id/api-keys
 func (h *AdminAPIKeyHandler) Create(c *gin.Context) {

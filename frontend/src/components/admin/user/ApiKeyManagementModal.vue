@@ -36,6 +36,9 @@
             {{ t('admin.users.apiKeyManagement.clearSelection') }}
           </button>
         </div>
+        <button type="button" class="btn btn-danger" :disabled="submitting" data-test="delete-ungrouped" @click="deleteUngrouped">
+          {{ t('admin.users.apiKeyManagement.deleteUngrouped') }}
+        </button>
       </div>
 
       <div v-if="!groupId" class="py-12 text-center text-sm text-gray-500">
@@ -354,6 +357,19 @@ const submitCreate = async () => {
     appStore.showSuccess(t('admin.users.apiKeyManagement.createdSuccess', { count: result.created }))
     createAll.value = false; createSelected.clear(); await loadCandidates()
   } catch (error: any) { appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.failed'))
+  } finally { submitting.value = false }
+}
+const deleteUngrouped = async () => {
+  if (!window.confirm(t('admin.users.apiKeyManagement.confirmDeleteUngrouped'))) return
+  submitting.value = true
+  try {
+    const result = await adminAPI.apiKeys.deleteUngrouped()
+    appStore.showSuccess(t('admin.users.apiKeyManagement.deletedUngrouped', { count: result.deleted }))
+    clearSelection()
+    allInGroupSelected.value = false
+    await loadKeys()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.failed'))
   } finally { submitting.value = false }
 }
 </script>

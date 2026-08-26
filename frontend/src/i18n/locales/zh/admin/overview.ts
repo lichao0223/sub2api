@@ -486,6 +486,9 @@ export default {
         success: '已更新 {count} 个 API Key',
         moveAndRecreateSuccess: '已迁移 {count} 个并在原分组新建 {created} 个 API Key',
         failed: '批量更新 API Key 失败',
+        deleteUngrouped: '删除所有无分组 Key',
+        confirmDeleteUngrouped: '确定要删除所有无分组的 API Key 吗？此操作无法撤销。',
+        deletedUngrouped: '已删除 {count} 个无分组 API Key',
         loadFailed: '加载 API Key 失败',
         createForUsers: '给用户创建 Key', manageExisting: '管理已有 Key', createSelected: '已选择 {count} 个可创建用户', alreadyExists: '已有该分组 Key', noCandidates: '没有可创建的用户', confirmCreate: '确定给 {count} 个用户创建 API Key 吗？', createdSuccess: '已创建 {count} 个 API Key'
       },

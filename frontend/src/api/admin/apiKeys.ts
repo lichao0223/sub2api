@@ -60,6 +60,11 @@ export async function batchUpdate(request: BatchUpdateApiKeysRequest): Promise<{
   return data
 }
 
+export async function deleteUngrouped(): Promise<{ deleted: number }> {
+  const { data } = await apiClient.post<{ deleted: number }>('/admin/api-keys/delete-ungrouped')
+  return data
+}
+
 /**
  * Update an API key's group binding
  * @param id - API Key ID
@@ -98,6 +103,7 @@ export async function rotateForUser(userId: number): Promise<ApiKey[]> {
 export const apiKeysAPI = {
   batchUpdate,
   batchCreate,
+  deleteUngrouped,
   listBatchCreateCandidates,
   updateApiKeyGroup,
   createForUser,

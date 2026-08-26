@@ -136,6 +136,10 @@ type apiKeyAdminBatchUpdater interface {
 	BatchUpdateByGroup(ctx context.Context, groupID int64, ids []int64, all bool, fields APIKeyBatchUpdateFields, generateKey func() (string, error)) (int, []string, error)
 }
 
+type apiKeyUngroupedDeleter interface {
+	DeleteUngrouped(ctx context.Context) ([]string, error)
+}
+
 type APIKeyBatchUpdateFields struct {
 	RateLimit5h           *float64
 	RateLimit1d           *float64
@@ -644,6 +648,19 @@ func (s *APIKeyService) AdminBatchUpdate(ctx context.Context, req AdminBatchUpda
 	}
 	s.deleteAuthCacheByKeys(ctx, keys)
 	return affected, nil
+}
+
+func (s *APIKeyService) AdminDeleteUngrouped(ctx context.Context) (int, error) {
+	deleter, ok := s.apiKeyRepo.(apiKeyUngroupedDeleter)
+	if !ok {
+		return 0, errors.New("ungrouped api key deletion unavailable")
+	}
+	keys, err := deleter.DeleteUngrouped(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete ungrouped api keys: %w", err)
+	}
+	s.deleteAuthCacheByKeys(ctx, keys)
+	return len(keys), nil
 }
 
 // ValidateCustomKey 验证自定义API Key格式
