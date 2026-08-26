@@ -183,6 +183,44 @@
       </div>
     </template>
   </BaseDialog>
+
+  <BaseDialog
+    :show="ungroupedPreviewOpen"
+    :title="t('admin.users.apiKeyManagement.ungroupedPreviewTitle', { count: ungroupedPagination.total })"
+    width="wide"
+    :z-index="60"
+    @close="ungroupedPreviewOpen = false"
+  >
+    <p class="mb-3 text-sm text-gray-600 dark:text-gray-300">{{ t('admin.users.apiKeyManagement.ungroupedPreviewHint') }}</p>
+    <div class="h-[min(50vh,30rem)] min-h-64 overflow-auto border border-gray-200 dark:border-dark-700">
+      <DataTable :columns="ungroupedColumns" :data="ungroupedKeys" :loading="ungroupedLoading" row-key="id">
+        <template #cell-user="{ row }">
+          <div class="min-w-0">
+            <div class="truncate text-sm font-medium text-gray-900 dark:text-white">{{ row.user?.email || '-' }}</div>
+            <div class="truncate text-xs text-gray-500">{{ row.user?.username || '-' }}</div>
+          </div>
+        </template>
+        <template #cell-key="{ row }"><span class="font-mono text-xs">{{ maskKey(row.key) }}</span></template>
+        <template #cell-group="{ row }">
+          <span class="badge text-xs">{{ row.group_id ? t('admin.users.apiKeyManagement.deletedGroup', { id: row.group_id }) : t('admin.users.apiKeyManagement.noGroup') }}</span>
+        </template>
+      </DataTable>
+    </div>
+    <Pagination
+      v-if="ungroupedPagination.total > 0"
+      :total="ungroupedPagination.total"
+      :page="ungroupedPagination.page"
+      :page-size="ungroupedPagination.pageSize"
+      @update:page="changeUngroupedPage"
+      @update:page-size="changeUngroupedPageSize"
+    />
+    <template #footer>
+      <button type="button" class="btn btn-secondary" :disabled="submitting" @click="ungroupedPreviewOpen = false">{{ t('common.cancel') }}</button>
+      <button type="button" class="btn btn-danger" :disabled="submitting || ungroupedPagination.total === 0" data-test="confirm-delete-ungrouped" @click="confirmDeleteUngrouped">
+        {{ t('admin.users.apiKeyManagement.confirmDeleteUngroupedCount', { count: ungroupedPagination.total }) }}
+      </button>
+    </template>
+  </BaseDialog>
 </template>
 
 <script setup lang="ts">
@@ -218,6 +256,10 @@ const candidates = ref<APIKeyBatchCandidate[]>([])
 const candidateTotal = ref(0)
 const createSelected = reactive(new Set<number>())
 const createAll = ref(false)
+const ungroupedPreviewOpen = ref(false)
+const ungroupedLoading = ref(false)
+const ungroupedKeys = ref<ApiKey[]>([])
+const ungroupedPagination = reactive({ page: 1, pageSize: 20, total: 0 })
 const { selectedIds, selectedCount, setSelectedIds, clear } = useTableSelection<ApiKey>({ rows: keys, getId: row => row.id })
 
 const editRates = ref(false)
@@ -241,6 +283,12 @@ const columns: Column[] = [
   { key: 'rate_limit_5h', label: '5h', sortable: false },
   { key: 'rate_limit_1d', label: '1d', sortable: false },
   { key: 'rate_limit_7d', label: '7d', sortable: false }
+]
+const ungroupedColumns: Column[] = [
+  { key: 'user', label: t('admin.users.apiKeyManagement.user'), sortable: false },
+  { key: 'name', label: t('admin.users.apiKeyManagement.name'), sortable: false },
+  { key: 'key', label: 'API Key', sortable: false },
+  { key: 'group', label: t('admin.users.apiKeyManagement.group'), sortable: false }
 ]
 const groupOptions = computed(() => groups.value.map(group => ({ value: group.id, label: group.name })))
 const targetGroupOptions = computed(() => [
@@ -359,12 +407,29 @@ const submitCreate = async () => {
   } catch (error: any) { appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.failed'))
   } finally { submitting.value = false }
 }
+const loadUngrouped = async () => {
+  ungroupedLoading.value = true
+  try {
+    const result = await adminAPI.apiKeys.listUngrouped(ungroupedPagination.page, ungroupedPagination.pageSize)
+    ungroupedKeys.value = result.items
+    ungroupedPagination.total = result.total
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.loadFailed'))
+  } finally { ungroupedLoading.value = false }
+}
 const deleteUngrouped = async () => {
-  if (!window.confirm(t('admin.users.apiKeyManagement.confirmDeleteUngrouped'))) return
+  ungroupedPagination.page = 1
+  ungroupedPreviewOpen.value = true
+  await loadUngrouped()
+}
+const changeUngroupedPage = (page: number) => { ungroupedPagination.page = page; loadUngrouped() }
+const changeUngroupedPageSize = (pageSize: number) => { ungroupedPagination.pageSize = pageSize; ungroupedPagination.page = 1; loadUngrouped() }
+const confirmDeleteUngrouped = async () => {
   submitting.value = true
   try {
     const result = await adminAPI.apiKeys.deleteUngrouped()
     appStore.showSuccess(t('admin.users.apiKeyManagement.deletedUngrouped', { count: result.deleted }))
+    ungroupedPreviewOpen.value = false
     clearSelection()
     allInGroupSelected.value = false
     await loadKeys()

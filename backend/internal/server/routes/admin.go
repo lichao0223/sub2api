@@ -252,6 +252,7 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		apiKeys.POST("/batch-update", h.Admin.APIKey.BatchUpdate)
 		apiKeys.POST("/batch-create", h.Admin.APIKey.BatchCreate)
+		apiKeys.GET("/ungrouped", h.Admin.APIKey.ListUngrouped)
 		apiKeys.POST("/delete-ungrouped", h.Admin.APIKey.DeleteUngrouped)
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
 		apiKeys.DELETE("/:id", h.Admin.APIKey.Delete)

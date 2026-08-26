@@ -455,7 +455,7 @@ func (r *apiKeyRepository) DeleteUngrouped(ctx context.Context) ([]string, error
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	keys, err := tx.APIKey.Query().Where(apikey.GroupIDIsNil(), apikey.DeletedAtIsNil()).Select(apikey.FieldID, apikey.FieldKey).ForUpdate().All(ctx)
+	keys, err := tx.APIKey.Query().Where(ungroupedAPIKeyPredicate(), apikey.DeletedAtIsNil()).Select(apikey.FieldID, apikey.FieldKey).ForUpdate().All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -471,6 +471,27 @@ func (r *apiKeyRepository) DeleteUngrouped(ctx context.Context) ([]string, error
 		return nil, err
 	}
 	return originalKeys, nil
+}
+
+func (r *apiKeyRepository) ListUngrouped(ctx context.Context, params pagination.PaginationParams) ([]service.APIKey, *pagination.PaginationResult, error) {
+	query := r.activeQuery().Where(ungroupedAPIKeyPredicate())
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	keys, err := query.WithUser().Offset(params.Offset()).Limit(params.Limit()).Order(dbent.Desc(apikey.FieldID)).All(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	result := make([]service.APIKey, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, *apiKeyEntityToService(key))
+	}
+	return result, paginationResultFromTotal(int64(total), params), nil
+}
+
+func ungroupedAPIKeyPredicate() predicate.APIKey {
+	return apikey.Not(apikey.HasGroupWith(group.DeletedAtIsNil()))
 }
 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {

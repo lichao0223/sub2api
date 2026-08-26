@@ -140,6 +140,10 @@ type apiKeyUngroupedDeleter interface {
 	DeleteUngrouped(ctx context.Context) ([]string, error)
 }
 
+type apiKeyUngroupedLister interface {
+	ListUngrouped(ctx context.Context, params pagination.PaginationParams) ([]APIKey, *pagination.PaginationResult, error)
+}
+
 type APIKeyBatchUpdateFields struct {
 	RateLimit5h           *float64
 	RateLimit1d           *float64
@@ -661,6 +665,18 @@ func (s *APIKeyService) AdminDeleteUngrouped(ctx context.Context) (int, error) {
 	}
 	s.deleteAuthCacheByKeys(ctx, keys)
 	return len(keys), nil
+}
+
+func (s *APIKeyService) AdminListUngrouped(ctx context.Context, page, pageSize int) ([]APIKey, int64, error) {
+	lister, ok := s.apiKeyRepo.(apiKeyUngroupedLister)
+	if !ok {
+		return nil, 0, errors.New("ungrouped api key listing unavailable")
+	}
+	keys, result, err := lister.ListUngrouped(ctx, pagination.PaginationParams{Page: page, PageSize: pageSize})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list ungrouped api keys: %w", err)
+	}
+	return keys, result.Total, nil
 }
 
 // ValidateCustomKey 验证自定义API Key格式

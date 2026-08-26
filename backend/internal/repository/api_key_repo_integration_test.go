@@ -269,6 +269,30 @@ func (s *APIKeyRepoSuite) TestListByGroupID() {
 	s.Require().NotNil(keys[0].User)
 }
 
+func (s *APIKeyRepoSuite) TestListAndDeleteUngroupedIncludesDeletedGroups() {
+	user := s.mustCreateUser("ungrouped@test.com")
+	activeGroup := s.mustCreateGroup("g-active")
+	deletedGroup := s.mustCreateGroup("g-deleted")
+	ungrouped := s.mustCreateApiKey(user.ID, "sk-ungrouped", "Ungrouped", nil)
+	orphaned := s.mustCreateApiKey(user.ID, "sk-orphaned", "Orphaned", &deletedGroup.ID)
+	s.mustCreateApiKey(user.ID, "sk-grouped", "Grouped", &activeGroup.ID)
+	s.Require().NoError(s.client.Group.UpdateOneID(deletedGroup.ID).SetDeletedAt(time.Now()).Exec(s.ctx))
+
+	keys, page, err := s.repo.ListUngrouped(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 1})
+	s.Require().NoError(err)
+	s.Require().Len(keys, 1)
+	s.Require().Equal(int64(2), page.Total)
+	s.Require().NotNil(keys[0].User)
+
+	deleted, err := s.repo.DeleteUngrouped(s.ctx)
+	s.Require().NoError(err)
+	s.Require().ElementsMatch([]string{"sk-ungrouped", "sk-orphaned"}, deleted)
+	_, err = s.repo.GetByID(s.ctx, ungrouped.ID)
+	s.Require().Error(err)
+	_, err = s.repo.GetByID(s.ctx, orphaned.ID)
+	s.Require().Error(err)
+}
+
 func (s *APIKeyRepoSuite) TestCountByGroupID() {
 	user := s.mustCreateUser("countgroup@test.com")
 	group := s.mustCreateGroup("g-count")

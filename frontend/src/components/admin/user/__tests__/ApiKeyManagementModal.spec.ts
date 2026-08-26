@@ -3,16 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ApiKeyManagementModal from '../ApiKeyManagementModal.vue'
 
-const { getAllIncludingInactive, getGroupApiKeys, batchUpdate } = vi.hoisted(() => ({
+const { getAllIncludingInactive, getGroupApiKeys, batchUpdate, listUngrouped, deleteUngrouped } = vi.hoisted(() => ({
   getAllIncludingInactive: vi.fn(),
   getGroupApiKeys: vi.fn(),
-  batchUpdate: vi.fn()
+  batchUpdate: vi.fn(),
+  listUngrouped: vi.fn(),
+  deleteUngrouped: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     groups: { getAllIncludingInactive, getGroupApiKeys },
-    apiKeys: { batchUpdate }
+    apiKeys: { batchUpdate, listUngrouped, deleteUngrouped }
   }
 }))
 
@@ -36,6 +38,33 @@ describe('ApiKeyManagementModal', () => {
     getGroupApiKeys.mockResolvedValue({ items: [], total: 900, page: 1, page_size: 20, pages: 45 })
     batchUpdate.mockReset()
     batchUpdate.mockResolvedValue({ affected: 900, created: 900 })
+    listUngrouped.mockResolvedValue({ items: [{ id: 9, user_id: 3, name: 'Old key', key: 'sk-old-key', group_id: 99, user: { email: 'user@test.com', username: 'User' } }], total: 21 })
+    deleteUngrouped.mockResolvedValue({ deleted: 21 })
+  })
+
+  it('previews all ungrouped keys before deleting', async () => {
+    const wrapper = mount(ApiKeyManagementModal, {
+      props: { show: true },
+      global: {
+        stubs: {
+          BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
+          Select: true,
+          DataTable: { template: '<div />' },
+          Pagination: true,
+          Toggle: true,
+          Icon: true
+        }
+      }
+    })
+
+    await wrapper.get('[data-test="delete-ungrouped"]').trigger('click')
+    await flushPromises()
+    expect(listUngrouped).toHaveBeenCalledWith(1, 20)
+    expect(deleteUngrouped).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="confirm-delete-ungrouped"]').trigger('click')
+    await flushPromises()
+    expect(deleteUngrouped).toHaveBeenCalledOnce()
   })
 
   it('offers whole-group selection before any page rows are selected', async () => {

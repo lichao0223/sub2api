@@ -189,6 +189,21 @@ func (h *AdminAPIKeyHandler) BatchUpdate(c *gin.Context) {
 }
 
 // DeleteUngrouped deletes all active API keys without a group.
+func (h *AdminAPIKeyHandler) ListUngrouped(c *gin.Context) {
+	page, pageSize := response.ParsePagination(c)
+	keys, total, err := h.apiKeyService.AdminListUngrouped(c.Request.Context(), page, pageSize)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	out := make([]dto.APIKey, len(keys))
+	for i := range keys {
+		out[i] = *dto.APIKeyFromService(&keys[i])
+	}
+	response.Paginated(c, out, total, page, pageSize)
+}
+
+// DeleteUngrouped deletes all active API keys without an active group.
 func (h *AdminAPIKeyHandler) DeleteUngrouped(c *gin.Context) {
 	if h.apiKeyService == nil {
 		response.InternalError(c, "API key service unavailable")

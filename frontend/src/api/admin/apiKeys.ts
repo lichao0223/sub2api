@@ -65,6 +65,13 @@ export async function deleteUngrouped(): Promise<{ deleted: number }> {
   return data
 }
 
+export async function listUngrouped(page = 1, pageSize = 20) {
+  const { data } = await apiClient.get<{ items: ApiKey[]; total: number }>(
+    '/admin/api-keys/ungrouped', { params: { page, page_size: pageSize } }
+  )
+  return data
+}
+
 /**
  * Update an API key's group binding
  * @param id - API Key ID
@@ -104,6 +111,7 @@ export const apiKeysAPI = {
   batchUpdate,
   batchCreate,
   deleteUngrouped,
+  listUngrouped,
   listBatchCreateCandidates,
   updateApiKeyGroup,
   createForUser,
