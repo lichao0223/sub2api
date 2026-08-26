@@ -177,18 +177,22 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 func chatAssistantToResponses(m ChatMessage, opts *ChatCompletionsToResponsesOptions) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
 	content := ""
+	reasoning := m.ReasoningContent
+	if opts != nil && opts.ReasoningContentAsInputItem {
+		reasoning = m.reasoningText()
+	}
 
-	if m.ReasoningContent != "" && opts != nil && opts.ReasoningContentAsInputItem {
+	if reasoning != "" && opts != nil && opts.ReasoningContentAsInputItem {
 		reasoningContent, err := json.Marshal([]map[string]string{{
 			"type": "reasoning_text",
-			"text": m.ReasoningContent,
+			"text": reasoning,
 		}})
 		if err != nil {
 			return nil, err
 		}
 		items = append(items, ResponsesInputItem{Type: "reasoning", Content: reasoningContent})
-	} else if m.ReasoningContent != "" {
-		content = "<thinking>" + m.ReasoningContent + "</thinking>"
+	} else if reasoning != "" {
+		content = "<thinking>" + reasoning + "</thinking>"
 	}
 
 	// Emit assistant message with output_text if content is non-empty.
