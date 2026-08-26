@@ -68,7 +68,7 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "external_user_mappings", "external_user_id", "character varying", 255, false)
 	requireColumn(t, tx, "external_user_mappings", "external_organization_id", "character varying", 255, false)
 	requireColumn(t, tx, "external_user_mappings", "user_id", "bigint", 0, false)
-	requireColumn(t, tx, "external_user_mappings", "api_key_id", "bigint", 0, false)
+	requireColumn(t, tx, "external_user_mappings", "api_key_id", "bigint", 0, true)
 	requireColumn(t, tx, "external_user_mappings", "username_snapshot", "character varying", 100, false)
 	requireColumn(t, tx, "external_user_mappings", "deleted_at", "timestamp with time zone", 0, true)
 	requireForeignKeyOnDelete(t, tx, "external_user_mappings", "user_id", "users", "CASCADE")

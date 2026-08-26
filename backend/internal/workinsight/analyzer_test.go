@@ -181,6 +181,24 @@ func TestDecodeAnalyzerResultAcceptsWrappedJSON(t *testing.T) {
 	require.Equal(t, "整理会议纪要。", result.WorkSummary)
 }
 
+func TestDecodeAnalyzerResultRepairsInvalidPathEscape(t *testing.T) {
+	content := `{"work_summary":["将新增的明细数据导入数据库"],"task_categories":["SQL/报表"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":["数据导入"],"representative_items":[{"source_sample_ids":["80129"],"summary":"将D:\\\sjz增加的明细数据导入数据库","task_categories":["SQL/报表"],"explicit_projects":[],"explicit_modules":[]}],"evidence_level":"explicit"}`
+
+	result, err := decodeAnalyzerResult(content)
+	require.NoError(t, err)
+	require.Equal(t, []int64{80129}, result.RepresentativeItems[0].SourceSampleIDs)
+	require.Contains(t, result.RepresentativeItems[0].Summary, "sjz")
+}
+
+func TestDecodeAnalyzerResultAcceptsComplexValidResult(t *testing.T) {
+	content := `{"work_summary":["- 咨询身份定义与指令执行规则","- 国网河南超高压公司调度指令票管控平台改造文档编写","- 安装并修改网站Emoji Rich插件功能"],"task_categories":["咨询","文档写作","其他"],"explicit_projects":["国网河南超高压公司调度指令票管控平台改造"],"explicit_modules":[],"change_types":["需求分析","方案设计"],"business_topics":[],"representative_items":[{"source_sample_ids":["79780"],"summary":"编写国网河南超高压公司调度指令票管控平台改造文档","task_categories":["文档写作","需求分析","方案设计"],"explicit_projects":["国网河南超高压公司调度指令票管控平台改造"],"explicit_modules":[]}],"evidence_level":"explicit"}`
+
+	result, err := decodeAnalyzerResult(content)
+	require.NoError(t, err)
+	require.Len(t, result.RepresentativeItems, 1)
+	require.Contains(t, result.WorkSummary, "Emoji Rich")
+}
+
 func TestParseAnalyzerResponseAcceptsReasoningAndArrayContent(t *testing.T) {
 	valid := `{"work_summary":"整理会议纪要。","task_categories":["会议纪要"],"explicit_projects":[],"explicit_modules":[],"change_types":[],"business_topics":[],"representative_items":[],"evidence_level":"explicit"}`
 	samples := []analysisInput{{ID: 1, Text: "整理会议纪要"}}

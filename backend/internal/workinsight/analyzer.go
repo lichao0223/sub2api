@@ -501,9 +501,13 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 		}
 		offset += index
 		var raw json.RawMessage
-		if err := json.NewDecoder(strings.NewReader(content[offset:])).Decode(&raw); err != nil {
-			offset++
-			continue
+		candidate := content[offset:]
+		if err := json.NewDecoder(strings.NewReader(candidate)).Decode(&raw); err != nil {
+			candidate = escapeInvalidJSONBackslashes(candidate)
+			if err = json.NewDecoder(strings.NewReader(candidate)).Decode(&raw); err != nil {
+				offset++
+				continue
+			}
 		}
 		raw, err := normalizeAnalyzerResult(raw)
 		if err != nil {
@@ -519,6 +523,33 @@ func decodeAnalyzerResult(content string) (BatchResult, error) {
 		offset++
 	}
 	return BatchResult{}, errors.New("invalid analyzer JSON")
+}
+
+func escapeInvalidJSONBackslashes(value string) string {
+	var result strings.Builder
+	result.Grow(len(value))
+	inString := false
+	for i := 0; i < len(value); i++ {
+		char := value[i]
+		if char == '"' {
+			inString = !inString
+			_ = result.WriteByte(char)
+			continue
+		}
+		if !inString || char != '\\' || i+1 >= len(value) {
+			_ = result.WriteByte(char)
+			continue
+		}
+		next := value[i+1]
+		if strings.ContainsRune(`"\\/bfnrtu`, rune(next)) {
+			_ = result.WriteByte(char)
+			_ = result.WriteByte(next)
+			i++
+			continue
+		}
+		_, _ = result.WriteString(`\\`)
+	}
+	return result.String()
 }
 
 func normalizeAnalyzerResult(raw json.RawMessage) (json.RawMessage, error) {
