@@ -451,11 +451,15 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 
 func (r *apiKeyRepository) DeleteUngrouped(ctx context.Context) ([]string, error) {
 	tx, err := r.client.Tx(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 		return nil, err
 	}
-	defer func() { _ = tx.Rollback() }()
-	keys, err := tx.APIKey.Query().Where(ungroupedAPIKeyPredicate(), apikey.DeletedAtIsNil()).Select(apikey.FieldID, apikey.FieldKey).ForUpdate().All(ctx)
+	exec := r.client
+	if err == nil {
+		defer func() { _ = tx.Rollback() }()
+		exec = tx.Client()
+	}
+	keys, err := exec.APIKey.Query().Where(ungroupedAPIKeyPredicate(), apikey.DeletedAtIsNil()).Select(apikey.FieldID, apikey.FieldKey).ForUpdate().All(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -463,12 +467,14 @@ func (r *apiKeyRepository) DeleteUngrouped(ctx context.Context) ([]string, error
 	for _, key := range keys {
 		originalKeys = append(originalKeys, key.Key)
 		tombstoneKey := fmt.Sprintf("__deleted__%d__%d", key.ID, time.Now().UnixNano())
-		if err := r.deleteWithTombstone(ctx, tx.Client(), key.ID, tombstoneKey); err != nil {
+		if err := r.deleteWithTombstone(ctx, exec, key.ID, tombstoneKey); err != nil {
 			return nil, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
+	if tx != nil {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
 	}
 	return originalKeys, nil
 }
