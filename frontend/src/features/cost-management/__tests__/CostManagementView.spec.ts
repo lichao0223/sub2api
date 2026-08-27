@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { defineComponent } from 'vue'
+import { defineComponent, h } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { formatDateLocalInput } from '@/utils/format'
@@ -77,6 +77,22 @@ const ConfirmDialogStub = defineComponent({
   emits: ['confirm', 'cancel'],
   template: '<div v-if="show" data-test="confirm-dialog"><h2>{{ title }}</h2><p>{{ message }}</p><button :disabled="loading" @click="$emit(\'confirm\')">确认创建</button><button @click="$emit(\'cancel\')">取消</button></div>',
 })
+const TimePricingSectionStub = defineComponent({
+  props: ['modelValue'],
+  emits: ['update:modelValue'],
+  setup(props, { emit }) {
+    return () => h('div', props.modelValue.periods.map((period: any, index: number) => h('input', {
+      inputmode: 'numeric',
+      value: period.start_time,
+      onInput: (event: Event) => emit('update:modelValue', {
+        ...props.modelValue,
+        periods: props.modelValue.periods.map((item: any, current: number) => current === index
+          ? { ...item, start_time: (event.target as HTMLInputElement).value }
+          : item),
+      }),
+    })))
+  },
+})
 
 const mountView = () => mount(CostManagementView, {
   global: {
@@ -85,6 +101,7 @@ const mountView = () => mount(CostManagementView, {
       Select: SelectStub,
       BaseDialog: BaseDialogStub,
       ConfirmDialog: ConfirmDialogStub,
+      TimePricingSection: TimePricingSectionStub,
       DateRangePicker: true,
       Pagination: true,
     },
@@ -418,6 +435,37 @@ describe('CostManagementView', () => {
     await wrapper.findAll('button').find(button => button.text() === '价格变更')!.trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-test="dialog"]').text()).toContain('历史价格不会被覆盖')
+  })
+
+  it('copies model prices and time periods without sharing state', async () => {
+    api.plan.mockResolvedValue({
+      id: 11, name: 'GLM 按量', plan_type: 'metered', status: 'active',
+      effective_from: '2026-01-01T02:12:00Z', billing_cycle: 'monthly', fixed_unit_cost_cny: '0', note: '',
+      prices: [{
+        upstream_model: 'glm', billing_mode: 'token', input_price_cny: '1', output_price_cny: '2',
+        cache_write_price_cny: '3', cache_read_price_cny: '4', image_input_price_cny: '5',
+        image_output_price_cny: '6', per_request_price_cny: '7',
+        time_pricing: { timezone: 'Asia/Shanghai', weekdays_only: true, periods: [{ start_time: '00:00:00', end_time: '08:00:00', multiplier: 2 }] },
+      }],
+    })
+    api.modelOptions.mockResolvedValue({ items: [{ model: 'glm' }], total: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '价格变更')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="copy-price"]').trigger('click')
+    const prices = wrapper.findAll('[data-test="model-price"]')
+    expect(prices).toHaveLength(2)
+    expect((prices[0].get('select').element as HTMLSelectElement).value).toBe('glm')
+    expect((prices[1].get('select').element as HTMLSelectElement).value).toBe('')
+    expect(prices[1].findAll('input[type="number"]').map(input => (input.element as HTMLInputElement).value))
+      .toEqual(prices[0].findAll('input[type="number"]').map(input => (input.element as HTMLInputElement).value))
+
+    await prices[1].get('input[inputmode="numeric"]').setValue('01:00:00')
+    expect((prices[0].get('input[inputmode="numeric"]').element as HTMLInputElement).value).toBe('00:00:00')
   })
 
   it('serializes numeric fixed costs as strings', async () => {
