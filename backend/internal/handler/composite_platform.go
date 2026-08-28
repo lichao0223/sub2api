@@ -9,8 +9,6 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-const requestedReasoningEffortContextKey = "requested_reasoning_effort"
-
 func ensureCompositeTargetPlatform(c *gin.Context, apiKey *service.APIKey, model string) {
 	if c == nil || c.Request == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
 		return
@@ -74,12 +72,40 @@ func openAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKe
 	return apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings, true
 }
 
+func bindRequestedReasoningEffort(c *gin.Context, body []byte, model string) {
+	if c == nil || c.Request == nil {
+		return
+	}
+	effort := service.CanonicalRequestedReasoningEffort(body, model)
+	if effort == nil {
+		return
+	}
+	c.Request = c.Request.WithContext(service.WithRequestedReasoningEffort(c.Request.Context(), *effort))
+}
+
+func stampOpenAIRequestedReasoningEffort(result *service.OpenAIForwardResult, c *gin.Context) {
+	if result == nil || result.RequestedReasoningEffort != nil {
+		return
+	}
+	if c == nil || c.Request == nil {
+		return
+	}
+	result.RequestedReasoningEffort = service.RequestedReasoningEffortFromContext(c.Request.Context())
+}
+
+func stampForwardRequestedReasoningEffort(result *service.ForwardResult, requested *string) {
+	if result == nil || result.RequestedReasoningEffort != nil {
+		return
+	}
+	result.RequestedReasoningEffort = requested
+}
+
 func applyOpenAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey, body []byte) ([]byte, bool) {
+	bindRequestedReasoningEffort(c, body, strings.TrimSpace(gjson.GetBytes(body, "model").String()))
 	maxEffort, mappings, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
 	if !ok {
 		return body, false
 	}
-	rememberRequestedReasoningEffort(c, service.ExtractOpenAIReasoningEffortFromBody(body, gjson.GetBytes(body, "model").String()))
 	return service.ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings)
 }
 
@@ -87,38 +113,17 @@ func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *s
 	if c == nil || c.Request == nil {
 		return
 	}
-	// Remember only a client-provided value, but always bind the policy: the
-	// Messages conversion may synthesize an effort that still needs the group cap.
-	effort := service.NormalizeClaudeOutputEffort(gjson.GetBytes(body, "output_config.effort").String())
-	if effort == nil {
-		effort = service.ExtractOpenAIReasoningEffortFromBody(body, gjson.GetBytes(body, "model").String())
-	}
-	if effort != nil {
-		rememberRequestedReasoningEffort(c, effort)
+	bindRequestedReasoningEffort(c, body, strings.TrimSpace(gjson.GetBytes(body, "model").String()))
+	// The Messages bridge synthesizes a default OpenAI effort when
+	// output_config.effort is omitted. Bind the group policy only for an
+	// explicit client value so the ceiling does not alter that default.
+	effort := gjson.GetBytes(body, "output_config.effort")
+	if !effort.Exists() || effort.Type != gjson.String || strings.TrimSpace(effort.String()) == "" {
+		return
 	}
 	maxEffort, mappings, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
 	if !ok {
 		return
 	}
 	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, mappings))
-}
-
-func rememberRequestedReasoningEffort(c *gin.Context, effort *string) {
-	if c == nil || effort == nil || strings.TrimSpace(*effort) == "" {
-		return
-	}
-	c.Set(requestedReasoningEffortContextKey, strings.TrimSpace(*effort))
-}
-
-func setRequestedReasoningEffort(c *gin.Context, result *service.OpenAIForwardResult) {
-	if c == nil || result == nil {
-		return
-	}
-	value, _ := c.Get(requestedReasoningEffortContextKey)
-	effort, ok := value.(string)
-	if !ok || strings.TrimSpace(effort) == "" {
-		return
-	}
-	effort = strings.TrimSpace(effort)
-	result.RequestedReasoningEffort = &effort
 }

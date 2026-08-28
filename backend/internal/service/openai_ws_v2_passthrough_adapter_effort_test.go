@@ -24,10 +24,14 @@ func TestWSPassthroughUsageMeta_InitFromFirstFrame_NonGPT56FallsBackToXHigh(t *t
 
 	meta := newOpenAIWSPassthroughUsageMeta("gpt-5.4", body)
 	meta.initFromFirstFrame(body, "gpt-5.4")
+	meta.captureRequestedReasoningEffort(body, "gpt-5.4")
 
 	got := meta.reasoningEffort.Load()
 	require.NotNil(t, got)
 	require.Equal(t, "xhigh", *got, "non-5.6 model should normalize max to xhigh")
+	requested := meta.requestedReasoningEffort.Load()
+	require.NotNil(t, requested)
+	require.Equal(t, "max", *requested, "usage should keep the pre-mapping requested effort")
 }
 
 func TestWSPassthroughUsageMeta_UpdateFromResponseCreate_MappedModelCandidate(t *testing.T) {
@@ -48,7 +52,7 @@ func TestWSPassthroughUsageMeta_PreservesRequestedEffortBeforePolicy(t *testing.
 
 	meta := newOpenAIWSPassthroughUsageMeta("gpt-5.6-sol", requested)
 	meta.initFromFirstFrame(effective, "gpt-5.6-sol")
-	meta.storeRequestedReasoningEffort(requested, "gpt-5.6-sol")
+	meta.captureRequestedReasoningEffort(requested, "gpt-5.6-sol")
 
 	require.Equal(t, "high", *meta.requestedReasoningEffort.Load())
 	require.Equal(t, "medium", *meta.reasoningEffort.Load())

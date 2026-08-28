@@ -124,41 +124,30 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 		},
 	}
 	apiKey := &service.APIKey{Group: group}
-	body := []byte(`{"model":"gpt-5.6-sol","reasoning":{"effort":"max"}}`)
+	body := []byte(`{"reasoning":{"effort":"max"}}`)
 
 	openAICtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	openAICtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)
 	openAICtx.Request = openAICtx.Request.WithContext(service.WithResolvedTargetPlatform(openAICtx.Request.Context(), service.PlatformOpenAI))
 	got, changed := applyOpenAIReasoningEffortPolicyForRequest(openAICtx, apiKey, body)
 	require.True(t, changed)
-	require.JSONEq(t, `{"model":"gpt-5.6-sol","reasoning":{"effort":"medium"}}`, string(got))
-	directResult := &service.OpenAIForwardResult{}
-	setRequestedReasoningEffort(openAICtx, directResult)
-	require.Equal(t, "max", *directResult.RequestedReasoningEffort)
+	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(got))
+	requested := service.RequestedReasoningEffortFromContext(openAICtx.Request.Context())
+	require.NotNil(t, requested)
+	require.Equal(t, "max", *requested)
 
 	bindOpenAIReasoningEffortPolicyForMessagesRequest(openAICtx, apiKey, []byte(`{"output_config":{"effort":"max"}}`))
 	bound, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(openAICtx.Request.Context(), body)
 	require.True(t, changed)
-	require.JSONEq(t, `{"model":"gpt-5.6-sol","reasoning":{"effort":"medium"}}`, string(bound))
-	messagesResult := &service.OpenAIForwardResult{}
-	setRequestedReasoningEffort(openAICtx, messagesResult)
-	require.Equal(t, "max", *messagesResult.RequestedReasoningEffort)
+	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(bound))
 
 	omittedCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	omittedCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 	omittedCtx.Request = omittedCtx.Request.WithContext(service.WithResolvedTargetPlatform(omittedCtx.Request.Context(), service.PlatformOpenAI))
 	bindOpenAIReasoningEffortPolicyForMessagesRequest(omittedCtx, apiKey, []byte(`{"model":"gpt-5"}`))
 	omitted, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(omittedCtx.Request.Context(), body)
-	require.True(t, changed)
-	require.JSONEq(t, `{"model":"gpt-5.6-sol","reasoning":{"effort":"medium"}}`, string(omitted))
-
-	suffixCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	suffixCtx.Request = httptest.NewRequest("POST", "/v1/messages", nil)
-	suffixCtx.Request = suffixCtx.Request.WithContext(service.WithResolvedTargetPlatform(suffixCtx.Request.Context(), service.PlatformOpenAI))
-	bindOpenAIReasoningEffortPolicyForMessagesRequest(suffixCtx, apiKey, []byte(`{"model":"gpt-5.6-high"}`))
-	suffixBody, changed := service.ApplyOpenAIReasoningEffortPolicyFromContext(suffixCtx.Request.Context(), []byte(`{"reasoning":{"effort":"high"}}`))
-	require.True(t, changed)
-	require.JSONEq(t, `{"reasoning":{"effort":"medium"}}`, string(suffixBody))
+	require.False(t, changed)
+	require.Equal(t, body, omitted)
 
 	grokCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	grokCtx.Request = httptest.NewRequest("POST", "/v1/responses", nil)

@@ -56,8 +56,7 @@ describe('TokenRankingView user drill-down', () => {
   it('opens admin usage details only for administrators', async () => {
     const adminView = mountView()
     await flushPromises()
-    expect(adminView.text()).not.toContain('¥')
-    expect(adminView.text()).toContain('$1.00')
+    expect(adminView.text()).toContain('¥7.2000')
     expect(adminView.text()).toContain('tokenRanking.spend')
 
     const adminRow = adminView.find('tbody tr')

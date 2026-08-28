@@ -5,11 +5,20 @@ import WorkInsightView from '../WorkInsightView.vue'
 import { TASK_CATEGORIES } from '../types'
 import type { WorkInsightConfig } from '../types'
 
-const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), retryBatch: vi.fn(), retryAllBatches: vi.fn(), stopBatch: vi.fn(), deleteBatch: vi.fn(), deleteAllFailedBatches: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn() }))
+const api = vi.hoisted(() => ({ getConfig: vi.fn(), updateConfig: vi.fn(), getRuntime: vi.fn(), analyzeNow: vi.fn(), listSamples: vi.fn(), listBatches: vi.fn(), clearLogs: vi.fn(), retryBatch: vi.fn(), retryAllBatches: vi.fn(), stopBatch: vi.fn(), deleteBatch: vi.fn(), deleteAllFailedBatches: vi.fn(), listAnalyzerAccounts: vi.fn(), probe: vi.fn(), listRanking: vi.fn(), getOverview: vi.fn(), getDaily: vi.fn(), listRepresentativeItems: vi.fn(), listUsageAlerts: vi.fn() }))
 vi.mock('../api', () => ({ default: api }))
+vi.mock('@/api/admin', () => ({ adminAPI: { settings: { getSettings: vi.fn().mockResolvedValue({ token_ranking_usd_to_cny_rate: 7.2 }) } } }))
+vi.mock('@/components/common/Select.vue', () => ({
+  default: defineComponent({
+    props: ['modelValue', 'options'],
+    emits: ['update:modelValue'],
+    template: '<select :value="modelValue"><option v-for="option in options" :key="String(option.value)" :value="option.value">{{ option.label }}</option></select>',
+  }),
+}))
 
 const config = (): WorkInsightConfig => ({
   enabled: false, config_version: 1, sample_rate: 20, session_idle_minutes: 5, user_daily_limit: 5000, global_daily_limit: 200000,
+  usage_alert_enabled: false, usage_alert_input_tokens: 100000,
   timezone: 'Asia/Shanghai', excluded_user_ids: [], excluded_user_emails: [], queue_capacity: 10000, worker_count: 4,
   analysis_idle_minutes: 15, analysis_max_wait_minutes: 60, analysis_trigger_mode: 'hybrid', analysis_fixed_interval_minutes: 30,
   analysis_fixed_times: [], max_samples_per_batch: 50, context_window_tokens: 128000, max_input_tokens: 64000,
@@ -59,8 +68,9 @@ describe('WorkInsightView', () => {
     api.listAnalyzerAccounts.mockResolvedValue([{ id: 1, name: '分析账号', platform: 'openai', models: ['model-canary'] }])
     api.probe.mockResolvedValue({ ok: true, status: 'ok', message: '连接正常', latency_ms: 12, checked_at: '' })
     api.listRanking.mockResolvedValue({ items: [rankingRow], total: 1, page: 1, page_size: 20, pages: 1 })
+    api.listUsageAlerts.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 0 })
     api.getOverview.mockResolvedValue({ active_users: 1, insight_users: 1, active_sessions: 2, covered_sessions: 1, sample_requests: 3, business_tokens: 1234, failed_samples: 0, analyzer_input_tokens: 30, analyzer_output_tokens: 20 })
-    api.getDaily.mockResolvedValue({ insight: row, representative_items: [{ source_sample_ids: [1], summary: '排查网关问题', task_categories: ['问题排查'], explicit_projects: ['sub2api'], explicit_modules: ['gateway'] }], representative_item_count: 1, representative_items_expired: false })
+    api.getDaily.mockResolvedValue({ insight: row, developer_tools: [], representative_items: [{ source_sample_ids: [1], summary: '排查网关问题', task_categories: ['问题排查'], explicit_projects: ['sub2api'], explicit_modules: ['gateway'] }], representative_item_count: 1, representative_items_expired: false })
   })
 
   it('keeps the documented defaults and fixed category contract', async () => {
@@ -72,8 +82,9 @@ describe('WorkInsightView', () => {
     const tabs = wrapper.findAll('[role="tab"]')
     expect(wrapper.find('[role="tablist"]').exists()).toBe(true)
     expect(tabs[0].attributes('aria-controls')).toBe('work-insight-panel')
-    expect(tabs[1].attributes('aria-controls')).toBe('work-config-panel')
-    await tabs[1].trigger('click')
+    expect(tabs[1].attributes('aria-controls')).toBe('work-alert-panel')
+    expect(tabs[2].attributes('aria-controls')).toBe('work-config-panel')
+    await tabs[2].trigger('click')
     await nextTick()
     expect(wrapper.get('[data-test="sample-rate-config"]').text()).toContain('请求采样率')
     expect(wrapper.get('[data-test="sample-rate-config"]').text()).toContain('默认 20%')
