@@ -27,8 +27,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 			SELECT
 				COALESCE(m.target_user_id, u.user_id) AS user_id,
 				COALESCE(SUM(CASE
-					WHEN u.created_at >= COALESCE((SELECT NULLIF(value, '')::timestamptz FROM settings WHERE key = 'TOKEN_RANKING_RULES_EFFECTIVE_AT'), 'infinity'::timestamptz)
-					 AND COALESCE(u.group_id, 0) IN (SELECT TRIM(g)::bigint FROM regexp_split_to_table(COALESCE((SELECT value FROM settings WHERE key = 'TOKEN_RANKING_EXCLUDED_GROUP_IDS'), ''), E'\\n') g WHERE TRIM(g) ~ '^[0-9]+$')
+					WHEN COALESCE(u.group_id, 0) IN (SELECT TRIM(g)::bigint FROM regexp_split_to_table(COALESCE((SELECT value FROM settings WHERE key = 'TOKEN_RANKING_EXCLUDED_GROUP_IDS'), ''), E'\\n') g WHERE TRIM(g) ~ '^[0-9]+$')
 					 AND EXISTS (SELECT 1 FROM regexp_split_to_table(COALESCE((SELECT value FROM settings WHERE key = 'TOKEN_RANKING_EXCLUDED_MODELS'), ''), E'\\n') p WHERE TRIM(p) <> '' AND (LOWER(COALESCE(u.model, '')) LIKE '%' || REPLACE(LOWER(TRIM(p)), '*', '%') || '%' OR LOWER(COALESCE(u.requested_model, '')) LIKE '%' || REPLACE(LOWER(TRIM(p)), '*', '%') || '%' OR LOWER(COALESCE(u.upstream_model, '')) LIKE '%' || REPLACE(LOWER(TRIM(p)), '*', '%') || '%'))
 					THEN 0 ELSE u.actual_cost END), 0) as actual_cost,
 				COALESCE(COUNT(u.id), 0) as requests,

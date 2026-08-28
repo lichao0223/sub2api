@@ -132,7 +132,10 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	}
 	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
+	tokenRankingSettings := h.settingService.GetTokenRankingSettings(c.Request.Context())
 	payload := dto.SystemSettings{
+		UsageDisplayCurrency:                                   h.settingService.GetUsageDisplayCurrency(c.Request.Context()),
+		UsageDisplayUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
@@ -365,9 +368,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               paymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    paymentCfg.HelpImageURL,
 		PaymentHelpText:                                        paymentCfg.HelpText,
-		TokenRankingUSDToCNYRate:                               h.settingService.GetTokenRankingSettings(c.Request.Context()).USDToCNYRate,
-		TokenRankingExcludedModels:                             h.settingService.GetTokenRankingSettings(c.Request.Context()).ExcludedModels,
-		TokenRankingExcludedGroupIDs:                           h.settingService.GetTokenRankingSettings(c.Request.Context()).ExcludedGroupIDs,
+		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
+		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
+		TokenRankingExcludedGroupIDs:                           tokenRankingSettings.ExcludedGroupIDs,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,

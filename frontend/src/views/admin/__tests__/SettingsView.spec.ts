@@ -368,6 +368,8 @@ const ImageUploadStub = defineComponent({
 });
 
 const baseSettingsResponse = {
+  usage_display_currency: "CNY",
+  usage_display_usd_to_cny_rate: 7.2,
   registration_enabled: true,
   email_verify_enabled: false,
   registration_email_suffix_whitelist: [],

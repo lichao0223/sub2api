@@ -7,24 +7,21 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"time"
 )
 
 const (
 	SettingKeyTokenRankingUSDToCNYRate     = "TOKEN_RANKING_USD_TO_CNY_RATE"
 	SettingKeyTokenRankingExcludedModels   = "TOKEN_RANKING_EXCLUDED_MODELS"
 	SettingKeyTokenRankingExcludedGroupIDs = "TOKEN_RANKING_EXCLUDED_GROUP_IDS"
-	SettingKeyTokenRankingRulesEffectiveAt = "TOKEN_RANKING_RULES_EFFECTIVE_AT"
 	SettingKeyUsageDisplayCurrency         = "USAGE_DISPLAY_CURRENCY"
 	defaultTokenRankingUSDToCNYRate        = 7.2
 	defaultUsageDisplayCurrency            = "CNY"
 )
 
 type TokenRankingSettings struct {
-	USDToCNYRate     float64   `json:"usd_to_cny_rate"`
-	ExcludedModels   []string  `json:"excluded_models"`
-	ExcludedGroupIDs []int64   `json:"excluded_group_ids"`
-	RulesEffectiveAt time.Time `json:"rules_effective_at"`
+	USDToCNYRate     float64  `json:"usd_to_cny_rate"`
+	ExcludedModels   []string `json:"excluded_models"`
+	ExcludedGroupIDs []int64  `json:"excluded_group_ids"`
 }
 
 func (s *SettingService) GetUsageDisplayCurrency(ctx context.Context) string {
@@ -64,7 +61,7 @@ func (s *SettingService) GetTokenRankingSettings(ctx context.Context) TokenRanki
 	if s == nil || s.settingRepo == nil {
 		return result
 	}
-	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyTokenRankingUSDToCNYRate, SettingKeyTokenRankingExcludedModels, SettingKeyTokenRankingExcludedGroupIDs, SettingKeyTokenRankingRulesEffectiveAt})
+	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyTokenRankingUSDToCNYRate, SettingKeyTokenRankingExcludedModels, SettingKeyTokenRankingExcludedGroupIDs})
 	if err != nil {
 		return result
 	}
@@ -73,13 +70,10 @@ func (s *SettingService) GetTokenRankingSettings(ctx context.Context) TokenRanki
 	}
 	result.ExcludedModels = normalizeTokenRankingPatterns(strings.Split(values[SettingKeyTokenRankingExcludedModels], "\n"))
 	result.ExcludedGroupIDs = normalizeTokenRankingGroupIDs(strings.Split(values[SettingKeyTokenRankingExcludedGroupIDs], "\n"))
-	if effectiveAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(values[SettingKeyTokenRankingRulesEffectiveAt])); err == nil {
-		result.RulesEffectiveAt = effectiveAt
-	}
 	return result
 }
 
-func (s *SettingService) UpdateTokenRankingSettings(ctx context.Context, rate float64, patterns []string, groupIDs []int64, now time.Time) error {
+func (s *SettingService) UpdateTokenRankingSettings(ctx context.Context, rate float64, patterns []string, groupIDs []int64) error {
 	if s == nil || s.settingRepo == nil {
 		return fmt.Errorf("setting repository unavailable")
 	}
@@ -91,10 +85,11 @@ func (s *SettingService) UpdateTokenRankingSettings(ctx context.Context, rate fl
 	current := s.GetTokenRankingSettings(ctx)
 	updates := map[string]string{SettingKeyTokenRankingUSDToCNYRate: strconv.FormatFloat(rate, 'f', -1, 64)}
 	serializedGroupIDs := serializeTokenRankingGroupIDs(groupIDs)
-	if strings.Join(patterns, "\n") != strings.Join(current.ExcludedModels, "\n") || serializedGroupIDs != serializeTokenRankingGroupIDs(current.ExcludedGroupIDs) {
+	modelsChanged := strings.Join(patterns, "\n") != strings.Join(current.ExcludedModels, "\n")
+	groupsChanged := serializedGroupIDs != serializeTokenRankingGroupIDs(current.ExcludedGroupIDs)
+	if modelsChanged || groupsChanged {
 		updates[SettingKeyTokenRankingExcludedModels] = strings.Join(patterns, "\n")
 		updates[SettingKeyTokenRankingExcludedGroupIDs] = serializedGroupIDs
-		updates[SettingKeyTokenRankingRulesEffectiveAt] = now.UTC().Format(time.RFC3339Nano)
 	}
 	return s.settingRepo.SetMultiple(ctx, updates)
 }

@@ -588,7 +588,7 @@ func (s *UsageNonworkAggregationService) AggregateRange(ctx context.Context, sta
 		row.CacheCreationTokens += ev.CacheCreationTokens
 		row.CacheReadTokens += ev.CacheReadTokens
 		row.TotalTokens += ev.TotalTokens
-		if rankingSettings.RulesEffectiveAt.IsZero() || ev.CreatedAt.Before(rankingSettings.RulesEffectiveAt) || !tokenRankingAmountExcluded(ev.Model, ev.GroupID, rankingSettings) {
+		if !tokenRankingAmountExcluded(ev.Model, ev.GroupID, rankingSettings) {
 			row.ActualCost += ev.ActualCost
 		}
 		row.CalendarConfirmed = row.CalendarConfirmed && confirmed

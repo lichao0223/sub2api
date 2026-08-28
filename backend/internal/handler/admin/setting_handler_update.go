@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -2069,7 +2068,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	if req.TokenRankingUSDToCNYRate != nil {
-		if err := h.settingService.UpdateTokenRankingSettings(c.Request.Context(), *req.TokenRankingUSDToCNYRate, req.TokenRankingExcludedModels, req.TokenRankingExcludedGroupIDs, time.Now()); err != nil {
+		if err := h.settingService.UpdateTokenRankingSettings(c.Request.Context(), *req.TokenRankingUSDToCNYRate, req.TokenRankingExcludedModels, req.TokenRankingExcludedGroupIDs); err != nil {
 			response.BadRequest(c, err.Error())
 			return
 		}
