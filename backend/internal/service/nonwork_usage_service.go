@@ -83,6 +83,7 @@ type CalendarOffday struct {
 
 type NonworkUsageEvent struct {
 	UserID              int64
+	GroupID             int64
 	RequestID           string
 	CreatedAt           time.Time
 	InputTokens         int64
@@ -587,7 +588,7 @@ func (s *UsageNonworkAggregationService) AggregateRange(ctx context.Context, sta
 		row.CacheCreationTokens += ev.CacheCreationTokens
 		row.CacheReadTokens += ev.CacheReadTokens
 		row.TotalTokens += ev.TotalTokens
-		if rankingSettings.RulesEffectiveAt.IsZero() || ev.CreatedAt.Before(rankingSettings.RulesEffectiveAt) || !tokenRankingModelExcluded(ev.Model, rankingSettings.ExcludedModels) {
+		if rankingSettings.RulesEffectiveAt.IsZero() || ev.CreatedAt.Before(rankingSettings.RulesEffectiveAt) || !tokenRankingAmountExcluded(ev.Model, ev.GroupID, rankingSettings) {
 			row.ActualCost += ev.ActualCost
 		}
 		row.CalendarConfirmed = row.CalendarConfirmed && confirmed

@@ -367,6 +367,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentHelpText:                                        paymentCfg.HelpText,
 		TokenRankingUSDToCNYRate:                               h.settingService.GetTokenRankingSettings(c.Request.Context()).USDToCNYRate,
 		TokenRankingExcludedModels:                             h.settingService.GetTokenRankingSettings(c.Request.Context()).ExcludedModels,
+		TokenRankingExcludedGroupIDs:                           h.settingService.GetTokenRankingSettings(c.Request.Context()).ExcludedGroupIDs,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,

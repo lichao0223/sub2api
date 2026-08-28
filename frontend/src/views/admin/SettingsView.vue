@@ -6906,6 +6906,10 @@
                 <textarea :value="(form.token_ranking_excluded_models || []).join('\n')" @input="form.token_ranking_excluded_models = ($event.target as HTMLTextAreaElement).value.split('\n').map(v => v.trim()).filter(Boolean)" class="input min-h-24 resize-y" placeholder="每行一个，例如：gpt-* 或 openai/o" />
                 <p class="mt-1 text-xs text-gray-400">支持名称包含匹配和 * 通配符；只排除金额，Token 数和请求数仍会统计。</p>
               </div>
+              <div>
+                <GroupSelector v-model="form.token_ranking_excluded_group_ids" :groups="tokenRankingGroups" label="金额排除分组" />
+                <p class="mt-1 text-xs text-gray-400">模型排除规则仅对选中的分组生效；未选择时不排除任何金额，其他分组的金额仍会统计。</p>
+              </div>
             </div>
           </div>
 	        </div>
@@ -8920,6 +8924,7 @@ import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
+import GroupSelector from "@/components/common/GroupSelector.vue";
 import Pagination from "@/components/common/Pagination.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
@@ -9092,6 +9097,7 @@ const loginIPBlockDurationOptions = computed(() => [
   { value: 0, label: t("admin.settings.loginIPBlock.durationPermanent") },
 ]);
 const subscriptionGroups = ref<AdminGroup[]>([]);
+const tokenRankingGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -9721,6 +9727,7 @@ const form = reactive<SettingsForm>({
   payment_subscription_usd_to_cny_rate: 0,
   token_ranking_usd_to_cny_rate: 7.2,
   token_ranking_excluded_models: [],
+  token_ranking_excluded_group_ids: [],
   usage_display_currency: "CNY",
   usage_display_usd_to_cny_rate: 7.2,
   payment_recharge_fee_rate: 0,
@@ -11081,11 +11088,13 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
+    tokenRankingGroups.value = groups;
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
   } catch (_error: unknown) {
+    tokenRankingGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -11539,6 +11548,7 @@ async function saveSettings() {
       token_ranking_usd_to_cny_rate:
         Number(form.token_ranking_usd_to_cny_rate) || 7.2,
       token_ranking_excluded_models: form.token_ranking_excluded_models,
+      token_ranking_excluded_group_ids: form.token_ranking_excluded_group_ids,
       usage_display_currency: form.usage_display_currency,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,

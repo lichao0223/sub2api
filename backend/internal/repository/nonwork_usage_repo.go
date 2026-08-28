@@ -378,6 +378,7 @@ func (r *nonworkUsageRepository) GetUsageEvents(ctx context.Context, start, end 
 	rows, err := r.sql.QueryContext(ctx, `
 		SELECT
 			user_id,
+			COALESCE(group_id, 0),
 			COALESCE(request_id, ''),
 			created_at,
 			COALESCE(input_tokens, 0),
@@ -403,6 +404,7 @@ func (r *nonworkUsageRepository) GetUsageEvents(ctx context.Context, start, end 
 		var ev service.NonworkUsageEvent
 		if err := rows.Scan(
 			&ev.UserID,
+			&ev.GroupID,
 			&ev.RequestID,
 			&ev.CreatedAt,
 			&ev.InputTokens,

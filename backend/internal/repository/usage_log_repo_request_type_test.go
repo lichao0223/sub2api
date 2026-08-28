@@ -743,7 +743,7 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600), int64(1)).
 		AddRow(int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600), int64(1))
 
-	mock.ExpectQuery("WITH usage_owner AS \\(").
+	mock.ExpectQuery("WITH usage_owner AS \\([\\s\\S]*TOKEN_RANKING_EXCLUDED_GROUP_IDS").
 		WithArgs(start, end, service.RoleAdmin, 12).
 		WillReturnRows(rows)
 

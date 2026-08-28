@@ -286,6 +286,7 @@ type SystemSettings struct {
 	PaymentHelpText                  string   `json:"payment_help_text"`
 	TokenRankingUSDToCNYRate         float64  `json:"token_ranking_usd_to_cny_rate"`
 	TokenRankingExcludedModels       []string `json:"token_ranking_excluded_models"`
+	TokenRankingExcludedGroupIDs     []int64  `json:"token_ranking_excluded_group_ids"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`

@@ -23,9 +23,10 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
-	UsageDisplayCurrency       string   `json:"usage_display_currency"`
-	TokenRankingUSDToCNYRate   *float64 `json:"token_ranking_usd_to_cny_rate"`
-	TokenRankingExcludedModels []string `json:"token_ranking_excluded_models"`
+	UsageDisplayCurrency         string   `json:"usage_display_currency"`
+	TokenRankingUSDToCNYRate     *float64 `json:"token_ranking_usd_to_cny_rate"`
+	TokenRankingExcludedModels   []string `json:"token_ranking_excluded_models"`
+	TokenRankingExcludedGroupIDs []int64  `json:"token_ranking_excluded_group_ids"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
@@ -2068,7 +2069,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		return
 	}
 	if req.TokenRankingUSDToCNYRate != nil {
-		if err := h.settingService.UpdateTokenRankingSettings(c.Request.Context(), *req.TokenRankingUSDToCNYRate, req.TokenRankingExcludedModels, time.Now()); err != nil {
+		if err := h.settingService.UpdateTokenRankingSettings(c.Request.Context(), *req.TokenRankingUSDToCNYRate, req.TokenRankingExcludedModels, req.TokenRankingExcludedGroupIDs, time.Now()); err != nil {
 			response.BadRequest(c, err.Error())
 			return
 		}
@@ -2394,6 +2395,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
 		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
+		TokenRankingExcludedGroupIDs:                           tokenRankingSettings.ExcludedGroupIDs,
 		UsageDisplayCurrency:                                   usageDisplayCurrency,
 		UsageDisplayUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,

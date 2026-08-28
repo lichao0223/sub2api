@@ -13,6 +13,7 @@ import (
 const (
 	SettingKeyTokenRankingUSDToCNYRate     = "TOKEN_RANKING_USD_TO_CNY_RATE"
 	SettingKeyTokenRankingExcludedModels   = "TOKEN_RANKING_EXCLUDED_MODELS"
+	SettingKeyTokenRankingExcludedGroupIDs = "TOKEN_RANKING_EXCLUDED_GROUP_IDS"
 	SettingKeyTokenRankingRulesEffectiveAt = "TOKEN_RANKING_RULES_EFFECTIVE_AT"
 	SettingKeyUsageDisplayCurrency         = "USAGE_DISPLAY_CURRENCY"
 	defaultTokenRankingUSDToCNYRate        = 7.2
@@ -22,6 +23,7 @@ const (
 type TokenRankingSettings struct {
 	USDToCNYRate     float64   `json:"usd_to_cny_rate"`
 	ExcludedModels   []string  `json:"excluded_models"`
+	ExcludedGroupIDs []int64   `json:"excluded_group_ids"`
 	RulesEffectiveAt time.Time `json:"rules_effective_at"`
 }
 
@@ -62,7 +64,7 @@ func (s *SettingService) GetTokenRankingSettings(ctx context.Context) TokenRanki
 	if s == nil || s.settingRepo == nil {
 		return result
 	}
-	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyTokenRankingUSDToCNYRate, SettingKeyTokenRankingExcludedModels, SettingKeyTokenRankingRulesEffectiveAt})
+	values, err := s.settingRepo.GetMultiple(ctx, []string{SettingKeyTokenRankingUSDToCNYRate, SettingKeyTokenRankingExcludedModels, SettingKeyTokenRankingExcludedGroupIDs, SettingKeyTokenRankingRulesEffectiveAt})
 	if err != nil {
 		return result
 	}
@@ -70,13 +72,14 @@ func (s *SettingService) GetTokenRankingSettings(ctx context.Context) TokenRanki
 		result.USDToCNYRate = rate
 	}
 	result.ExcludedModels = normalizeTokenRankingPatterns(strings.Split(values[SettingKeyTokenRankingExcludedModels], "\n"))
+	result.ExcludedGroupIDs = normalizeTokenRankingGroupIDs(strings.Split(values[SettingKeyTokenRankingExcludedGroupIDs], "\n"))
 	if effectiveAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(values[SettingKeyTokenRankingRulesEffectiveAt])); err == nil {
 		result.RulesEffectiveAt = effectiveAt
 	}
 	return result
 }
 
-func (s *SettingService) UpdateTokenRankingSettings(ctx context.Context, rate float64, patterns []string, now time.Time) error {
+func (s *SettingService) UpdateTokenRankingSettings(ctx context.Context, rate float64, patterns []string, groupIDs []int64, now time.Time) error {
 	if s == nil || s.settingRepo == nil {
 		return fmt.Errorf("setting repository unavailable")
 	}
@@ -84,13 +87,50 @@ func (s *SettingService) UpdateTokenRankingSettings(ctx context.Context, rate fl
 		return fmt.Errorf("token ranking exchange rate must be positive")
 	}
 	patterns = normalizeTokenRankingPatterns(patterns)
+	groupIDs = normalizeTokenRankingGroupIDsFromInts(groupIDs)
 	current := s.GetTokenRankingSettings(ctx)
 	updates := map[string]string{SettingKeyTokenRankingUSDToCNYRate: strconv.FormatFloat(rate, 'f', -1, 64)}
-	if strings.Join(patterns, "\n") != strings.Join(current.ExcludedModels, "\n") {
+	serializedGroupIDs := serializeTokenRankingGroupIDs(groupIDs)
+	if strings.Join(patterns, "\n") != strings.Join(current.ExcludedModels, "\n") || serializedGroupIDs != serializeTokenRankingGroupIDs(current.ExcludedGroupIDs) {
 		updates[SettingKeyTokenRankingExcludedModels] = strings.Join(patterns, "\n")
+		updates[SettingKeyTokenRankingExcludedGroupIDs] = serializedGroupIDs
 		updates[SettingKeyTokenRankingRulesEffectiveAt] = now.UTC().Format(time.RFC3339Nano)
 	}
 	return s.settingRepo.SetMultiple(ctx, updates)
+}
+
+func normalizeTokenRankingGroupIDs(values []string) []int64 {
+	groupIDs := make([]int64, 0, len(values))
+	for _, value := range values {
+		if groupID, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil {
+			groupIDs = append(groupIDs, groupID)
+		}
+	}
+	return normalizeTokenRankingGroupIDsFromInts(groupIDs)
+}
+
+func normalizeTokenRankingGroupIDsFromInts(values []int64) []int64 {
+	seen := make(map[int64]struct{}, len(values))
+	out := make([]int64, 0, len(values))
+	for _, value := range values {
+		if value <= 0 {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+func serializeTokenRankingGroupIDs(values []int64) string {
+	parts := make([]string, len(values))
+	for i, value := range values {
+		parts[i] = strconv.FormatInt(value, 10)
+	}
+	return strings.Join(parts, "\n")
 }
 
 func normalizeTokenRankingPatterns(values []string) []string {
@@ -121,6 +161,15 @@ func tokenRankingModelExcluded(model string, patterns []string) bool {
 		}
 		if model == pattern || strings.Contains(model, pattern) {
 			return true
+		}
+	}
+	return false
+}
+
+func tokenRankingAmountExcluded(model string, groupID int64, settings TokenRankingSettings) bool {
+	for _, excludedGroupID := range settings.ExcludedGroupIDs {
+		if groupID == excludedGroupID {
+			return tokenRankingModelExcluded(model, settings.ExcludedModels)
 		}
 	}
 	return false
