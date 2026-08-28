@@ -295,10 +295,11 @@ type PendingCostDetails struct {
 }
 
 type CostTrendPoint struct {
-	Bucket         string `json:"bucket"`
-	DynamicCostCNY string `json:"dynamic_cost_cny"`
-	FixedCostCNY   string `json:"fixed_cost_cny"`
-	TotalCostCNY   string `json:"total_cost_cny"`
+	Bucket         string          `json:"bucket"`
+	DynamicCostCNY string          `json:"dynamic_cost_cny"`
+	FixedCostCNY   string          `json:"fixed_cost_cny"`
+	TotalCostCNY   string          `json:"total_cost_cny"`
+	Plans          []CostPlanShare `json:"plans"`
 }
 
 type CostPlanShare struct {

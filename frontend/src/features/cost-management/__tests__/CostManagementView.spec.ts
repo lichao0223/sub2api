@@ -298,6 +298,21 @@ describe('CostManagementView', () => {
     expect(config.data.datasets.map((dataset: any) => dataset.backgroundColor)).toEqual(['#7a5af8', '#0866ed', '#ff7800'])
   })
 
+  it('shows each cost plan amount in the chart tooltip', async () => {
+    api.analysis.mockResolvedValue({
+      period: 'day', total_cost_cny: '909.014', top: [],
+      trend: [{ bucket: '2026-08-28', dynamic_cost_cny: '710.014', fixed_cost_cny: '199', total_cost_cny: '909.014', plans: [
+        { plan_id: 1, plan_name: '阿里云', amount_cny: '600' },
+        { plan_id: 2, plan_name: 'Kimi 套餐 199', amount_cny: '199' },
+      ] }],
+    })
+    mountView()
+    await flushPromises()
+
+    const callback = chartConfigs.at(-1).options.plugins.tooltip.callbacks.afterBody
+    expect(callback([{ dataIndex: 0 }])).toEqual(['', '阿里云: ¥600.00', 'Kimi 套餐 199: ¥199.00'])
+  })
+
   it('rejects an account cost configuration without a plan before submitting', async () => {
     const wrapper = mountView()
     await flushPromises()
@@ -435,6 +450,28 @@ describe('CostManagementView', () => {
     await wrapper.findAll('button').find(button => button.text() === '价格变更')!.trigger('click')
     await flushPromises()
     expect(wrapper.get('[data-test="dialog"]').text()).toContain('历史价格不会被覆盖')
+  })
+
+  it('shows complete token prices and time rules in price history', async () => {
+    api.priceHistory.mockResolvedValue([{
+      id: 21, plan_id: 11, version_no: 1, effective_from: '2026-08-01T00:00:00+08:00',
+      subscription_unit_name: '', billing_cycle: '', fixed_unit_cost_cny: '0', monthly_unit_cost_cny: '0',
+      prices: [{
+        upstream_model: 'deepseek-v4-flash', billing_mode: 'token', input_price_cny: '1.5', output_price_cny: '4.5',
+        cache_write_price_cny: '1.5', cache_read_price_cny: '0.05', image_input_price_cny: '0', image_output_price_cny: '0', per_request_price_cny: '0',
+        time_pricing: { timezone: 'Asia/Shanghai', weekdays_only: true, periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: 2 }] },
+      }],
+    }])
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === '价格历史')!.trigger('click')
+    await flushPromises()
+
+    const dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('价格历史 · GLM 按量'))!
+    expect(dialog.text()).toContain('缓存读取 ¥0.05/MTok')
+    expect(dialog.text()).toContain('仅工作日 · Asia/Shanghai · 09:00:00-12:00:00 ×2')
   })
 
   it('copies model prices and time periods without sharing state', async () => {

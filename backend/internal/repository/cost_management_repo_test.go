@@ -46,6 +46,43 @@ func TestCostAnalysisRangeUsesExactBucketCounts(t *testing.T) {
 	require.Equal(t, "year", grain)
 }
 
+func TestListCostPriceHistoryIncludesCacheReadAndTimePricing(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	effective := time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)
+
+	mock.ExpectQuery("SELECT v.id,v.plan_id").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{
+		"id", "plan_id", "unit_id", "unit_name", "version", "effective_from", "effective_to", "cycle", "fixed", "monthly",
+	}).AddRow(11, 7, nil, "", 1, effective, nil, "", "0", "0"))
+	mock.ExpectQuery("SELECT mp.plan_version_id").WithArgs(int64(7)).WillReturnRows(sqlmock.NewRows([]string{
+		"version_id", "model", "mode", "input", "output", "cache_write", "cache_read", "image_input", "image_output", "request", "time_pricing",
+	}).AddRow(11, "deepseek-v4-flash", "token", "1.5", "4.5", "1.5", "0.05", "0", "0", "0", `{"timezone":"Asia/Shanghai","weekdays_only":true,"periods":[{"start_time":"09:00:00","end_time":"12:00:00","multiplier":2}]}`))
+
+	history, err := (&costManagementRepository{db: db}).ListCostPriceHistory(context.Background(), 7)
+	require.NoError(t, err)
+	require.Len(t, history, 1)
+	require.Equal(t, "0.05", history[0].Prices[0].CacheReadPriceCNY)
+	require.True(t, history[0].Prices[0].TimePricing.WeekdaysOnly)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRebuildUsageRangeHonorsWeekdaysOnlyTimePricing(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	mock.ExpectBegin()
+	tx, err := db.Begin()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	start := time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 0, 1)
+	mock.ExpectExec("weekdays_only.*EXTRACT\\(ISODOW").WithArgs(start, end).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	require.NoError(t, rebuildUsageRange(context.Background(), tx, start, end))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestPreviousCostRangePreservesWholeMonths(t *testing.T) {
 	start := time.Date(2026, time.February, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, time.March, 1, 0, 0, 0, 0, time.UTC)
@@ -490,6 +527,8 @@ func TestCostAnalysisEmptyCollectionsMarshalAsArrays(t *testing.T) {
 
 	mock.ExpectQuery("SELECT TO_CHAR").
 		WillReturnRows(sqlmock.NewRows([]string{"bucket", "dynamic", "fixed", "total"}))
+	mock.ExpectQuery("SELECT TO_CHAR").
+		WillReturnRows(sqlmock.NewRows([]string{"bucket", "plan_id", "plan_name", "amount"}))
 	mock.ExpectQuery("SELECT p.id").
 		WillReturnRows(sqlmock.NewRows([]string{"plan_id", "plan_name", "amount", "total"}))
 
@@ -498,5 +537,26 @@ func TestCostAnalysisEmptyCollectionsMarshalAsArrays(t *testing.T) {
 	body, err := json.Marshal(analysis)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"period":"day","total_cost_cny":"0","trend":[],"top":[]}`, string(body))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestCostAnalysisIncludesPlanBreakdownByBucket(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	mock.ExpectQuery("SELECT TO_CHAR").WillReturnRows(sqlmock.NewRows([]string{"bucket", "dynamic", "fixed", "total"}).
+		AddRow("2026-08-28", "710.014", "199", "909.014"))
+	mock.ExpectQuery("SELECT TO_CHAR").WillReturnRows(sqlmock.NewRows([]string{"bucket", "plan_id", "plan_name", "amount"}).
+		AddRow("2026-08-28", 1, "阿里云", "600").
+		AddRow("2026-08-28", 2, "Kimi 套餐 199", "199"))
+	mock.ExpectQuery("SELECT p.id").WillReturnRows(sqlmock.NewRows([]string{"plan_id", "plan_name", "amount", "total"}))
+
+	analysis, err := (&costManagementRepository{db: db}).GetCostAnalysis(context.Background(), "day", time.Now())
+	require.NoError(t, err)
+	require.Equal(t, []service.CostPlanShare{
+		{PlanID: 1, PlanName: "阿里云", AmountCNY: "600"},
+		{PlanID: 2, PlanName: "Kimi 套餐 199", AmountCNY: "199"},
+	}, analysis.Trend[0].Plans)
 	require.NoError(t, mock.ExpectationsWereMet())
 }

@@ -303,7 +303,7 @@ func (r *costManagementRepository) ListCostPriceHistory(ctx context.Context, pla
 			planVersionIndexes[items[i].ID] = i
 		}
 	}
-	priceRows, err := r.db.QueryContext(ctx, `SELECT mp.plan_version_id,mp.upstream_model,mp.billing_mode,mp.input_price_cny::text,mp.output_price_cny::text,mp.cache_write_price_cny::text,mp.image_input_price_cny::text,mp.image_output_price_cny::text,mp.per_request_price_cny::text,mp.time_pricing FROM cost_model_prices mp JOIN cost_plan_versions v ON v.id=mp.plan_version_id WHERE v.plan_id=$1 ORDER BY mp.plan_version_id,mp.upstream_model`, planID)
+	priceRows, err := r.db.QueryContext(ctx, `SELECT mp.plan_version_id,mp.upstream_model,mp.billing_mode,mp.input_price_cny::text,mp.output_price_cny::text,mp.cache_write_price_cny::text,mp.cache_read_price_cny::text,mp.image_input_price_cny::text,mp.image_output_price_cny::text,mp.per_request_price_cny::text,mp.time_pricing FROM cost_model_prices mp JOIN cost_plan_versions v ON v.id=mp.plan_version_id WHERE v.plan_id=$1 ORDER BY mp.plan_version_id,mp.upstream_model`, planID)
 	if err != nil {
 		return nil, err
 	}
@@ -1035,13 +1035,35 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 		Top:          make([]service.CostPlanShare, 0),
 	}
 	for rows.Next() {
-		var p service.CostTrendPoint
+		p := service.CostTrendPoint{Plans: make([]service.CostPlanShare, 0)}
 		if err = rows.Scan(&p.Bucket, &p.DynamicCostCNY, &p.FixedCostCNY, &p.TotalCostCNY); err != nil {
 			return nil, err
 		}
 		a.Trend = append(a.Trend, p)
 	}
 	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	byBucket := make(map[string]*service.CostTrendPoint, len(a.Trend))
+	for i := range a.Trend {
+		byBucket[a.Trend[i].Bucket] = &a.Trend[i]
+	}
+	planRows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,d.bucket_date),$2),p.id,p.name,SUM(d.amount_cny)::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $3::date AND d.bucket_date <= $4::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY 1,p.id,p.name ORDER BY 1,SUM(d.amount_cny) DESC`, trunc, format, start, now)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = planRows.Close() }()
+	for planRows.Next() {
+		var bucket string
+		var plan service.CostPlanShare
+		if err = planRows.Scan(&bucket, &plan.PlanID, &plan.PlanName, &plan.AmountCNY); err != nil {
+			return nil, err
+		}
+		if point := byBucket[bucket]; point != nil {
+			point.Plans = append(point.Plans, plan)
+		}
+	}
+	if err = planRows.Err(); err != nil {
 		return nil, err
 	}
 	top, err := r.db.QueryContext(ctx, `SELECT p.id,p.name,SUM(d.amount_cny)::text,SUM(SUM(d.amount_cny)) OVER()::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $1::date AND d.bucket_date <= $2::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY p.id,p.name ORDER BY SUM(d.amount_cny) DESC LIMIT 5`, start, now)
@@ -1220,7 +1242,7 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		    mp.billing_mode AS cost_billing_mode,
 		    mp.input_price_cny,mp.output_price_cny,mp.cache_write_price_cny,mp.cache_read_price_cny,
 		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny,
-		    COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) time_multiplier
+		    COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (COALESCE((mp.time_pricing->>'weekdays_only')::boolean,FALSE)=FALSE OR EXTRACT(ISODOW FROM (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))) BETWEEN 1 AND 5) AND (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (b.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) time_multiplier
 		  FROM batch b
 		  LEFT JOIN LATERAL(SELECT * FROM account_cost_configs x WHERE x.account_id=b.account_id AND x.effective_from<=b.created_at AND(x.effective_to IS NULL OR x.effective_to>b.created_at)ORDER BY x.effective_from DESC LIMIT 1)c ON TRUE
 		  LEFT JOIN LATERAL(SELECT * FROM cost_plan_versions x WHERE x.plan_id=c.plan_id AND x.effective_from<=b.created_at AND(x.effective_to IS NULL OR x.effective_to>b.created_at)ORDER BY x.version_no DESC LIMIT 1)v ON TRUE
@@ -1572,7 +1594,7 @@ func rebuildUsageRange(ctx context.Context, tx *sql.Tx, start, end time.Time) er
 		    mp.billing_mode AS cost_billing_mode,
 		    mp.input_price_cny,mp.output_price_cny,mp.cache_write_price_cny,mp.cache_read_price_cny,
 		    mp.image_input_price_cny,mp.image_output_price_cny,mp.per_request_price_cny,
-		    COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) time_multiplier
+		    COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (COALESCE((mp.time_pricing->>'weekdays_only')::boolean,FALSE)=FALSE OR EXTRACT(ISODOW FROM (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))) BETWEEN 1 AND 5) AND (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) time_multiplier
 		  FROM usage_logs ul
 		  LEFT JOIN LATERAL(SELECT * FROM account_cost_configs x WHERE x.account_id=ul.account_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at)ORDER BY x.effective_from DESC LIMIT 1)c ON TRUE
 		  LEFT JOIN LATERAL(SELECT * FROM cost_plan_versions x WHERE x.plan_id=c.plan_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at)ORDER BY x.version_no DESC LIMIT 1)v ON TRUE

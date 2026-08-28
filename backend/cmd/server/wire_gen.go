@@ -316,7 +316,7 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	availableChannelHandler := handler.NewAvailableChannelHandler(channelService, apiKeyService, settingService)
 	externalUserMappingRepository := repository.NewExternalUserMappingRepository(client)
 	externalUserService := service.NewExternalUserService(adminService, apiKeyService, externalUserMappingRepository, subscriptionService, usageLogRepository)
-	integrationUserHandler := handler.ProvideIntegrationUserHandler(externalUserService)
+	integrationUserHandler := handler.ProvideIntegrationUserHandler(externalUserService, settingService)
 	integrationHandlers := handler.ProvideIntegrationHandlers(integrationUserHandler)
 	modelPlazaService := service.NewModelPlazaService(channelRepository, groupRepository, pricingService, billingService, modelPricingResolver)
 	modelPlazaHandler := handler.NewModelPlazaHandler(modelPlazaService, apiKeyService, settingService)

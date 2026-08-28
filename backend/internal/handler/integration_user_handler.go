@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -83,11 +85,158 @@ func (h *IntegrationUserHandler) ListUsage(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	out := make([]dto.UsageLog, 0, len(logs))
+	rate := h.usageUSDToCNYRate(c.Request.Context())
+	out := make([]integrationUsageLog, 0, len(logs))
 	for i := range logs {
-		out = append(out, *dto.UsageLogFromService(&logs[i]))
+		out = append(out, integrationUsageLogFromService(&logs[i], rate))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+type integrationUsageLog struct {
+	APIKeyName          string    `json:"api_key_name"`
+	Model               string    `json:"model"`
+	ReasoningEffort     string    `json:"reasoning_effort"`
+	Endpoint            string    `json:"endpoint"`
+	IPAddress           string    `json:"ip_address"`
+	GroupName           string    `json:"group_name"`
+	RequestType         string    `json:"request_type"`
+	BillingType         string    `json:"billing_type"`
+	BillingMode         string    `json:"billing_mode"`
+	InputTokens         int       `json:"input_tokens"`
+	OutputTokens        int       `json:"output_tokens"`
+	CacheCreationTokens int       `json:"cache_creation_tokens"`
+	CacheReadTokens     int       `json:"cache_read_tokens"`
+	TotalTokens         int       `json:"total_tokens"`
+	ActualCostUSD       float64   `json:"actual_cost_usd"`
+	ActualCostCNY       float64   `json:"actual_cost_cny"`
+	FirstTokenMs        *int      `json:"first_token_ms,omitempty"`
+	DurationMs          *int      `json:"duration_ms,omitempty"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
+func integrationUsageLogFromService(log *service.UsageLog, usdToCNYRate float64) integrationUsageLog {
+	model := log.RequestedModel
+	if model == "" {
+		model = log.Model
+	}
+	return integrationUsageLog{
+		APIKeyName:          usageAPIKeyName(log),
+		Model:               model,
+		ReasoningEffort:     usageReasoningEffort(log),
+		Endpoint:            stringValueOrDefault(log.InboundEndpoint, "-"),
+		IPAddress:           stringValueOrDefault(log.IPAddress, "-"),
+		GroupName:           usageGroupName(log),
+		RequestType:         integrationRequestTypeLabel(log.EffectiveRequestType()),
+		BillingType:         integrationBillingTypeLabel(log.BillingType),
+		BillingMode:         integrationBillingModeLabel(log),
+		InputTokens:         log.InputTokens,
+		OutputTokens:        log.OutputTokens,
+		CacheCreationTokens: log.CacheCreationTokens,
+		CacheReadTokens:     log.CacheReadTokens,
+		TotalTokens:         log.TotalTokens(),
+		ActualCostUSD:       log.ActualCost,
+		ActualCostCNY:       math.Round(log.ActualCost*usdToCNYRate*1e6) / 1e6,
+		FirstTokenMs:        log.FirstTokenMs,
+		DurationMs:          log.DurationMs,
+		CreatedAt:           log.CreatedAt,
+	}
+}
+
+func usageAPIKeyName(log *service.UsageLog) string {
+	if log.APIKey != nil && strings.TrimSpace(log.APIKey.Name) != "" {
+		return log.APIKey.Name
+	}
+	return "-"
+}
+
+func usageGroupName(log *service.UsageLog) string {
+	if log.Group != nil && strings.TrimSpace(log.Group.Name) != "" {
+		return log.Group.Name
+	}
+	return "无分组"
+}
+
+func usageReasoningEffort(log *service.UsageLog) string {
+	effort := log.ReasoningEffort
+	if effort == nil {
+		effort = log.RequestedReasoningEffort
+	}
+	if effort == nil || strings.TrimSpace(*effort) == "" {
+		return "-"
+	}
+	raw := strings.TrimSpace(*effort)
+	switch strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(raw, "_", ""), "-", "")) {
+	case "low":
+		return "Low"
+	case "medium":
+		return "Medium"
+	case "high":
+		return "High"
+	case "xhigh", "extrahigh":
+		return "XHigh"
+	case "max":
+		return "Max"
+	case "none", "minimal":
+		return "-"
+	default:
+		return raw
+	}
+}
+
+func stringValueOrDefault(value *string, fallback string) string {
+	if value != nil && strings.TrimSpace(*value) != "" {
+		return strings.TrimSpace(*value)
+	}
+	return fallback
+}
+
+func integrationRequestTypeLabel(requestType service.RequestType) string {
+	switch requestType {
+	case service.RequestTypeSync:
+		return "非流式"
+	case service.RequestTypeStream:
+		return "流式"
+	case service.RequestTypeWSV2:
+		return "WebSocket"
+	case service.RequestTypeCyberBlocked:
+		return "安全拦截"
+	case service.RequestTypeLive:
+		return "实时"
+	default:
+		return "未知"
+	}
+}
+
+func integrationBillingTypeLabel(billingType int8) string {
+	if billingType == service.BillingTypeSubscription {
+		return "订阅"
+	}
+	return "按量"
+}
+
+func integrationBillingModeLabel(log *service.UsageLog) string {
+	mode := strings.ToLower(stringValueOrDefault(log.BillingMode, ""))
+	if mode == "" {
+		switch {
+		case log.VideoCount > 0:
+			mode = "video"
+		case log.ImageCount > 0:
+			mode = "image"
+		default:
+			mode = "token"
+		}
+	}
+	switch mode {
+	case "image":
+		return "图片"
+	case "video":
+		return "视频"
+	case "per_request":
+		return "按次"
+	default:
+		return "Token"
+	}
 }
 
 func validateExternalUserIDParam(c *gin.Context) (string, bool) {
@@ -172,14 +321,22 @@ func parseIntegrationUsageFilters(c *gin.Context) (usagestats.UsageLogFilters, b
 
 type IntegrationUserHandler struct {
 	externalUserService externalUserServicePort
+	usageUSDToCNYRate   func(context.Context) float64
 }
 
 func NewIntegrationUserHandler(externalUserService externalUserServicePort) *IntegrationUserHandler {
-	return &IntegrationUserHandler{externalUserService: externalUserService}
+	return &IntegrationUserHandler{
+		externalUserService: externalUserService,
+		usageUSDToCNYRate:   func(context.Context) float64 { return 7.2 },
+	}
 }
 
-func ProvideIntegrationUserHandler(externalUserService *service.ExternalUserService) *IntegrationUserHandler {
-	return NewIntegrationUserHandler(externalUserService)
+func ProvideIntegrationUserHandler(externalUserService *service.ExternalUserService, settingService *service.SettingService) *IntegrationUserHandler {
+	handler := NewIntegrationUserHandler(externalUserService)
+	handler.usageUSDToCNYRate = func(ctx context.Context) float64 {
+		return settingService.GetTokenRankingSettings(ctx).USDToCNYRate
+	}
+	return handler
 }
 
 func ProvideIntegrationHandlers(userHandler *IntegrationUserHandler) *IntegrationHandlers {

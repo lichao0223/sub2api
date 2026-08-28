@@ -9,7 +9,10 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -247,6 +250,57 @@ func TestIntegrationUserHandler_RotateAPIKeys(t *testing.T) {
 	require.Equal(t, "u-1", svc.rotateExternalUserID)
 }
 
+func TestIntegrationUserHandler_ListUsageReturnsDisplayFields(t *testing.T) {
+	effort := "medium"
+	endpoint := "/v1/responses"
+	ipAddress := "192.168.51.27"
+	firstTokenMs, durationMs := 4520, 6700
+	createdAt := time.Date(2026, 8, 28, 15, 51, 41, 0, time.FixedZone("CST", 8*60*60))
+	svc := &integrationUserServiceStub{
+		usageLogs: []service.UsageLog{{
+			RequestedModel:  "gpt-5.6-sol",
+			ReasoningEffort: &effort,
+			InboundEndpoint: &endpoint,
+			IPAddress:       &ipAddress,
+			InputTokens:     2495,
+			OutputTokens:    103,
+			CacheReadTokens: 78600,
+			ActualCost:      0.053337,
+			BillingType:     service.BillingTypeBalance,
+			RequestType:     service.RequestTypeStream,
+			FirstTokenMs:    &firstTokenMs,
+			DurationMs:      &durationMs,
+			CreatedAt:       createdAt,
+			APIKey:          &service.APIKey{Name: "CHATGPT"},
+			Group:           &service.Group{Name: "CHATGPT"},
+		}},
+		usagePage: &pagination.PaginationResult{Total: 1},
+	}
+	router, handler := newIntegrationUserTestRouter(svc)
+	handler.usageUSDToCNYRate = func(context.Context) float64 { return 7.2 }
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/integrations/users/u-1/usage", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Data struct {
+			Items []map[string]any `json:"items"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Data.Items, 1)
+	item := body.Data.Items[0]
+	require.Equal(t, "CHATGPT", item["api_key_name"])
+	require.Equal(t, "CHATGPT", item["group_name"])
+	require.Equal(t, "Medium", item["reasoning_effort"])
+	require.Equal(t, "流式", item["request_type"])
+	require.Equal(t, "按量", item["billing_type"])
+	require.Equal(t, 0.384026, item["actual_cost_cny"])
+	require.NotContains(t, item, "group_id")
+	require.NotContains(t, item, "api_key_id")
+}
+
 func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine, *IntegrationUserHandler) {
 	gin.SetMode(gin.TestMode)
 	h := NewIntegrationUserHandler(svc)
@@ -255,6 +309,7 @@ func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine,
 	router.DELETE("/integrations/users", h.DeleteAll)
 	router.DELETE("/integrations/users/:external_user_id", h.DeleteByExternalID)
 	router.POST("/integrations/users/:external_user_id/api-keys/rotate", h.RotateAPIKeys)
+	router.GET("/integrations/users/:external_user_id/usage", h.ListUsage)
 	router.POST("/integrations/users/sync", h.Sync)
 	return router, h
 }
@@ -289,6 +344,9 @@ type integrationUserServiceStub struct {
 	syncInput  service.ExternalUserSyncInput
 
 	rotateExternalUserID string
+
+	usageLogs []service.UsageLog
+	usagePage *pagination.PaginationResult
 }
 
 func (s *integrationUserServiceStub) Create(_ context.Context, input service.ExternalUserInput) (*service.ExternalUserResult, error) {
@@ -326,4 +384,12 @@ func (s *integrationUserServiceStub) Sync(_ context.Context, input service.Exter
 func (s *integrationUserServiceStub) RotateAPIKeysByExternalID(_ context.Context, externalUserID string) (*service.ExternalUserRotateAPIKeysResult, error) {
 	s.rotateExternalUserID = externalUserID
 	return &service.ExternalUserRotateAPIKeysResult{ExternalUserID: externalUserID}, nil
+}
+
+func (s *integrationUserServiceStub) ListSubscriptionsByExternalID(context.Context, string) ([]service.UserSubscription, error) {
+	return nil, nil
+}
+
+func (s *integrationUserServiceStub) ListUsageByExternalID(context.Context, string, pagination.PaginationParams, usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
+	return s.usageLogs, s.usagePage, nil
 }
