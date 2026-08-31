@@ -50,7 +50,7 @@ export interface PendingCostDetails {
   total_count:number;items:PendingCostDetail[]
 }
 export interface CostAnalysis {
-  period:string;total_cost_cny:string;trend:Array<{bucket:string;dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string;plans:Array<{plan_id:number;plan_name:string;amount_cny:string}>}>
+  period:string;total_cost_cny:string;trend:Array<{bucket:string;dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string;plans:Array<{plan_id:number;plan_name:string;plan_type:'metered'|'fixed';amount_cny:string}>}>
   top:Array<{plan_id:number;plan_name:string;amount_cny:string}>
 }
 export interface AccountCostInput {

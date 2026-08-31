@@ -302,15 +302,17 @@ describe('CostManagementView', () => {
     api.analysis.mockResolvedValue({
       period: 'day', total_cost_cny: '909.014', top: [],
       trend: [{ bucket: '2026-08-28', dynamic_cost_cny: '710.014', fixed_cost_cny: '199', total_cost_cny: '909.014', plans: [
-        { plan_id: 1, plan_name: '阿里云', amount_cny: '600' },
-        { plan_id: 2, plan_name: 'Kimi 套餐 199', amount_cny: '199' },
+        { plan_id: 1, plan_name: '阿里云', plan_type: 'metered', amount_cny: '600' },
+        { plan_id: 2, plan_name: 'Kimi 套餐 199', plan_type: 'fixed', amount_cny: '199' },
       ] }],
     })
     mountView()
     await flushPromises()
 
     const callback = chartConfigs.at(-1).options.plugins.tooltip.callbacks.afterBody
-    expect(callback([{ dataIndex: 0 }])).toEqual(['', '阿里云: ¥600.00', 'Kimi 套餐 199: ¥199.00'])
+    expect(callback([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00', 'Kimi 套餐 199: ¥199.00'])
+    expect(callback([{ dataIndex: 0, datasetIndex: 1 }])).toEqual(['', '阿里云: ¥600.00'])
+    expect(callback([{ dataIndex: 0, datasetIndex: 2 }])).toEqual(['', 'Kimi 套餐 199: ¥199.00'])
   })
 
   it('rejects an account cost configuration without a plan before submitting', async () => {

@@ -305,6 +305,7 @@ type CostTrendPoint struct {
 type CostPlanShare struct {
 	PlanID    int64  `json:"plan_id"`
 	PlanName  string `json:"plan_name"`
+	PlanType  string `json:"plan_type,omitempty"`
 	AmountCNY string `json:"amount_cny"`
 }
 
