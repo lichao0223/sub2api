@@ -690,10 +690,20 @@
           <option value="">全部分组</option>
           <option v-for="group in groups" :key="group.id" :value="String(group.id)">{{ group.name }}</option>
         </select>
-        <p class="mb-5 text-sm text-gray-500">将重置所选范围内所有有效订阅的日、周、月用量。</p>
+        <label class="mb-3 block text-sm">重置周期</label>
+        <div class="mb-5 grid grid-cols-2 gap-3 text-sm">
+          <label class="flex items-center gap-2">
+            <input v-model="bulkResetAll" type="checkbox" @change="toggleBulkResetAll">
+            全部（日、周、月）
+          </label>
+          <label v-for="option in quotaResetOptions" :key="option.key" class="flex items-center gap-2">
+            <input v-model="bulkResetPeriods[option.key]" type="checkbox" :disabled="bulkResetAll" @change="bulkResetAll = false">
+            {{ option.label }}
+          </label>
+        </div>
         <div class="flex justify-end gap-2">
           <button class="btn btn-secondary" @click="showBulkResetQuota = false">取消</button>
-          <button class="btn btn-primary" :disabled="bulkResetting" @click="confirmBulkResetQuota">{{ bulkResetting ? '重置中…' : '确认重置' }}</button>
+          <button class="btn btn-primary" :disabled="bulkResetting || !hasBulkResetPeriod" @click="confirmBulkResetQuota">{{ bulkResetting ? '重置中…' : '确认重置' }}</button>
         </div>
       </div>
     </div>
@@ -718,7 +728,18 @@
       :cancel-text="t('common.cancel')"
       @confirm="confirmResetQuota"
       @cancel="showResetQuotaConfirm = false"
-    />
+    >
+      <div class="grid grid-cols-2 gap-3 text-sm">
+        <label class="flex items-center gap-2">
+          <input v-model="resetQuotaAll" type="checkbox" @change="toggleResetQuotaAll">
+          全部（日、周、月）
+        </label>
+        <label v-for="option in quotaResetOptions" :key="option.key" class="flex items-center gap-2">
+          <input v-model="resetQuotaPeriods[option.key]" type="checkbox" :disabled="resetQuotaAll" @change="resetQuotaAll = false">
+          {{ option.label }}
+        </label>
+      </div>
+    </ConfirmDialog>
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -1023,9 +1044,21 @@ const showResetQuotaConfirm = ref(false)
 const showBulkResetQuota = ref(false)
 const bulkResetting = ref(false)
 const bulkResetGroup = ref('')
+const bulkResetAll = ref(true)
+const bulkResetPeriods = reactive({ daily: true, weekly: true, monthly: true })
+const quotaResetOptions = [{ key: 'daily' as const, label: '每日' }, { key: 'weekly' as const, label: '每周' }, { key: 'monthly' as const, label: '每月' }]
+const hasBulkResetPeriod = computed(() => bulkResetAll.value || Object.values(bulkResetPeriods).some(Boolean))
+const toggleBulkResetAll = () => {
+  if (bulkResetAll.value) Object.assign(bulkResetPeriods, { daily: true, weekly: true, monthly: true })
+}
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
+const resetQuotaAll = ref(true)
+const resetQuotaPeriods = reactive({ daily: true, weekly: true, monthly: true })
+const toggleResetQuotaAll = () => {
+  if (resetQuotaAll.value) Object.assign(resetQuotaPeriods, { daily: true, weekly: true, monthly: true })
+}
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
@@ -1384,6 +1417,8 @@ const confirmRestore = async () => {
 
 const handleResetQuota = (subscription: UserSubscription) => {
   resettingSubscription.value = subscription
+  resetQuotaAll.value = true
+  Object.assign(resetQuotaPeriods, { daily: true, weekly: true, monthly: true })
   showResetQuotaConfirm.value = true
 }
 
@@ -1392,7 +1427,11 @@ const confirmResetQuota = async () => {
   if (resettingQuota.value) return
   resettingQuota.value = true
   try {
-    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, { daily: true, weekly: true, monthly: true })
+    await adminAPI.subscriptions.resetQuota(resettingSubscription.value.id, {
+      daily: resetQuotaAll.value || resetQuotaPeriods.daily,
+      weekly: resetQuotaAll.value || resetQuotaPeriods.weekly,
+      monthly: resetQuotaAll.value || resetQuotaPeriods.monthly
+    })
     appStore.showSuccess(t('admin.subscriptions.quotaResetSuccess'))
     showResetQuotaConfirm.value = false
     resettingSubscription.value = null
@@ -1411,9 +1450,9 @@ const confirmBulkResetQuota = async () => {
   try {
     const result = await adminAPI.subscriptions.bulkResetQuota({
       group_id: bulkResetGroup.value ? Number(bulkResetGroup.value) : null,
-      daily: true,
-      weekly: true,
-      monthly: true
+      daily: bulkResetAll.value || bulkResetPeriods.daily,
+      weekly: bulkResetAll.value || bulkResetPeriods.weekly,
+      monthly: bulkResetAll.value || bulkResetPeriods.monthly
     })
     appStore.showSuccess(`已重置 ${result.reset_count} 个订阅的配额`)
     showBulkResetQuota.value = false
