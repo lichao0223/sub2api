@@ -184,7 +184,6 @@ func TestMultimodalPricingUsesVisionGroupWithoutChangingSourceGroup(t *testing.T
 		1,
 		1,
 		time.Now(),
-		&recordUsageOpts{},
 	)
 
 	require.Positive(t, cost.TotalCost)
