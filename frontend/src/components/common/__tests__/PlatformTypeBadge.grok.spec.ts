@@ -13,6 +13,22 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('PlatformTypeBadge Grok plans', () => {
+  it('marks paid subscription expiry within three days in red', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-01T00:00:00Z'))
+    const wrapper = mount(PlatformTypeBadge, {
+      props: {
+        platform: 'anthropic',
+        type: 'apikey',
+        planType: 'pro',
+        subscriptionExpiresAt: '2026-09-04T00:00:00Z',
+      },
+    })
+
+    expect(wrapper.html()).toContain('text-red-600')
+    vi.useRealTimers()
+  })
+
   it('renders FREE and BASIC as Grok Free with a lightweight plan icon', async () => {
     const wrapper = mount(PlatformTypeBadge, {
       props: {

@@ -861,7 +861,7 @@ func (r *costManagementRepository) GetCostOverview(ctx context.Context, start, e
 		if parseErr != nil {
 			return nil, parseErr
 		}
-		estimated := dynamic.Add(projectedFixed).String()
+		estimated := dynamic.Add(projectedFixed).Round(service.UsageBillingMonetaryScale).String()
 		o.EstimatedTotalCostCNY = &estimated
 	}
 	var firstDay, lastDay time.Time

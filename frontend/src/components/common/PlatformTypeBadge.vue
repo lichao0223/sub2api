@@ -58,7 +58,7 @@
       </span>
     </div>
     <!-- Row 3: Subscription expiration (non-free paid accounts only) -->
-    <div v-if="expiresLabel" class="text-[10px] leading-tight text-gray-400 dark:text-gray-500 pl-0.5" :title="subscriptionExpiresAt">
+    <div v-if="expiresLabel" :class="['text-[10px] leading-tight pl-0.5', expiresUrgent ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500']" :title="subscriptionExpiresAt">
       {{ expiresLabel }}
     </div>
   </div>
@@ -68,6 +68,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { AccountPlatform, AccountType } from '@/types'
+import { daysUntil, EXPIRY_DANGER_DAYS } from '@/utils/proxyExpiry'
 import GrokFreeIcon from './GrokFreeIcon.vue'
 import PlatformIcon from './PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -284,6 +285,8 @@ const expiresLabel = computed(() => {
     return ''
   }
 })
+
+const expiresUrgent = computed(() => Boolean(props.subscriptionExpiresAt && daysUntil(props.subscriptionExpiresAt) <= EXPIRY_DANGER_DAYS))
 
 // Privacy badge — shows different states for OpenAI/Antigravity OAuth privacy setting
 const privacyBadge = computed(() => {
