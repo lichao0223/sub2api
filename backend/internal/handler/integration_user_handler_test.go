@@ -321,9 +321,15 @@ func TestIntegrationUserHandler_ListSubscriptionsIncludesProgress(t *testing.T) 
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 	require.Len(t, body.Data, 1)
-	require.Equal(t, float64(10), body.Data[0]["daily"].(map[string]any)["limit_usd"])
-	require.Equal(t, float64(12), body.Data[0]["weekly"].(map[string]any)["used_usd"])
-	require.Equal(t, float64(31), body.Data[0]["monthly"].(map[string]any)["used_usd"])
+	daily, ok := body.Data[0]["daily"].(map[string]any)
+	require.True(t, ok)
+	weekly, ok := body.Data[0]["weekly"].(map[string]any)
+	require.True(t, ok)
+	monthly, ok := body.Data[0]["monthly"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, float64(10), daily["limit_usd"])
+	require.Equal(t, float64(12), weekly["used_usd"])
+	require.Equal(t, float64(31), monthly["used_usd"])
 	require.NotContains(t, body.Data[0], "progress")
 }
 
