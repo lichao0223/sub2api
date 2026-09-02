@@ -76,7 +76,13 @@ type externalUserAPIKeyPort interface {
 
 type externalUserSubscriptionPort interface {
 	ListUserSubscriptions(ctx context.Context, userID int64) ([]UserSubscription, error)
+	GetSubscriptionProgress(ctx context.Context, subscriptionID int64) (*SubscriptionProgress, error)
 	AssignSubscription(ctx context.Context, input *AssignSubscriptionInput) (*UserSubscription, error)
+}
+
+type ExternalUserSubscriptionDetail struct {
+	Subscription UserSubscription
+	Progress     *SubscriptionProgress
 }
 
 type ExternalUserService struct {
@@ -119,6 +125,26 @@ func (s *ExternalUserService) ListSubscriptionsByExternalID(ctx context.Context,
 		return nil, ErrExternalUserInternal.WithCause(err)
 	}
 	return subs, nil
+}
+
+func (s *ExternalUserService) ListSubscriptionDetailsByExternalID(ctx context.Context, externalUserID string) ([]ExternalUserSubscriptionDetail, error) {
+	subs, err := s.ListSubscriptionsByExternalID(ctx, externalUserID)
+	if err != nil {
+		return nil, err
+	}
+	details := make([]ExternalUserSubscriptionDetail, 0, len(subs))
+	for i := range subs {
+		sub := &subs[i]
+		progress, progressErr := s.subscriptionService.GetSubscriptionProgress(ctx, sub.ID)
+		if progressErr != nil {
+			return nil, ErrExternalUserInternal.WithCause(progressErr)
+		}
+		details = append(details, ExternalUserSubscriptionDetail{
+			Subscription: *sub,
+			Progress:     progress,
+		})
+	}
+	return details, nil
 }
 
 func (s *ExternalUserService) ListUsageByExternalID(ctx context.Context, externalUserID string, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]UsageLog, *pagination.PaginationResult, error) {

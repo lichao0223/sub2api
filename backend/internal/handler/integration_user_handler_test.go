@@ -301,6 +301,32 @@ func TestIntegrationUserHandler_ListUsageReturnsDisplayFields(t *testing.T) {
 	require.NotContains(t, item, "api_key_id")
 }
 
+func TestIntegrationUserHandler_ListSubscriptionsIncludesProgress(t *testing.T) {
+	svc := &integrationUserServiceStub{subscriptionDetails: []service.ExternalUserSubscriptionDetail{{
+		Subscription: service.UserSubscription{ID: 88, UserID: 10, GroupID: 15, Status: service.SubscriptionStatusActive},
+		Progress: &service.SubscriptionProgress{
+			Daily:   &service.UsageWindowProgress{LimitUSD: 10, UsedUSD: 3},
+			Weekly:  &service.UsageWindowProgress{LimitUSD: 50, UsedUSD: 12},
+			Monthly: &service.UsageWindowProgress{LimitUSD: 200, UsedUSD: 31},
+		},
+	}}}
+	router, _ := newIntegrationUserTestRouter(svc)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/integrations/users/u-1/subscriptions", nil))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	var body struct {
+		Data []map[string]any `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Len(t, body.Data, 1)
+	require.Equal(t, float64(10), body.Data[0]["daily"].(map[string]any)["limit_usd"])
+	require.Equal(t, float64(12), body.Data[0]["weekly"].(map[string]any)["used_usd"])
+	require.Equal(t, float64(31), body.Data[0]["monthly"].(map[string]any)["used_usd"])
+	require.NotContains(t, body.Data[0], "progress")
+}
+
 func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine, *IntegrationUserHandler) {
 	gin.SetMode(gin.TestMode)
 	h := NewIntegrationUserHandler(svc)
@@ -310,6 +336,7 @@ func newIntegrationUserTestRouter(svc *integrationUserServiceStub) (*gin.Engine,
 	router.DELETE("/integrations/users/:external_user_id", h.DeleteByExternalID)
 	router.POST("/integrations/users/:external_user_id/api-keys/rotate", h.RotateAPIKeys)
 	router.GET("/integrations/users/:external_user_id/usage", h.ListUsage)
+	router.GET("/integrations/users/:external_user_id/subscriptions", h.ListSubscriptions)
 	router.POST("/integrations/users/sync", h.Sync)
 	return router, h
 }
@@ -345,8 +372,9 @@ type integrationUserServiceStub struct {
 
 	rotateExternalUserID string
 
-	usageLogs []service.UsageLog
-	usagePage *pagination.PaginationResult
+	usageLogs           []service.UsageLog
+	usagePage           *pagination.PaginationResult
+	subscriptionDetails []service.ExternalUserSubscriptionDetail
 }
 
 func (s *integrationUserServiceStub) Create(_ context.Context, input service.ExternalUserInput) (*service.ExternalUserResult, error) {
@@ -388,6 +416,10 @@ func (s *integrationUserServiceStub) RotateAPIKeysByExternalID(_ context.Context
 
 func (s *integrationUserServiceStub) ListSubscriptionsByExternalID(context.Context, string) ([]service.UserSubscription, error) {
 	return nil, nil
+}
+
+func (s *integrationUserServiceStub) ListSubscriptionDetailsByExternalID(context.Context, string) ([]service.ExternalUserSubscriptionDetail, error) {
+	return s.subscriptionDetails, nil
 }
 
 func (s *integrationUserServiceStub) ListUsageByExternalID(context.Context, string, pagination.PaginationParams, usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {

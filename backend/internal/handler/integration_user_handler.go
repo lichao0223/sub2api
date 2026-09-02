@@ -42,6 +42,17 @@ type externalUserQueryPort interface {
 	ListUsageByExternalID(context.Context, string, pagination.PaginationParams, usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error)
 }
 
+type externalUserSubscriptionDetailPort interface {
+	ListSubscriptionDetailsByExternalID(context.Context, string) ([]service.ExternalUserSubscriptionDetail, error)
+}
+
+type integrationSubscriptionDetail struct {
+	dto.AdminUserSubscription
+	Daily   *service.UsageWindowProgress `json:"daily,omitempty"`
+	Weekly  *service.UsageWindowProgress `json:"weekly,omitempty"`
+	Monthly *service.UsageWindowProgress `json:"monthly,omitempty"`
+}
+
 func (h *IntegrationUserHandler) ListSubscriptions(c *gin.Context) {
 	queryService, ok := h.externalUserService.(externalUserQueryPort)
 	if !ok {
@@ -50,6 +61,25 @@ func (h *IntegrationUserHandler) ListSubscriptions(c *gin.Context) {
 	}
 	externalUserID, ok := validateExternalUserIDParam(c)
 	if !ok {
+		return
+	}
+	if detailService, ok := h.externalUserService.(externalUserSubscriptionDetailPort); ok {
+		details, detailErr := detailService.ListSubscriptionDetailsByExternalID(c.Request.Context(), externalUserID)
+		if detailErr != nil {
+			response.ErrorFrom(c, detailErr)
+			return
+		}
+		out := make([]integrationSubscriptionDetail, 0, len(details))
+		for i := range details {
+			item := integrationSubscriptionDetail{AdminUserSubscription: *dto.UserSubscriptionFromServiceAdmin(&details[i].Subscription)}
+			if details[i].Progress != nil {
+				item.Daily = details[i].Progress.Daily
+				item.Weekly = details[i].Progress.Weekly
+				item.Monthly = details[i].Progress.Monthly
+			}
+			out = append(out, item)
+		}
+		response.Success(c, out)
 		return
 	}
 	subs, err := queryService.ListSubscriptionsByExternalID(c.Request.Context(), externalUserID)

@@ -913,6 +913,7 @@ export interface OpsErrorLog {
   message: string
 
   user_id?: number | null
+  user_name?: string
   user_email: string
   api_key_id?: number | null
   // 关联 api_key 名称（后端 LEFT JOIN api_keys；软删保留 name，故已删 key 仍有原名）。

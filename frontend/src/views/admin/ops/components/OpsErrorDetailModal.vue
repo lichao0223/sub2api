@@ -37,7 +37,7 @@
               {{ detail.account_name || (detail.account_id != null ? String(detail.account_id) : '—') }}
             </template>
             <template v-else>
-              {{ detail.user_email || (detail.user_id != null ? String(detail.user_id) : '—') }}
+              {{ detail.user_name || detail.user_email || (detail.user_id != null ? String(detail.user_id) : '—') }}
             </template>
           </div>
         </div>

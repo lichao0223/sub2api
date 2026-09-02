@@ -53,6 +53,7 @@ type OpsErrorLog struct {
 	Message         string `json:"message"`
 
 	UserID      *int64 `json:"user_id"`
+	UserName    string `json:"user_name"`
 	UserEmail   string `json:"user_email"`
 	APIKeyID    *int64 `json:"api_key_id"`
 	AccountID   *int64 `json:"account_id"`

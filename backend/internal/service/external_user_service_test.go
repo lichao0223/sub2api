@@ -437,6 +437,10 @@ func (s *externalUserSubscriptionStub) ListUserSubscriptions(context.Context, in
 	return nil, nil
 }
 
+func (s *externalUserSubscriptionStub) GetSubscriptionProgress(context.Context, int64) (*SubscriptionProgress, error) {
+	return nil, nil
+}
+
 func (s *externalUserSubscriptionStub) AssignSubscription(_ context.Context, input *AssignSubscriptionInput) (*UserSubscription, error) {
 	s.assignInputs = append(s.assignInputs, *input)
 	return &UserSubscription{UserID: input.UserID, GroupID: input.GroupID}, nil

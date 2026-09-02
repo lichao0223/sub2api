@@ -319,7 +319,7 @@ func TestForwardAsAnthropic_PreservesMaxForFinalGPT56ResponsesModel(t *testing.T
 
 			ctx := context.Background()
 			if len(tt.mappings) > 0 {
-				ctx = WithOpenAIReasoningEffortPolicy(ctx, "", tt.mappings)
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, "", tt.mappings, "")
 			}
 			result, err := svc.ForwardAsAnthropic(ctx, c, tt.account, []byte(body), "", tt.defaultMapped)
 			require.NoError(t, err)
