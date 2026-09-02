@@ -47,7 +47,8 @@ func TestWSPassthroughUsageMeta_UpdateFromResponseCreate_MappedModelCandidate(t 
 
 func TestWSPassthroughUsageMeta_PreservesRequestedEffortBeforePolicy(t *testing.T) {
 	requested := []byte(`{"type":"response.create","model":"gpt-5.6-sol","reasoning":{"effort":"high"}}`)
-	effective, changed := ApplyOpenAIReasoningEffortPolicy(requested, "", []ReasoningEffortMapping{{From: "high", To: "medium"}})
+	effective, changed, err := ApplyOpenAIReasoningEffortPolicy(requested, "", []ReasoningEffortMapping{{From: "high", To: "medium"}}, "")
+	require.NoError(t, err)
 	require.True(t, changed)
 
 	meta := newOpenAIWSPassthroughUsageMeta("gpt-5.6-sol", requested)
