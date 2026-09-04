@@ -287,18 +287,18 @@ describe('CostManagementView', () => {
     expect(api.analysis).toHaveBeenCalledTimes(2)
   })
 
-  it('uses distinct colors for monthly bars', async () => {
+  it('renders the cost trend as stacked bars', async () => {
     const wrapper = mountView()
-    await flushPromises()
-    await wrapper.findAll('button').find(button => button.text() === '按月')!.trigger('click')
     await flushPromises()
 
     const config = chartConfigs[chartConfigs.length - 1]
     expect(config.type).toBe('bar')
-    expect(config.data.datasets.map((dataset: any) => dataset.backgroundColor)).toEqual(['#7a5af8', '#0866ed', '#ff7800'])
+    expect(config.data.datasets.map((dataset: any) => dataset.backgroundColor)).toEqual(['#0866ed', '#ff7800'])
+    expect(config.data.datasets.every((dataset: any) => dataset.stack === 'cost')).toBe(true)
+    expect(wrapper.text()).toContain('时间指标')
   })
 
-  it('shows each cost plan amount in the chart tooltip', async () => {
+  it('requests analysis using the selected date range', async () => {
     api.analysis.mockResolvedValue({
       period: 'day', total_cost_cny: '909.014', top: [],
       trend: [{ bucket: '2026-08-28', dynamic_cost_cny: '710.014', fixed_cost_cny: '199', total_cost_cny: '909.014', plans: [
@@ -309,10 +309,7 @@ describe('CostManagementView', () => {
     mountView()
     await flushPromises()
 
-    const callback = chartConfigs.at(-1).options.plugins.tooltip.callbacks.afterBody
-    expect(callback([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00', 'Kimi 套餐 199: ¥199.00'])
-    expect(callback([{ dataIndex: 0, datasetIndex: 1 }])).toEqual(['', '阿里云: ¥600.00'])
-    expect(callback([{ dataIndex: 0, datasetIndex: 2 }])).toEqual(['', 'Kimi 套餐 199: ¥199.00'])
+    expect(api.analysis).toHaveBeenCalledWith(expect.objectContaining({ start_date: expect.any(String), end_date: expect.any(String), period: expect.any(String) }))
   })
 
   it('rejects an account cost configuration without a plan before submitting', async () => {

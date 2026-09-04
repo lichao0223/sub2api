@@ -38,7 +38,7 @@
 
         <div class="date-picker-divider"></div>
 
-        <div v-if="periodMode" class="date-picker-period-tabs">
+        <div v-if="periodMode && !periodDayOnly" class="date-picker-period-tabs">
           <button :class="['date-picker-period-tab', periodGranularity==='day' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('day')">{{ t('dates.selectByDay') }}</button>
           <button :class="['date-picker-period-tab', periodGranularity==='month' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('month')">{{ t('dates.selectByMonth') }}</button>
           <button :class="['date-picker-period-tab', periodGranularity==='year' && 'date-picker-period-tab-active']" @click="setPeriodGranularity('year')">{{ t('dates.selectByYear') }}</button>
@@ -47,9 +47,9 @@
         <!-- Custom date range inputs -->
         <div class="date-picker-custom">
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t(periodMode && periodGranularity!=='day' ? (periodGranularity==='month' ? 'dates.startMonth' : 'dates.startYear') : 'dates.startDate') }}</label>
+            <label class="date-picker-label">{{ t(periodMode && !periodDayOnly && periodGranularity!=='day' ? (periodGranularity==='month' ? 'dates.startMonth' : 'dates.startYear') : 'dates.startDate') }}</label>
             <input
-              v-if="!periodMode || periodGranularity==='day'"
+              v-if="!periodMode || periodDayOnly || periodGranularity==='day'"
               type="date"
               v-model="localStartDate"
               :max="localEndDate || maximumDate"
@@ -65,9 +65,9 @@
             <Icon name="arrowRight" size="sm" class="text-gray-400" />
           </div>
           <div class="date-picker-field">
-            <label class="date-picker-label">{{ t(periodMode && periodGranularity!=='day' ? (periodGranularity==='month' ? 'dates.endMonth' : 'dates.endYear') : 'dates.endDate') }}</label>
+            <label class="date-picker-label">{{ t(periodMode && !periodDayOnly && periodGranularity!=='day' ? (periodGranularity==='month' ? 'dates.endMonth' : 'dates.endYear') : 'dates.endDate') }}</label>
             <input
-              v-if="!periodMode || periodGranularity==='day'"
+              v-if="!periodMode || periodDayOnly || periodGranularity==='day'"
               type="date"
               v-model="localEndDate"
               :min="localStartDate"
@@ -109,6 +109,8 @@ interface Props {
   startDate: string
   endDate: string
   periodMode?: boolean
+  periodDayOnly?: boolean
+  maxRangeDays?: number
   maxDate?: string
 }
 
@@ -118,7 +120,7 @@ interface Emits {
   (e: 'change', range: { startDate: string; endDate: string; preset: string | null }): void
 }
 
-const props = withDefaults(defineProps<Props>(), { periodMode: false })
+const props = withDefaults(defineProps<Props>(), { periodMode: false, periodDayOnly: false })
 const emit = defineEmits<Emits>()
 
 const { t, locale } = useI18n()
@@ -271,7 +273,8 @@ const periodPresets: DatePreset[] = [
     }
   }
 ]
-const availablePresets = computed(() => (props.periodMode ? periodPresets : dayPresets).filter(preset => preset.value !== 'today' || maximumDate.value >= today.value))
+const shortPeriodPresets = [dayPresets[0], dayPresets[1], dayPresets[3], dayPresets[5], dayPresets[6], dayPresets[7]]
+const availablePresets = computed(() => (props.periodMode ? (props.periodDayOnly ? shortPeriodPresets : periodPresets) : dayPresets).filter(preset => preset.value !== 'today' || maximumDate.value >= today.value))
 const currentMonth = computed(() => today.value.slice(0, 7))
 const yearOptions = computed(() => Array.from({ length: 10 }, (_, index) => String(new Date().getFullYear() - index)))
 const startMonth = computed({
@@ -332,6 +335,14 @@ const selectPreset = (preset: DatePreset) => {
 }
 
 const onDateChange = () => {
+  if (props.maxRangeDays && localStartDate.value && localEndDate.value) {
+    const start = new Date(`${localStartDate.value}T00:00:00`)
+    const end = new Date(`${localEndDate.value}T00:00:00`)
+    const maxEnd = new Date(start)
+    maxEnd.setDate(maxEnd.getDate() + props.maxRangeDays - 1)
+    if (end < start) localEndDate.value = localStartDate.value
+    else if (end > maxEnd) localEndDate.value = formatDateToString(maxEnd)
+  }
   // Check if current dates match any preset
   activePreset.value = null
   for (const preset of availablePresets.value) {

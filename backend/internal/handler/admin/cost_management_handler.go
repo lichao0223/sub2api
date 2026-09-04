@@ -288,7 +288,29 @@ func (h *CostManagementHandler) PendingDetails(c *gin.Context) {
 }
 func (h *CostManagementHandler) Analysis(c *gin.Context) {
 	loc, _ := time.LoadLocation("Asia/Shanghai")
-	x, err := h.service.Analysis(c.Request.Context(), c.DefaultQuery("period", "day"), time.Now().In(loc))
+	now := time.Now().In(loc)
+	period := c.DefaultQuery("period", "day")
+	if c.Query("start_date") == "" && c.Query("end_date") == "" {
+		x, err := h.service.Analysis(c.Request.Context(), period, now)
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		response.Success(c, x)
+		return
+	}
+	start, end, ok := costDateRange(c)
+	if !ok {
+		return
+	}
+	if end.Sub(start) > 31*24*time.Hour {
+		response.BadRequest(c, "analysis range cannot exceed 31 days")
+		return
+	}
+	if start.Equal(end.AddDate(0, 0, -1)) {
+		period = "hour"
+	}
+	x, err := h.service.Analysis(c.Request.Context(), period, now, start, end)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

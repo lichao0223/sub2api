@@ -366,7 +366,7 @@ type CostManagementRepository interface {
 	GetCostOverview(context.Context, time.Time, time.Time) (*CostOverview, error)
 	GetCostBreakdown(context.Context, time.Time, time.Time, string) (*CostBreakdownResult, error)
 	GetPendingCostDetails(context.Context, time.Time, time.Time, int64) (*PendingCostDetails, error)
-	GetCostAnalysis(context.Context, string, time.Time) (*CostAnalysis, error)
+	GetCostAnalysis(context.Context, string, time.Time, ...time.Time) (*CostAnalysis, error)
 	GetUserCosts(context.Context, time.Time, time.Time) ([]UserCost, error)
 	ListCostJobs(context.Context, int, int) ([]CostJob, int64, error)
 	CreateCostRecalculation(context.Context, time.Time, time.Time, int64) (*CostJob, error)
@@ -612,13 +612,13 @@ func (s *CostManagementService) PendingDetails(ctx context.Context, start, end t
 	}
 	return s.repo.GetPendingCostDetails(ctx, start, end, accountID)
 }
-func (s *CostManagementService) Analysis(ctx context.Context, period string, now time.Time) (*CostAnalysis, error) {
+func (s *CostManagementService) Analysis(ctx context.Context, period string, now time.Time, dateRange ...time.Time) (*CostAnalysis, error) {
 	switch period {
-	case "week", "day", "month", "year":
+	case "week", "day", "month", "year", "hour":
 	default:
 		period = "day"
 	}
-	return s.repo.GetCostAnalysis(ctx, period, now)
+	return s.repo.GetCostAnalysis(ctx, period, now, dateRange...)
 }
 func (s *CostManagementService) UserCosts(ctx context.Context, start, end time.Time) (*UserCostResult, error) {
 	items, err := s.repo.GetUserCosts(ctx, start, end)

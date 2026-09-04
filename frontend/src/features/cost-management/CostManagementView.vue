@@ -9,7 +9,7 @@
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex flex-wrap items-center gap-2">
             <span class="text-sm font-medium">统计范围</span>
-            <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" period-mode @change="loadOverview" />
+            <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" period-mode period-day-only :max-range-days="31" @change="loadCostData" />
           </div>
           <div class="flex items-center gap-3"><span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span><button class="btn btn-secondary btn-sm" @click="openRecalc">核算任务</button></div>
         </div>
@@ -20,10 +20,9 @@
           <span>较上一等长周期：{{ comparisonText }}</span>
           <span :class="overview.coverage_complete?'text-emerald-600':'text-amber-600'">{{ coverageText }}</span>
         </div>
-        <div class="flex justify-end"><div class="inline-flex rounded-lg border border-gray-200 p-1 dark:border-dark-700"><button v-for="p in chartPeriods" :key="p.key" class="rounded px-3 py-1.5 text-sm" :class="chartPeriod===p.key?'bg-primary-50 text-primary-600':''" @click="loadAnalysis(p.key)">{{ p.label }}</button></div></div>
         <div class="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
           <div class="card p-5"><h2 class="font-semibold">成本趋势 <span class="text-sm font-normal text-gray-400">· {{ chartRangeLabel }}</span></h2><div class="mt-4 h-80"><canvas ref="chartCanvas"></canvas></div></div>
-          <div class="card p-5"><h2 class="font-semibold">成本方案 Top 5 <span class="text-sm font-normal text-gray-400">· {{ chartRangeLabel }}</span></h2><div class="mt-5 space-y-4"><div v-for="x in analysis.top" :key="x.plan_id"><div class="flex justify-between text-sm"><span>{{ x.plan_name }}</span><b>{{ money(x.amount_cny) }} · {{ topPercent(x.amount_cny) }}</b></div><div class="mt-1 h-2 rounded bg-gray-100"><div class="h-full rounded bg-primary-500" :style="{width:topWidth(x.amount_cny)}"></div></div></div><div v-if="!analysis.top.length" class="py-12 text-center text-gray-400">暂无成本数据</div></div></div>
+          <div class="card p-5"><h2 class="font-semibold">时间指标 <span class="text-sm font-normal text-gray-400">· {{ chartRangeLabel }}</span></h2><div class="mt-5 grid gap-3 sm:grid-cols-2"><div v-for="item in timeMetrics" :key="item.label" class="rounded-lg border border-gray-100 p-4 dark:border-dark-700"><div class="text-sm text-gray-500">{{ item.label }}</div><div class="mt-2 text-xl font-semibold">{{ item.value }}</div></div></div></div>
         </div>
       </template>
 
@@ -204,12 +203,15 @@ const pendingDialog=ref(false),pendingAccountName=ref(''),pendingDetails=reactiv
 const pendingTitle=computed(()=>pendingAccountName.value?`${pendingAccountName.value} · 待核算明细`:'待核算明细')
 const pendingReason=(code:string)=>({missing_account_config:'该时间点没有账号成本配置',missing_upstream_model:'使用记录缺少上游模型',missing_plan_version:'该时间点没有生效的价格版本',missing_model_price:'成本方案缺少该上游模型价格'}[code]||code||'未知原因')
 async function openPendingDetails(account_id?:number,name=''){pendingAccountName.value=name;pendingDialog.value=true;try{Object.assign(pendingDetails,await costManagementAPI.pendingDetails({start_date:range.start,end_date:range.end,account_id}))}catch(e:any){app.showError(e.message||'加载待核算明细失败')}}
-const chartPeriods=[{key:'week',label:'近一周'},{key:'day',label:'按天'},{key:'month',label:'按月'},{key:'year',label:'按年'}],chartPeriod=ref('day'),chartCanvas=ref<HTMLCanvasElement>(),chart=ref<Chart>()
-const chartRangeLabel=computed(()=>({week:'近 7 天',day:'近 30 天',month:'近 12 个月',year:'近 5 年'}[chartPeriod.value]))
+const chartPeriod=computed(()=>range.start===range.end?'hour':'day'),chartCanvas=ref<HTMLCanvasElement>(),chart=ref<Chart>()
+const chartRangeLabel=computed(()=>chartPeriod.value==='hour'?'按小时':'按天')
+const timeMetrics=computed(()=>{
+  const points=analysis.trend.map(x=>Number(x.total_cost_cny)), total=points.reduce((sum,value)=>sum+value,0), peak=Math.max(...points,0), peakIndex=points.indexOf(peak)
+  return [{label:'统计周期成本',value:money(total)},{label:chartPeriod.value==='hour'?'小时均值':'日均成本',value:money(points.length?total/points.length:0)},{label:'最高时段',value:peakIndex>=0?`${analysis.trend[peakIndex]?.bucket||'-'} · ${money(peak)}`:'-'},{label:'按量成本占比',value:total?`${(analysis.trend.reduce((sum,x)=>sum+Number(x.dynamic_cost_cny),0)/total*100).toFixed(1)}%`:'0.0%'}]
+})
 async function loadOverview(){Object.assign(overview,await costManagementAPI.overview({start_date:range.start,end_date:range.end}))}
-async function loadAnalysis(period=chartPeriod.value){chartPeriod.value=period;Object.assign(analysis,await costManagementAPI.analysis(period));await nextTick();chart.value?.destroy();if(!chartCanvas.value)return;chart.value=new Chart(chartCanvas.value,{type:['month','year'].includes(period)?'bar':'line',data:{labels:analysis.trend.map(x=>x.bucket),datasets:[{label:'总成本',data:analysis.trend.map(x=>+x.total_cost_cny),borderColor:'#7a5af8',backgroundColor:'#7a5af8'},{label:'按量成本',data:analysis.trend.map(x=>+x.dynamic_cost_cny),borderColor:'#0866ed',backgroundColor:'#0866ed'},{label:'固定成本',data:analysis.trend.map(x=>+x.fixed_cost_cny),borderColor:'#ff7800',backgroundColor:'#ff7800'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{afterBody:(items)=>{const item=items[0],type=item?.datasetIndex===1?'metered':item?.datasetIndex===2?'fixed':'';const plans=(analysis.trend[item?.dataIndex]?.plans||[]).filter(plan=>!type||plan.plan_type===type);return plans.length?['',...plans.map(plan=>`${plan.plan_name}: ${money(plan.amount_cny)}`)]:[]}}}}}})}
-const topWidth=(v:string)=>{const max=Math.max(...analysis.top.map(x=>+x.amount_cny),1);return Math.round(+v/max*100)+'%'}
-const topPercent=(v:string)=>Number(analysis.total_cost_cny)?(Number(v)/Number(analysis.total_cost_cny)*100).toFixed(1)+'%':'0%'
+async function loadAnalysis(){Object.assign(analysis,await costManagementAPI.analysis({start_date:range.start,end_date:range.end,period:chartPeriod.value}));await nextTick();chart.value?.destroy();if(!chartCanvas.value)return;chart.value=new Chart(chartCanvas.value,{type:'bar',data:{labels:analysis.trend.map(x=>x.bucket),datasets:[{label:'按量成本',data:analysis.trend.map(x=>+x.dynamic_cost_cny),backgroundColor:'#0866ed',stack:'cost'},{label:'固定成本',data:analysis.trend.map(x=>+x.fixed_cost_cny),backgroundColor:'#ff7800',stack:'cost'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true}}}})}
+async function loadCostData(){await Promise.all([loadOverview(),loadAnalysis()])}
 
 const pageSize=ref(20),accounts=ref<AccountCostRow[]>([]),accountTotal=ref(0),accountPage=ref(1),accountSearch=ref(''),accountMode=ref(''),selectedAccounts=ref(new Set<number>())
 const accountModeOptions=[{value:'',label:'全部成本方式'},{value:'metered',label:'按使用量'},{value:'fixed',label:'固定成本'},{value:'excluded',label:'不纳入核算'}]
@@ -301,6 +303,6 @@ function recalculateCurrentRange(){const end=range.end<today?range.end:today;if(
 async function confirmRecalc(){if(recalcSubmitting.value)return;recalcSubmitting.value=true;try{await costManagementAPI.createRecalculation(recalc);app.showSuccess('补算任务已加入队列');recalcConfirm.value=false;recalcDialog.value=false;recalcPage.value=1;await loadRecalculations()}catch(e:any){app.showError(e.message||'创建补算任务失败')}finally{recalcSubmitting.value=false}}
 function requestCancelRecalculation(job:CostJob){cancelRecalculationTarget.value=job}
 async function confirmCancelRecalculation(){if(!cancelRecalculationTarget.value||cancelRecalculationSubmitting.value)return;cancelRecalculationSubmitting.value=true;try{await costManagementAPI.cancelRecalculation(cancelRecalculationTarget.value.id);app.showSuccess('核算任务已取消');cancelRecalculationTarget.value=undefined;await loadRecalculations()}catch(e:any){app.showError(e.message||'取消核算任务失败')}finally{cancelRecalculationSubmitting.value=false}}
-watch(tab,v=>{if(v==='accounts'){loadAccounts();loadPlanChoices()}else if(v==='plans')loadPlans();else loadAnalysis()})
-onMounted(()=>{loadOverview();loadAnalysis();loadPlans();loadModelOptions();loadRecalculations()});onBeforeUnmount(()=>{chart.value?.destroy();if(recalculationRefreshTimer)window.clearTimeout(recalculationRefreshTimer)})
+watch(tab,v=>{if(v==='accounts'){loadAccounts();loadPlanChoices()}else if(v==='plans')loadPlans();else loadCostData()})
+onMounted(()=>{loadCostData();loadPlans();loadModelOptions();loadRecalculations()});onBeforeUnmount(()=>{chart.value?.destroy();if(recalculationRefreshTimer)window.clearTimeout(recalculationRefreshTimer)})
 </script>

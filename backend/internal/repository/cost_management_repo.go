@@ -1011,11 +1011,21 @@ func costAnalysisRange(period string, now time.Time) (time.Time, string) {
 	}
 }
 
-func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period string, now time.Time) (*service.CostAnalysis, error) {
+func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period string, now time.Time, dateRange ...time.Time) (*service.CostAnalysis, error) {
 	start, grain := costAnalysisRange(period, now)
+	end := now
+	if len(dateRange) >= 2 {
+		start, end = dateRange[0], dateRange[1]
+		if start.Equal(end.AddDate(0, 0, -1)) {
+			grain = "hour"
+		}
+	}
 	trunc := "day"
 	format := "YYYY-MM-DD"
 	switch grain {
+	case "hour":
+		trunc = "hour"
+		format = "YYYY-MM-DD HH24:00"
 	case "month":
 		trunc = "month"
 		format = "YYYY-MM"
@@ -1023,7 +1033,7 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 		trunc = "year"
 		format = "YYYY"
 	}
-	rows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,bucket_date),$2),COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope='usage' AND calculation_status='calculated'),0)::text,COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope='fixed_plan_total' AND calculation_status='calculated'),0)::text,COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope IN('usage','fixed_plan_total') AND calculation_status='calculated'),0)::text FROM cost_daily_aggregates WHERE bucket_date >= $3::date AND bucket_date <= $4::date GROUP BY 1 ORDER BY 1`, trunc, format, start, now)
+	rows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,bucket_date),$2),COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope='usage' AND calculation_status='calculated'),0)::text,COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope='fixed_plan_total' AND calculation_status='calculated'),0)::text,COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope IN('usage','fixed_plan_total') AND calculation_status='calculated'),0)::text FROM cost_daily_aggregates WHERE bucket_date >= $3::date AND bucket_date < $4::date GROUP BY 1 ORDER BY 1`, trunc, format, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1048,7 +1058,7 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 	for i := range a.Trend {
 		byBucket[a.Trend[i].Bucket] = &a.Trend[i]
 	}
-	planRows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,d.bucket_date),$2),p.id,p.name,p.plan_type,SUM(d.amount_cny)::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $3::date AND d.bucket_date <= $4::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY 1,p.id,p.name,p.plan_type ORDER BY 1,SUM(d.amount_cny) DESC`, trunc, format, start, now)
+	planRows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,d.bucket_date),$2),p.id,p.name,p.plan_type,SUM(d.amount_cny)::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $3::date AND d.bucket_date < $4::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY 1,p.id,p.name,p.plan_type ORDER BY 1,SUM(d.amount_cny) DESC`, trunc, format, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1066,7 +1076,7 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 	if err = planRows.Err(); err != nil {
 		return nil, err
 	}
-	top, err := r.db.QueryContext(ctx, `SELECT p.id,p.name,SUM(d.amount_cny)::text,SUM(SUM(d.amount_cny)) OVER()::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $1::date AND d.bucket_date <= $2::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY p.id,p.name ORDER BY SUM(d.amount_cny) DESC LIMIT 5`, start, now)
+	top, err := r.db.QueryContext(ctx, `SELECT p.id,p.name,SUM(d.amount_cny)::text,SUM(SUM(d.amount_cny)) OVER()::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $1::date AND d.bucket_date < $2::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY p.id,p.name ORDER BY SUM(d.amount_cny) DESC LIMIT 5`, start, end)
 	if err != nil {
 		return nil, err
 	}
