@@ -298,6 +298,23 @@ describe('CostManagementView', () => {
     expect(wrapper.text()).toContain('时间指标')
   })
 
+  it('shows cost plan details in the stacked bar tooltip', async () => {
+    api.analysis.mockResolvedValue({
+      period: 'day', total_cost_cny: '909.014', top: [],
+      trend: [{ bucket: '2026-08-28', dynamic_cost_cny: '710.014', fixed_cost_cny: '199', total_cost_cny: '909.014', plans: [
+        { plan_id: 1, plan_name: '阿里云', plan_type: 'metered', amount_cny: '600' },
+        { plan_id: 2, plan_name: 'Kimi 套餐 199', plan_type: 'fixed', amount_cny: '199' },
+      ] }],
+    })
+    mountView()
+    await flushPromises()
+
+    const callbacks = chartConfigs.at(-1).options.plugins.tooltip.callbacks
+    expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00'])
+    expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 1 }])).toEqual(['', 'Kimi 套餐 199: ¥199.00'])
+    expect(callbacks.footer([{ dataIndex: 0 }])).toBe('总成本: ¥909.01')
+  })
+
   it('requests analysis using the selected date range', async () => {
     api.analysis.mockResolvedValue({
       period: 'day', total_cost_cny: '909.014', top: [],
