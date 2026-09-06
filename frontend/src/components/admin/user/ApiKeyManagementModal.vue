@@ -221,6 +221,15 @@
       </button>
     </template>
   </BaseDialog>
+
+  <ConfirmDialog
+    :show="confirmAction !== null"
+    :title="t('admin.users.apiKeyManagement.title')"
+    :message="confirmMessage"
+    :loading="submitting"
+    @confirm="runConfirmedAction"
+    @cancel="confirmAction = null"
+  />
 </template>
 
 <script setup lang="ts">
@@ -233,6 +242,7 @@ import type { Column } from '@/components/common/types'
 import { useAppStore } from '@/stores/app'
 import { useTableSelection } from '@/composables/useTableSelection'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import DataTable from '@/components/common/DataTable.vue'
 import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
@@ -260,6 +270,7 @@ const ungroupedPreviewOpen = ref(false)
 const ungroupedLoading = ref(false)
 const ungroupedKeys = ref<ApiKey[]>([])
 const ungroupedPagination = reactive({ page: 1, pageSize: 20, total: 0 })
+const confirmAction = ref<'update' | 'create' | null>(null)
 const { selectedIds, selectedCount, setSelectedIds, clear } = useTableSelection<ApiKey>({ rows: keys, getId: row => row.id })
 
 const editRates = ref(false)
@@ -318,6 +329,9 @@ const canSubmit = computed(() =>
   !invalidValues.value && !submitting.value
 )
 const canCreate = computed(() => !!groupId.value && (createAll.value || createSelected.size > 0) && !submitting.value)
+const confirmMessage = computed(() => confirmAction.value === 'create'
+  ? t('admin.users.apiKeyManagement.confirmCreate', { count: createAll.value ? candidateTotal.value : createSelected.size })
+  : t('admin.users.apiKeyManagement.confirm', { count: allInGroupSelected.value ? pagination.total : selectedCount.value }))
 
 const maskKey = (key: string) => key.length > 16 ? `${key.slice(0, 8)}…${key.slice(-6)}` : key
 const formatLimit = (value: number) => value > 0 ? `$${value}` : '∞'
@@ -369,8 +383,10 @@ watch(targetGroupId, () => { recreateInSourceGroup.value = false })
 
 const submit = async () => {
   if (!canSubmit.value || !groupId.value) return
-  const count = allInGroupSelected.value ? pagination.total : selectedCount.value
-  if (!window.confirm(t('admin.users.apiKeyManagement.confirm', { count }))) return
+  confirmAction.value = 'update'
+}
+const confirmSubmit = async () => {
+  if (!canSubmit.value || !groupId.value) return
   const request: BatchUpdateApiKeysRequest = {
     group_id: groupId.value,
     api_key_ids: allInGroupSelected.value ? undefined : [...selectedIds.value],
@@ -398,7 +414,10 @@ const submit = async () => {
 }
 const submitCreate = async () => {
   if (!canCreate.value || !groupId.value) return
-  if (!window.confirm(t('admin.users.apiKeyManagement.confirmCreate', { count: createAll.value ? candidateTotal.value : createSelected.size }))) return
+  confirmAction.value = 'create'
+}
+const confirmCreate = async () => {
+  if (!canCreate.value || !groupId.value) return
   submitting.value = true
   try {
     const result = await adminAPI.apiKeys.batchCreate({ group_id: groupId.value, all: createAll.value, user_ids: createAll.value ? undefined : [...createSelected] })
@@ -406,6 +425,12 @@ const submitCreate = async () => {
     createAll.value = false; createSelected.clear(); await loadCandidates()
   } catch (error: any) { appStore.showError(error.response?.data?.detail || t('admin.users.apiKeyManagement.failed'))
   } finally { submitting.value = false }
+}
+const runConfirmedAction = async () => {
+  const action = confirmAction.value
+  confirmAction.value = null
+  if (action === 'create') await confirmCreate()
+  else if (action === 'update') await confirmSubmit()
 }
 const loadUngrouped = async () => {
   ungroupedLoading.value = true

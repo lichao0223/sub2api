@@ -92,7 +92,6 @@ describe('ApiKeyManagementModal', () => {
   })
 
   it('submits the target group for the whole-group selection', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
     const wrapper = mount(ApiKeyManagementModal, {
       props: { show: true },
       global: {
@@ -105,7 +104,8 @@ describe('ApiKeyManagementModal', () => {
           DataTable: { template: '<div />' },
           Pagination: true,
           Toggle: { template: '<button @click="$emit(\'update:modelValue\', true)" />' },
-          Icon: true
+          Icon: true,
+          ConfirmDialog: { props: ['show'], emits: ['confirm', 'cancel'], template: '<button v-if="show" data-test="confirm-action" @click="$emit(\'confirm\')">confirm</button>' }
         }
       }
     })
@@ -117,6 +117,8 @@ describe('ApiKeyManagementModal', () => {
     await wrapper.get('[data-test="target-group"]').trigger('click')
     await wrapper.get('[data-test="recreate-in-source"]').setValue(true)
     await wrapper.get('button.btn-primary:last-child').trigger('click')
+    expect(batchUpdate).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="confirm-action"]').trigger('click')
     await flushPromises()
 
     expect(batchUpdate).toHaveBeenCalledWith({
