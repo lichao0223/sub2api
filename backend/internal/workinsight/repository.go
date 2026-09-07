@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 )
 
@@ -258,6 +259,51 @@ func (r *Repository) ListUsageAlerts(ctx context.Context, threshold int, start, 
 		items = append(items, item)
 	}
 	return items, total, rows.Err()
+}
+
+type DisabledAPIKey struct {
+	ID, UserID int64
+	Key        string
+}
+
+func (r *Repository) DisableAPIKeysOverInputThreshold(ctx context.Context, since time.Time, threshold, consecutive int, exemptUserIDs []int64) ([]DisabledAPIKey, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		WITH candidate_keys AS (
+			SELECT DISTINCT api_key_id FROM usage_logs
+			WHERE api_key_id IS NOT NULL AND created_at >= $1 AND input_tokens > $2
+		), qualified_keys AS (
+			SELECT candidate_keys.api_key_id
+			FROM candidate_keys
+			JOIN api_keys ON api_keys.id=candidate_keys.api_key_id AND api_keys.deleted_at IS NULL AND api_keys.status=$5
+			JOIN users ON users.id=api_keys.user_id AND users.deleted_at IS NULL AND users.status=$6 AND users.role<>$7
+			CROSS JOIN LATERAL (
+				SELECT COUNT(*) AS sample_count, BOOL_AND(recent.input_tokens > $2) AS all_exceeded
+				FROM (
+					SELECT input_tokens FROM usage_logs
+					WHERE api_key_id=candidate_keys.api_key_id AND input_tokens > 0
+					ORDER BY created_at DESC,id DESC LIMIT $3
+				) recent
+			) streak
+			WHERE streak.sample_count=$3 AND streak.all_exceeded AND NOT COALESCE(users.id=ANY($4::bigint[]),FALSE)
+		)
+		UPDATE api_keys SET status=$8,updated_at=NOW()
+		FROM qualified_keys
+		WHERE api_keys.id=qualified_keys.api_key_id AND api_keys.status=$5 AND api_keys.deleted_at IS NULL
+		RETURNING api_keys.id,api_keys.user_id,api_keys.key`,
+		since, threshold, consecutive, pq.Array(exemptUserIDs), service.StatusAPIKeyActive, service.StatusActive, service.RoleAdmin, service.StatusAPIKeyDisabled)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	items := make([]DisabledAPIKey, 0)
+	for rows.Next() {
+		var item DisabledAPIKey
+		if err := rows.Scan(&item.ID, &item.UserID, &item.Key); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
 }
 
 type DailyInsight struct {

@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	jobBatchScheduler = "ai_work_insight_batch_scheduler"
-	jobReconciliation = "ai_work_insight_reconciliation"
-	jobDailyFinalize  = "ai_work_insight_daily_finalize"
-	jobCleanup        = "ai_work_insight_cleanup"
+	jobBatchScheduler  = "ai_work_insight_batch_scheduler"
+	jobReconciliation  = "ai_work_insight_reconciliation"
+	jobDailyFinalize   = "ai_work_insight_daily_finalize"
+	jobCleanup         = "ai_work_insight_cleanup"
+	usageAlertLookback = 10 * time.Minute
 )
 
 func (s *Service) scheduler(ctx context.Context) {
@@ -77,11 +78,18 @@ func (s *Service) maintenance(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case now := <-initial.C:
+			if cfg := s.config.Load(); cfg != nil {
+				s.runUsageAlertAutoDisable(ctx, now, *cfg)
+			}
 			s.runReconciliation(ctx, now)
 			lastFinalize = s.tryFinalizePrevious(ctx, now, lastFinalize)
 		case now := <-ticker.C:
 			cfg := s.config.Load()
-			if cfg == nil || !cfg.Enabled {
+			if cfg == nil {
+				continue
+			}
+			s.runUsageAlertAutoDisable(ctx, now, *cfg)
+			if !cfg.Enabled {
 				continue
 			}
 			location, err := time.LoadLocation(cfg.Timezone)
@@ -104,6 +112,29 @@ func (s *Service) maintenance(ctx context.Context) {
 				}
 			}
 		}
+	}
+}
+
+func (s *Service) runUsageAlertAutoDisable(parent context.Context, now time.Time, cfg storedConfig) {
+	if !cfg.UsageAlertEnabled || !cfg.UsageAlertAutoDisableEnabled || s.repo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
+	defer cancel()
+	disabled, err := s.repo.DisableAPIKeysOverInputThreshold(ctx, now.Add(-usageAlertLookback), cfg.UsageAlertInputTokens, cfg.UsageAlertConsecutiveCount, cfg.UsageAlertExemptUserIDs)
+	if err != nil {
+		logger.L().Warn("work_insight.usage_alert_auto_disable_failed", zap.Error(err))
+		return
+	}
+	ids := make([]int64, 0, len(disabled))
+	for _, apiKey := range disabled {
+		ids = append(ids, apiKey.ID)
+		if s.authCache != nil {
+			s.authCache.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+		}
+	}
+	if len(ids) > 0 {
+		logger.L().Warn("work_insight.usage_alert_api_keys_disabled", zap.Int64s("api_key_ids", ids), zap.Int("threshold", cfg.UsageAlertInputTokens), zap.Int("consecutive", cfg.UsageAlertConsecutiveCount))
 	}
 }
 

@@ -18,6 +18,7 @@ func TestDefaultConfigMatchesProductContract(t *testing.T) {
 	require.Equal(t, 15, cfg.AnalysisIdleMinutes)
 	require.Equal(t, 60, cfg.AnalysisMaxWaitMinutes)
 	require.Equal(t, 10000, cfg.QueueCapacity)
+	require.Equal(t, 3, cfg.UsageAlertConsecutiveCount)
 	require.Equal(t, 30, cfg.SampleRetentionDays)
 	require.Equal(t, 180, cfg.InsightRetentionDays)
 	require.Equal(t, "hybrid", cfg.AnalysisTriggerMode)
@@ -52,8 +53,22 @@ func TestConfigNormalizeBackfillsNewFields(t *testing.T) {
 	cfg.ReservedOutputTokens = 0
 	cfg.DailyFinalizeTime = ""
 	cfg.CleanupBatchSize = 0
+	cfg.UsageAlertConsecutiveCount = 0
+	cfg.UsageAlertExemptUserIDs = []int64{9, 3, 9}
 	cfg.normalize()
 	require.NoError(t, cfg.validate())
 	require.Equal(t, 128000, cfg.ContextWindowTokens)
 	require.Equal(t, "00:15", cfg.DailyFinalizeTime)
+	require.Equal(t, 3, cfg.UsageAlertConsecutiveCount)
+	require.Equal(t, []int64{3, 9}, cfg.UsageAlertExemptUserIDs)
+}
+
+func TestConfigRejectsInvalidUsageAlertAutoDisableValues(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.UsageAlertConsecutiveCount = 101
+	require.ErrorContains(t, cfg.validate(), "consecutive")
+
+	cfg = DefaultConfig()
+	cfg.UsageAlertExemptUserIDs = []int64{0}
+	require.ErrorContains(t, cfg.validate(), "exempt user")
 }

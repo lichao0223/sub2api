@@ -53,46 +53,49 @@ var TaskCategories = []string{
 }
 
 type Config struct {
-	Enabled                bool      `json:"enabled"`
-	UsageAlertEnabled      bool      `json:"usage_alert_enabled"`
-	UsageAlertInputTokens  int       `json:"usage_alert_input_tokens"`
-	ConfigVersion          int64     `json:"config_version"`
-	SampleRate             int       `json:"sample_rate"`
-	SessionIdleMinutes     int       `json:"session_idle_minutes"`
-	UserDailyLimit         int       `json:"user_daily_limit"`
-	GlobalDailyLimit       int       `json:"global_daily_limit"`
-	Timezone               string    `json:"timezone"`
-	ExcludedUserIDs        []int64   `json:"excluded_user_ids"`
-	ExcludedUserEmails     []string  `json:"excluded_user_emails"`
-	QueueCapacity          int       `json:"queue_capacity"`
-	WorkerCount            int       `json:"worker_count"`
-	AnalysisIdleMinutes    int       `json:"analysis_idle_minutes"`
-	AnalysisMaxWaitMinutes int       `json:"analysis_max_wait_minutes"`
-	AnalysisTriggerMode    string    `json:"analysis_trigger_mode"`
-	FixedIntervalMinutes   int       `json:"analysis_fixed_interval_minutes"`
-	FixedTimes             []string  `json:"analysis_fixed_times"`
-	MaxSamplesPerBatch     int       `json:"max_samples_per_batch"`
-	ContextWindowTokens    int       `json:"context_window_tokens"`
-	MaxInputTokens         int       `json:"max_input_tokens"`
-	ReservedOutputTokens   int       `json:"reserved_output_tokens"`
-	AnalysisTimeoutSeconds int       `json:"analysis_timeout_seconds"`
-	MaxJobAgeMinutes       int       `json:"max_job_age_minutes"`
-	PayloadTTLMinutes      int       `json:"payload_ttl_minutes"`
-	DailyFinalizeTime      string    `json:"daily_finalize_time"`
-	StoreRedactedPreview   bool      `json:"store_redacted_preview"`
-	SampleRetentionDays    int       `json:"sample_retention_days"`
-	InsightRetentionDays   int       `json:"insight_retention_days"`
-	CleanupEnabled         bool      `json:"cleanup_enabled"`
-	CleanupTime            string    `json:"cleanup_time"`
-	CleanupBatchSize       int       `json:"cleanup_batch_size"`
-	AnalyzerSource         string    `json:"analyzer_source"`
-	AnalyzerAccountID      int64     `json:"analyzer_account_id,omitempty"`
-	AnalyzerBaseURL        string    `json:"analyzer_base_url,omitempty"`
-	AnalyzerModel          string    `json:"analyzer_model"`
-	AnalyzerToken          string    `json:"analyzer_token,omitempty"`
-	AnalyzerTokenSet       bool      `json:"analyzer_token_set"`
-	UpdatedAt              time.Time `json:"updated_at"`
-	UpdatedBy              int64     `json:"updated_by"`
+	Enabled                      bool      `json:"enabled"`
+	UsageAlertEnabled            bool      `json:"usage_alert_enabled"`
+	UsageAlertInputTokens        int       `json:"usage_alert_input_tokens"`
+	UsageAlertAutoDisableEnabled bool      `json:"usage_alert_auto_disable_enabled"`
+	UsageAlertConsecutiveCount   int       `json:"usage_alert_consecutive_count"`
+	UsageAlertExemptUserIDs      []int64   `json:"usage_alert_exempt_user_ids"`
+	ConfigVersion                int64     `json:"config_version"`
+	SampleRate                   int       `json:"sample_rate"`
+	SessionIdleMinutes           int       `json:"session_idle_minutes"`
+	UserDailyLimit               int       `json:"user_daily_limit"`
+	GlobalDailyLimit             int       `json:"global_daily_limit"`
+	Timezone                     string    `json:"timezone"`
+	ExcludedUserIDs              []int64   `json:"excluded_user_ids"`
+	ExcludedUserEmails           []string  `json:"excluded_user_emails"`
+	QueueCapacity                int       `json:"queue_capacity"`
+	WorkerCount                  int       `json:"worker_count"`
+	AnalysisIdleMinutes          int       `json:"analysis_idle_minutes"`
+	AnalysisMaxWaitMinutes       int       `json:"analysis_max_wait_minutes"`
+	AnalysisTriggerMode          string    `json:"analysis_trigger_mode"`
+	FixedIntervalMinutes         int       `json:"analysis_fixed_interval_minutes"`
+	FixedTimes                   []string  `json:"analysis_fixed_times"`
+	MaxSamplesPerBatch           int       `json:"max_samples_per_batch"`
+	ContextWindowTokens          int       `json:"context_window_tokens"`
+	MaxInputTokens               int       `json:"max_input_tokens"`
+	ReservedOutputTokens         int       `json:"reserved_output_tokens"`
+	AnalysisTimeoutSeconds       int       `json:"analysis_timeout_seconds"`
+	MaxJobAgeMinutes             int       `json:"max_job_age_minutes"`
+	PayloadTTLMinutes            int       `json:"payload_ttl_minutes"`
+	DailyFinalizeTime            string    `json:"daily_finalize_time"`
+	StoreRedactedPreview         bool      `json:"store_redacted_preview"`
+	SampleRetentionDays          int       `json:"sample_retention_days"`
+	InsightRetentionDays         int       `json:"insight_retention_days"`
+	CleanupEnabled               bool      `json:"cleanup_enabled"`
+	CleanupTime                  string    `json:"cleanup_time"`
+	CleanupBatchSize             int       `json:"cleanup_batch_size"`
+	AnalyzerSource               string    `json:"analyzer_source"`
+	AnalyzerAccountID            int64     `json:"analyzer_account_id,omitempty"`
+	AnalyzerBaseURL              string    `json:"analyzer_base_url,omitempty"`
+	AnalyzerModel                string    `json:"analyzer_model"`
+	AnalyzerToken                string    `json:"analyzer_token,omitempty"`
+	AnalyzerTokenSet             bool      `json:"analyzer_token_set"`
+	UpdatedAt                    time.Time `json:"updated_at"`
+	UpdatedBy                    int64     `json:"updated_by"`
 }
 
 type storedConfig struct {
@@ -103,8 +106,8 @@ type storedConfig struct {
 func DefaultConfig() Config {
 	return Config{
 		ConfigVersion: 1, SampleRate: 20, SessionIdleMinutes: 5,
-		UsageAlertInputTokens: 100000,
-		UserDailyLimit:        5000, GlobalDailyLimit: 200000, Timezone: "Asia/Shanghai",
+		UsageAlertInputTokens: 100000, UsageAlertConsecutiveCount: 3,
+		UserDailyLimit: 5000, GlobalDailyLimit: 200000, Timezone: "Asia/Shanghai",
 		QueueCapacity: 10000, WorkerCount: 4, AnalysisIdleMinutes: 15,
 		AnalysisMaxWaitMinutes: 60, AnalysisTriggerMode: "hybrid", FixedIntervalMinutes: 30,
 		MaxSamplesPerBatch: 50, ContextWindowTokens: 128000, MaxInputTokens: 64000,
@@ -120,6 +123,9 @@ func (c *Config) normalize() {
 	defaults := DefaultConfig()
 	if c.UsageAlertInputTokens == 0 {
 		c.UsageAlertInputTokens = defaults.UsageAlertInputTokens
+	}
+	if c.UsageAlertConsecutiveCount == 0 {
+		c.UsageAlertConsecutiveCount = defaults.UsageAlertConsecutiveCount
 	}
 	if c.AnalysisTriggerMode == "" {
 		c.AnalysisTriggerMode = defaults.AnalysisTriggerMode
@@ -160,6 +166,8 @@ func (c *Config) normalize() {
 	c.FixedTimes = slices.Compact(c.FixedTimes)
 	slices.Sort(c.ExcludedUserIDs)
 	c.ExcludedUserIDs = slices.Compact(c.ExcludedUserIDs)
+	slices.Sort(c.UsageAlertExemptUserIDs)
+	c.UsageAlertExemptUserIDs = slices.Compact(c.UsageAlertExemptUserIDs)
 	for i := range c.ExcludedUserEmails {
 		c.ExcludedUserEmails[i] = strings.ToLower(strings.TrimSpace(c.ExcludedUserEmails[i]))
 	}
@@ -176,6 +184,9 @@ func (c Config) validate() error {
 	}
 	if c.UsageAlertInputTokens < 1 || c.UsageAlertInputTokens > 1000000000 {
 		return errors.New("invalid usage alert threshold")
+	}
+	if c.UsageAlertConsecutiveCount < 1 || c.UsageAlertConsecutiveCount > 100 {
+		return errors.New("invalid usage alert consecutive count")
 	}
 	if _, err := time.LoadLocation(c.Timezone); err != nil {
 		return errors.New("invalid timezone")
@@ -222,6 +233,11 @@ func (c Config) validate() error {
 	for _, id := range c.ExcludedUserIDs {
 		if id <= 0 {
 			return errors.New("invalid excluded user ID")
+		}
+	}
+	for _, id := range c.UsageAlertExemptUserIDs {
+		if id <= 0 {
+			return errors.New("invalid usage alert exempt user ID")
 		}
 	}
 	return nil

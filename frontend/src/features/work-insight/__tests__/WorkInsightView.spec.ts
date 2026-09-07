@@ -19,6 +19,7 @@ vi.mock('@/components/common/Select.vue', () => ({
 const config = (): WorkInsightConfig => ({
   enabled: false, config_version: 1, sample_rate: 20, session_idle_minutes: 5, user_daily_limit: 5000, global_daily_limit: 200000,
   usage_alert_enabled: false, usage_alert_input_tokens: 100000,
+  usage_alert_auto_disable_enabled: false, usage_alert_consecutive_count: 3, usage_alert_exempt_user_ids: [],
   timezone: 'Asia/Shanghai', excluded_user_ids: [], excluded_user_emails: [], queue_capacity: 10000, worker_count: 4,
   analysis_idle_minutes: 15, analysis_max_wait_minutes: 60, analysis_trigger_mode: 'hybrid', analysis_fixed_interval_minutes: 30,
   analysis_fixed_times: [], max_samples_per_batch: 50, context_window_tokens: 128000, max_input_tokens: 64000,
@@ -43,6 +44,7 @@ function mountView() {
     global: { stubs: {
       AppLayout: { template: '<main><slot /></main>' }, DataTable: DataTableStub, Pagination: true,
       StatusBadge: true, Toggle: true, BaseDialog: BaseDialogStub, ConfirmDialog: ConfirmDialogStub,
+      OpenAIFastPolicyUserSelector: true,
     } }
   })
 }
@@ -99,6 +101,23 @@ describe('WorkInsightView', () => {
     expect(wrapper.text()).toContain('保存脱敏预览')
     expect(wrapper.text()).toContain('仅支持 OpenAI 兼容接口')
     expect(wrapper.text()).toContain('OpenAI 平台分析账号')
+    wrapper.unmount()
+  })
+
+  it('shows API key auto-disable controls when enabled', async () => {
+    const value = config()
+    value.usage_alert_enabled = true
+    value.usage_alert_auto_disable_enabled = true
+    api.getConfig.mockResolvedValue(value)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('[role="tab"]')[2].trigger('click')
+    await nextTick()
+
+    expect(wrapper.text()).toContain('自动禁用超限 API Key')
+    expect(wrapper.text()).toContain('连续超限次数')
+    expect(wrapper.text()).toContain('用户白名单')
+    expect(wrapper.findAll('input[type="number"]').map(input => input.element.value)).toContain('3')
     wrapper.unmount()
   })
 

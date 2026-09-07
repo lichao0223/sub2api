@@ -73,7 +73,14 @@
           </ConfigCard>
 
           <ConfigCard title="使用预警" description="从使用记录中找出单次输入 Token 超过阈值的用户，历史记录无需重建">
-            <div class="form-grid"><label class="flex items-center gap-3"><Toggle v-model="draft.usage_alert_enabled" aria-label="启用使用预警" /><span><strong>启用使用预警</strong><small>仅影响预警列表，不影响请求处理</small></span></label><NumberField v-model="draft.usage_alert_input_tokens" label="单次输入 Token 阈值" suffix="Token" :min="1" :max="1000000000" /></div>
+            <div class="form-grid"><label class="flex items-center gap-3"><Toggle v-model="draft.usage_alert_enabled" aria-label="启用使用预警" /><span><strong>启用使用预警</strong><small>记录并展示超过阈值的请求</small></span></label><NumberField v-model="draft.usage_alert_input_tokens" label="单次输入 Token 阈值" suffix="Token" :min="1" :max="1000000000" /></div>
+            <div v-if="draft.usage_alert_enabled" class="mt-5 border-t border-gray-200 pt-5 dark:border-dark-700">
+              <label class="flex items-center justify-between gap-4"><span><strong>自动禁用超限 API Key</strong><small>同一 Key 最近连续多次超过阈值时立即禁用，不自动恢复</small></span><Toggle v-model="draft.usage_alert_auto_disable_enabled" aria-label="自动禁用超限 API Key" /></label>
+              <div v-if="draft.usage_alert_auto_disable_enabled" class="mt-4 grid gap-4 sm:grid-cols-2">
+                <NumberField v-model="draft.usage_alert_consecutive_count" label="连续超限次数" suffix="次" :min="1" :max="100" />
+                <label class="field sm:col-span-2"><span>用户白名单</span><OpenAIFastPolicyUserSelector v-model="draft.usage_alert_exempt_user_ids" /><small>白名单用户和管理员的 API Key 不会被自动禁用</small></label>
+              </div>
+            </div>
           </ConfigCard>
 
           <ConfigCard title="采样限制与排除" description="按用户活跃会话采样，同一用户的多个 API Key 共享状态">
@@ -260,6 +267,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import Select from '@/components/common/Select.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import Toggle from '@/components/common/Toggle.vue'
+import OpenAIFastPolicyUserSelector from '@/views/admin/settings/OpenAIFastPolicyUserSelector.vue'
 import { adminAPI } from '@/api/admin'
 import type { Column } from '@/components/common/types'
 import { formatCompactNumber, formatUsageCost, usageCurrencySymbol } from '@/utils/format'

@@ -7,6 +7,9 @@ export interface WorkInsightConfig {
   enabled: boolean
   usage_alert_enabled: boolean
   usage_alert_input_tokens: number
+  usage_alert_auto_disable_enabled: boolean
+  usage_alert_consecutive_count: number
+  usage_alert_exempt_user_ids: number[]
   config_version: number
   sample_rate: number
   session_idle_minutes: number
