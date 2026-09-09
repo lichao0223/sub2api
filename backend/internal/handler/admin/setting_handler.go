@@ -386,6 +386,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorAllowPrivateEndpoints:  settings.ChannelMonitorAllowPrivateEndpoints,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 
 		GrokDefaultTextModel:           settings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: settings.GrokCrossClientModelMapEnabled,
