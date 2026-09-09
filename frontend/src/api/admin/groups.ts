@@ -120,6 +120,9 @@ export async function getModelAllowlistCandidates(
   return data.models || []
 }
 
+// Backward-compatible name used by the group management view.
+export const getModelsListCandidates = getModelAllowlistCandidates
+
 export async function getAvailableModels(id: number): Promise<string[]> {
   const { data } = await apiClient.get<{ models: string[] }>(`/admin/groups/${id}/available-models`)
   return data.models || []

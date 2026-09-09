@@ -14,7 +14,6 @@ export default {
     edit: '编辑',
     create: '创建',
     apply: '应用',
-    clear: '清除',
     creating: '创建中...',
     required: '必填',
     sending: '发送中...',

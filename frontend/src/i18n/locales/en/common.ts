@@ -14,7 +14,6 @@ export default {
     edit: 'Edit',
     create: 'Create',
     apply: 'Apply',
-    clear: 'Clear',
     creating: 'Creating...',
     required: 'Required',
     sending: 'Sending...',

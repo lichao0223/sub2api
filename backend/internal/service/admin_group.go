@@ -153,11 +153,11 @@ func (s *adminServiceImpl) GetGroupAvailableModels(ctx context.Context, id int64
 
 	models := availableModelsForGroup(group.Platform, visionAccounts)
 	fallback := defaultAvailableModelIDs(group.Platform)
-	if group.CustomModelsListEnabled() {
+	if group.ModelAllowlistEnabled() {
 		if group.Platform == PlatformAnthropic && len(models) > 0 {
 			models = mergeUniqueModelIDs(models, fallback)
 		}
-		return filterAvailableModels(models, fallback, group.ModelsListConfig.Models), nil
+		return filterAvailableModels(models, fallback, group.ModelAllowlist.Models), nil
 	}
 	if len(models) == 0 {
 		models = fallback
