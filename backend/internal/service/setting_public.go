@@ -633,14 +633,14 @@ type PublicSettingsInjectionPayload struct {
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
 	// ChannelMonitorHideUserRanking hides the user ranking tab and /users payload
 	// from non-admin channel-monitor v2 viewers; default false (visible).
-	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
-	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
-	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
-	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
-	AffiliateEnabled              bool `json:"affiliate_enabled"`
-	RiskControlEnabled            bool `json:"risk_control_enabled"`
+	ChannelMonitorHideUserRanking bool    `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorShowQuota       bool    `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled      bool    `json:"available_channels_enabled"`
+	ModelPlazaEnabled             bool    `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool    `json:"model_plaza_require_auth"`
+	PluginManagementEnabled       bool    `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool    `json:"affiliate_enabled"`
+	RiskControlEnabled            bool    `json:"risk_control_enabled"`
 	AllowUserViewErrorRequests    bool    `json:"allow_user_view_error_requests"`
 	UsageDisplayCurrency          string  `json:"usage_display_currency"`
 	UsageDisplayUSDToCNYRate      float64 `json:"usage_display_usd_to_cny_rate"`
