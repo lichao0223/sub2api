@@ -34,6 +34,7 @@ func setupAdminRouter() (*gin.Engine, *stubAdminService) {
 	router.GET("/api/v1/admin/groups", groupHandler.List)
 	router.GET("/api/v1/admin/groups/all", groupHandler.GetAll)
 	router.GET("/api/v1/admin/groups/:id/model-allowlist-candidates", groupHandler.GetGroupModelAllowlistCandidates)
+	router.GET("/api/v1/admin/groups/:id/available-models", groupHandler.GetAvailableModels)
 	router.GET("/api/v1/admin/groups/:id/composite-routes", groupHandler.ListCompositeRoutes)
 	router.POST("/api/v1/admin/groups/:id/composite-routes", groupHandler.CreateCompositeRoute)
 	router.POST("/api/v1/admin/groups/:id/composite-routes/preview", groupHandler.PreviewCompositeRoute)
