@@ -647,6 +647,20 @@ func (s *adminServiceImpl) GetUserAPIKeys(ctx context.Context, userID int64, pag
 	if err != nil {
 		return nil, 0, err
 	}
+	if s.concurrencyService != nil && len(keys) > 0 {
+		ids := make([]int64, 0, len(keys))
+		for i := range keys {
+			if keys[i].ID > 0 {
+				ids = append(ids, keys[i].ID)
+			}
+		}
+		counts, countErr := s.concurrencyService.GetAPIKeyConcurrencyBatch(ctx, ids)
+		if countErr == nil {
+			for i := range keys {
+				keys[i].CurrentConcurrency = counts[keys[i].ID]
+			}
+		}
+	}
 	return keys, result.Total, nil
 }
 

@@ -544,7 +544,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
@@ -578,6 +578,9 @@ const submitting = ref(false)
 const rotating = ref(false)
 const showForm = ref(false)
 const editingKey = ref<ApiKey | null>(null)
+const concurrencyRefreshIntervalMs = 2000
+let concurrencyRefreshTimer: number | null = null
+let concurrencyRefreshInFlight = false
 
 interface GroupOption extends Record<string, unknown> {
   value: number
@@ -683,24 +686,45 @@ watch(
     if (v && props.user) {
       load()
       loadGroups()
+      startConcurrencyRefresh()
     } else {
+      stopConcurrencyRefresh()
       closeForm()
     }
   },
 )
 
-const load = async () => {
+const load = async (silent = false) => {
   if (!props.user) return
-  loading.value = true
+  if (silent && concurrencyRefreshInFlight) return
+  if (silent) concurrencyRefreshInFlight = true
+  else loading.value = true
   try {
     const res = await adminAPI.users.getUserApiKeys(props.user.id)
     apiKeys.value = res.items || []
   } catch (error: any) {
-    appStore.showError(error?.message || t('keys.failedToLoad'))
+    if (!silent) appStore.showError(error?.message || t('keys.failedToLoad'))
   } finally {
-    loading.value = false
+    if (silent) concurrencyRefreshInFlight = false
+    else loading.value = false
   }
 }
+
+const stopConcurrencyRefresh = () => {
+  if (concurrencyRefreshTimer !== null) {
+    window.clearInterval(concurrencyRefreshTimer)
+    concurrencyRefreshTimer = null
+  }
+}
+
+const startConcurrencyRefresh = () => {
+  stopConcurrencyRefresh()
+  concurrencyRefreshTimer = window.setInterval(() => {
+    if (props.show) void load(true)
+  }, concurrencyRefreshIntervalMs)
+}
+
+onUnmounted(stopConcurrencyRefresh)
 
 const loadGroups = async () => {
   try {

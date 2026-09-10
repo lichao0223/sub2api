@@ -136,6 +136,7 @@ type apiKeyRepoStubForGroupUpdate struct {
 	updateErr error
 	updated   *APIKey // captures what was passed to Update
 	search    string
+	listKeys  []APIKey
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -170,7 +171,7 @@ func (s *apiKeyRepoStubForGroupUpdate) DeleteWithAudit(context.Context, int64) e
 	panic("unexpected")
 }
 func (s *apiKeyRepoStubForGroupUpdate) ListByUserID(context.Context, int64, pagination.PaginationParams, APIKeyListFilters) ([]APIKey, *pagination.PaginationResult, error) {
-	panic("unexpected")
+	return append([]APIKey(nil), s.listKeys...), &pagination.PaginationResult{Total: int64(len(s.listKeys))}, nil
 }
 func (s *apiKeyRepoStubForGroupUpdate) VerifyOwnership(context.Context, int64, []int64) ([]int64, error) {
 	panic("unexpected")
@@ -229,6 +230,21 @@ func TestGetGroupAPIKeysWithSearch(t *testing.T) {
 	require.Equal(t, "邓俊", repo.search)
 	require.Len(t, keys, 1)
 	require.EqualValues(t, 1, total)
+}
+
+func TestGetUserAPIKeysFillsCurrentConcurrency(t *testing.T) {
+	repo := &apiKeyRepoStubForGroupUpdate{listKeys: []APIKey{{ID: 11}, {ID: 12}}}
+	cache := &stubConcurrencyCacheForTest{apiKeyConcurrency: map[int64]int{11: 2, 12: 1}}
+	svc := &adminServiceImpl{
+		apiKeyRepo:         repo,
+		concurrencyService: NewConcurrencyService(cache),
+	}
+
+	keys, total, err := svc.GetUserAPIKeys(context.Background(), 7, 1, 20, "created_at", "desc")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Equal(t, 2, keys[0].CurrentConcurrency)
+	require.Equal(t, 1, keys[1].CurrentConcurrency)
 }
 
 // groupRepoStubForGroupUpdate implements GroupRepository for AdminUpdateAPIKeyGroupID tests.
