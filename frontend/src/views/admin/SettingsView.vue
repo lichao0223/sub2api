@@ -6929,7 +6929,7 @@
               </div>
               <div>
                 <label class="input-label">金额排除模型</label>
-                <textarea :value="(form.token_ranking_excluded_models || []).join('\n')" @input="form.token_ranking_excluded_models = ($event.target as HTMLTextAreaElement).value.split('\n').map(v => v.trim()).filter(Boolean)" class="input min-h-24 resize-y" placeholder="每行一个，例如：gpt-* 或 openai/o" />
+                <textarea v-model="tokenRankingExcludedModelsText" data-testid="token-ranking-excluded-models" class="input min-h-24 resize-y" placeholder="每行一个，例如：gpt-* 或 openai/o" />
                 <p class="mt-1 text-xs text-gray-400">支持名称包含匹配和 * 通配符；只排除金额，Token 数和请求数仍会统计。</p>
               </div>
               <div>
@@ -10003,6 +10003,15 @@ const form = reactive<SettingsForm>({
   allow_user_view_error_requests: false,
 });
 
+const tokenRankingExcludedModelsText = ref("");
+
+function parseTokenRankingExcludedModels(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((model) => model.trim())
+    .filter(Boolean);
+}
+
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
 // enabled 键（与上游一致），由下面的映射保证同一时间至多一家启用。
 type CaptchaProviderSelection = "turnstile" | "tencent" | "aliyun";
@@ -10966,6 +10975,9 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    tokenRankingExcludedModelsText.value = (
+      form.token_ranking_excluded_models || []
+    ).join("\n");
     syncCaptchaProviderSelection();
     if (!form.claude_oauth_system_prompt_blocks?.trim()) {
       form.claude_oauth_system_prompt_blocks =
@@ -11594,7 +11606,9 @@ async function saveSettings() {
         Number(form.payment_subscription_usd_to_cny_rate) || 0,
       token_ranking_usd_to_cny_rate:
         Number(form.token_ranking_usd_to_cny_rate) || 7.2,
-      token_ranking_excluded_models: form.token_ranking_excluded_models,
+      token_ranking_excluded_models: parseTokenRankingExcludedModels(
+        tokenRankingExcludedModelsText.value,
+      ),
       token_ranking_excluded_group_ids: form.token_ranking_excluded_group_ids,
       usage_display_currency: form.usage_display_currency,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
@@ -11727,6 +11741,9 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    tokenRankingExcludedModelsText.value = (
+      form.token_ranking_excluded_models || []
+    ).join("\n");
     Object.assign(authSourceDefaults, buildAuthSourceDefaultsState(updated));
     form.default_platform_quotas = normalizePlatformQuotasMap(updated.default_platform_quotas);
     form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(

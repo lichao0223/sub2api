@@ -745,6 +745,25 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("keeps newlines while editing excluded models and saves one rule per line", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+
+    const textarea = wrapper.get('[data-testid="token-ranking-excluded-models"]');
+    await textarea.setValue("gpt-*\n");
+    expect((textarea.element as HTMLTextAreaElement).value).toBe("gpt-*\n");
+
+    await textarea.setValue("gpt-*\n\n claude-* ");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        token_ranking_excluded_models: ["gpt-*", "claude-*"],
+      }),
+    );
+  });
+
   it("renders panel rate limit card and saves settings", async () => {
     getPanelRateLimitSettings.mockClear();
     updatePanelRateLimitSettings.mockClear();
