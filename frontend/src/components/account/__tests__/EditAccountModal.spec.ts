@@ -140,22 +140,6 @@ const GroupSelectorStub = defineComponent({
   `
 })
 
-const AccountMultimodalSettingsStub = defineComponent({
-  name: 'AccountMultimodalSettings',
-  props: ['modelValue'],
-  emits: ['update:modelValue'],
-  template: `
-    <div>
-      <span data-testid="multimodal-mode">{{ modelValue.defaultMode }}</span>
-      <button
-        type="button"
-        data-testid="configure-multimodal"
-        @click="$emit('update:modelValue', { defaultMode: 'vision_to_text', defaultVisionGroupId: 7, defaultVisionModel: 'gpt-4.1-mini', rules: [] })"
-      >configure</button>
-    </div>
-  `
-})
-
 function buildAccount() {
   return {
     id: 1,
@@ -181,28 +165,6 @@ function buildAccount() {
     auto_pause_on_expired: false
   } as any
 }
-
-describe('EditAccountModal model provider', () => {
-  beforeEach(() => {
-    authIsSimpleMode.value = true
-    updateAccountMock.mockReset().mockResolvedValue(buildAccount())
-    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
-  })
-
-  it('restores model providers without Kimi and saves the selection', async () => {
-    const account = buildAccount()
-    account.extra = { model_provider: 'glm' }
-    const wrapper = mountModal(account)
-
-    const provider = wrapper.get('[data-testid="edit-model-provider-select"]')
-    expect(provider.findAll('option').map(option => option.text())).toEqual(['无', 'GLM', 'DeepSeek'])
-    expect((provider.element as HTMLSelectElement).value).toBe('glm')
-    await provider.setValue('deepseek')
-    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
-
-    expect(updateAccountMock.mock.calls.at(-1)?.[1]?.extra?.model_provider).toBe('deepseek')
-  })
-})
 
 function buildOpenAISparkShadowAccount() {
   const account = buildAccount()
@@ -354,9 +316,8 @@ function mountModal(account = buildAccount(), renderGroupSelector = false) {
         Select: SelectStub,
         Icon: true,
         ProxySelector: true,
-        GroupSelector: GroupSelectorStub,
-        ModelWhitelistSelector: ModelWhitelistSelectorStub,
-        AccountMultimodalSettings: AccountMultimodalSettingsStub
+        GroupSelector: renderGroupSelector ? false : GroupSelectorStub,
+        ModelWhitelistSelector: ModelWhitelistSelectorStub
       }
     }
   })
@@ -484,22 +445,77 @@ describe('EditAccountModal', () => {
     })
   })
 
-  it('loads and persists multimodal account settings', async () => {
+  it('preserves OpenCode Zen account type and endpoints on submit', async () => {
     const account = buildAccount()
-    account.credentials.multimodal_default_mode = 'reject'
+    account.platform = 'opencode_go'
+    account.credentials = {
+      api_key: 'sk-opencode',
+      account_mode: 'zen',
+      api_protocol: 'adaptive',
+      base_url: 'https://opencode.ai/zen/v1',
+      api_base_urls: {
+        chat_completions: 'https://opencode.ai/zen/v1',
+        anthropic: 'https://opencode.ai/zen',
+        responses: 'https://opencode.ai/zen/v1'
+      },
+      protocol_rules: [
+        { pattern: 'grok-*', protocol: 'responses' },
+        { pattern: 'gpt-*', protocol: 'responses' },
+        { pattern: 'muse-spark-*', protocol: 'responses' },
+        { pattern: 'claude-*', protocol: 'anthropic' },
+        { pattern: 'qwen*', protocol: 'anthropic' }
+      ]
+    }
     updateAccountMock.mockReset().mockResolvedValue(account)
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
 
     const wrapper = mountModal(account)
-    expect(wrapper.get('[data-testid="multimodal-mode"]').text()).toBe('reject')
-
-    await wrapper.get('[data-testid="configure-multimodal"]').trigger('click')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
 
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
-      multimodal_default_mode: 'vision_to_text',
-      multimodal_default_vision_group_id: 7,
-      multimodal_default_vision_model: 'gpt-4.1-mini'
+      account_mode: 'zen',
+      api_protocol: 'adaptive',
+      base_url: 'https://opencode.ai/zen/v1',
+      api_base_urls: {
+        chat_completions: 'https://opencode.ai/zen/v1',
+        anthropic: 'https://opencode.ai/zen',
+        responses: 'https://opencode.ai/zen/v1'
+      },
+      protocol_rules: [
+        { pattern: 'grok-*', protocol: 'responses' },
+        { pattern: 'gpt-*', protocol: 'responses' },
+        { pattern: 'muse-spark-*', protocol: 'responses' },
+        { pattern: 'claude-*', protocol: 'anthropic' },
+        { pattern: 'qwen*', protocol: 'anthropic' }
+      ]
+    })
+  })
+
+  it('treats a legacy OpenCode account without account_mode as GO', async () => {
+    const account = buildAccount()
+    account.platform = 'opencode_go'
+    account.credentials = {
+      api_key: 'sk-opencode',
+      api_protocol: 'adaptive',
+      base_url: 'https://opencode.ai/zen/go/v1',
+      api_base_urls: {
+        chat_completions: 'https://opencode.ai/zen/go/v1',
+        anthropic: 'https://opencode.ai/zen/go',
+        responses: 'https://opencode.ai/zen/go/v1'
+      }
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      account_mode: 'go',
+      api_protocol: 'adaptive',
+      base_url: 'https://opencode.ai/zen/go/v1'
     })
   })
 
