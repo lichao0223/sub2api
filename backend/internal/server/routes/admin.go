@@ -21,8 +21,12 @@ func RegisterAdminRoutes(
 	stepUpAuth middleware.StepUpAuthMiddleware,
 	settingService *service.SettingService,
 	redisClient *redis.Client,
-	panelRateLimiter *middleware.PanelRateLimiter,
+	panelRateLimiters ...*middleware.PanelRateLimiter,
 ) {
+	var panelRateLimiter *middleware.PanelRateLimiter
+	if len(panelRateLimiters) > 0 {
+		panelRateLimiter = panelRateLimiters[0]
+	}
 	loginIPBlocker := appmiddleware.NewLoginIPBlocker(redisClient, settingService)
 	// 插件 UI 使用短时能力 URL，仅提供经过安装校验的静态资源。
 	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
@@ -752,6 +756,7 @@ func registerSubscriptionRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		subscriptions.POST("/assign", h.Admin.Subscription.Assign)
 		subscriptions.POST("/bulk-assign", h.Admin.Subscription.BulkAssign)
 		subscriptions.POST("/bulk-reset-quota", h.Admin.Subscription.BulkResetQuota)
+		subscriptions.POST("/bulk-action", h.Admin.Subscription.BulkAction)
 		subscriptions.POST("/:id/extend", h.Admin.Subscription.Extend)
 		subscriptions.POST("/:id/reset-quota", h.Admin.Subscription.ResetQuota)
 		subscriptions.POST("/:id/revoke", h.Admin.Subscription.Revoke)

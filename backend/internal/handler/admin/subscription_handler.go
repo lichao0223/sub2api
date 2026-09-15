@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -59,7 +60,11 @@ func listAllActiveUserIDs(ctx context.Context, users adminUserLister, pageSize i
 }
 
 // NewSubscriptionHandler creates a new admin subscription handler
-func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, adminService service.AdminService) *SubscriptionHandler {
+func NewSubscriptionHandler(subscriptionService *service.SubscriptionService, adminServices ...service.AdminService) *SubscriptionHandler {
+	var adminService service.AdminService
+	if len(adminServices) > 0 {
+		adminService = adminServices[0]
+	}
 	return &SubscriptionHandler{
 		subscriptionService: subscriptionService,
 		adminService:        adminService,
@@ -76,7 +81,7 @@ type AssignSubscriptionRequest struct {
 
 // BulkAssignSubscriptionRequest represents bulk assign subscription request
 type BulkAssignSubscriptionRequest struct {
-	UserIDs      []int64 `json:"user_ids"`
+	UserIDs      []int64 `json:"user_ids" binding:"required,min=1,max=100,dive,gt=0"`
 	All          bool    `json:"all"`
 	GroupID      int64   `json:"group_id" binding:"required"`
 	ValidityDays int     `json:"validity_days" binding:"omitempty,max=36500"` // max 100 years
@@ -226,6 +231,23 @@ func (h *SubscriptionHandler) BulkAssign(c *gin.Context) {
 	}
 
 	response.Success(c, dto.BulkAssignResultFromService(result))
+}
+
+// BulkAction applies one operation to selected subscriptions, returning each outcome.
+// POST /api/v1/admin/subscriptions/bulk-action
+func (h *SubscriptionHandler) BulkAction(c *gin.Context) {
+	var req service.BulkSubscriptionActionInput
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := req.Validate(); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	executeAdminIdempotentJSONWithTimeout(c, "admin.subscriptions.bulk-action", req, service.DefaultWriteIdempotencyTTL(), 2*time.Minute, func(ctx context.Context) (any, error) {
+		return h.subscriptionService.BulkSubscriptionAction(ctx, &req)
+	})
 }
 
 // Extend handles adjusting a subscription (extend or shorten)
