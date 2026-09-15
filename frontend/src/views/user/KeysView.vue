@@ -411,6 +411,13 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <button
+                @click="editKey(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-300"
+              >
+                <Icon name="edit" size="sm" />
+                <span class="text-xs">{{ t('common.edit') }}</span>
+              </button>
               <template v-if="isAdmin">
                 <button
                   @click="toggleKeyStatus(row)"
@@ -424,13 +431,6 @@
                   <Icon v-if="row.status === 'active'" name="ban" size="sm" />
                   <Icon v-else name="checkCircle" size="sm" />
                   <span class="text-xs">{{ row.status === 'active' ? t('keys.disable') : t('keys.enable') }}</span>
-                </button>
-                <button
-                  @click="editKey(row)"
-                  class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-300"
-                >
-                  <Icon name="edit" size="sm" />
-                  <span class="text-xs">{{ t('common.edit') }}</span>
                 </button>
                 <button
                   @click="confirmDelete(row)"
