@@ -7,6 +7,7 @@ import { keysAPI } from '@/api'
 import KeysView from '../KeysView.vue'
 
 const {
+  authState,
   listKeys,
   updateKey,
   getPublicSettings,
@@ -19,6 +20,7 @@ const {
   isCurrentStep,
   nextStep,
 } = vi.hoisted(() => ({
+  authState: { isAdmin: false },
   listKeys: vi.fn(),
   updateKey: vi.fn(),
   getPublicSettings: vi.fn(),
@@ -86,7 +88,7 @@ vi.mock('@/stores/app', () => ({
 }))
 
 vi.mock('@/stores/auth', () => ({
-  useAuthStore: () => ({ isAdmin: false }),
+  useAuthStore: () => authState,
 }))
 
 vi.mock('@/stores/onboarding', () => ({
@@ -272,6 +274,7 @@ const getButtonByText = (wrapper: VueWrapper, text: string) => {
 describe('user KeysView column settings', () => {
   beforeEach(() => {
     localStorage.clear()
+    authState.isAdmin = false
 
     listKeys.mockReset()
     updateKey.mockReset()
@@ -571,6 +574,8 @@ describe('user KeysView column settings', () => {
     }
 
     beforeEach(() => {
+      // This fork only exposes API key creation to administrators.
+      authState.isAdmin = true
       getAvailableGroups.mockResolvedValue(availableGroups)
     })
 
