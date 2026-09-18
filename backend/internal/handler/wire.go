@@ -184,6 +184,12 @@ func ProvideAdminAPIKeyHandler(adminService service.AdminService, apiKeyService 
 	return admin.NewAdminAPIKeyHandler(adminService, apiKeyService)
 }
 
+// ProvideAdminSubscriptionHandler gives Wire an explicit AdminService dependency
+// while keeping NewSubscriptionHandler's optional argument compatible with tests.
+func ProvideAdminSubscriptionHandler(subscriptionService *service.SubscriptionService, adminService service.AdminService) *admin.SubscriptionHandler {
+	return admin.NewSubscriptionHandler(subscriptionService, adminService)
+}
+
 // ProvideHandlers creates the Handlers struct
 func ProvideHandlers(
 	authHandler *AuthHandler,
@@ -284,7 +290,7 @@ var ProviderSet = wire.NewSet(
 	ProvideAdminSettingHandler,
 	admin.NewOpsHandler,
 	ProvideSystemHandler,
-	admin.NewSubscriptionHandler,
+	ProvideAdminSubscriptionHandler,
 	admin.NewUsageHandler,
 	admin.NewCostManagementHandler,
 	admin.NewUserAttributeHandler,
