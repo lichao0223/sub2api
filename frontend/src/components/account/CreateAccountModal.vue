@@ -217,6 +217,19 @@
           </button>
           <button
             type="button"
+            @click="selectCNPlatform('volcengine')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'volcengine'
+                ? 'bg-white text-orange-600 shadow-sm dark:bg-dark-600 dark:text-orange-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="volcengine" size="sm" />
+            火山方舟
+          </button>
+          <button
+            type="button"
             @click="selectOpenCodeGoPlatform()"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
@@ -562,7 +575,7 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
             </div>
           </button>
-          <!-- Coding Plan (kimi / zhipu only — DeepSeek has no coding plan) -->
+          <!-- Coding Plan -->
           <button
             v-if="form.platform !== 'deepseek'"
             type="button"
@@ -590,6 +603,15 @@
             </div>
           </button>
         </div>
+      </div>
+
+      <div v-if="form.platform === 'volcengine' && accountMode === 'coding'" class="mt-4 rounded-lg border border-orange-200 bg-orange-50/50 p-4 dark:border-orange-900/40 dark:bg-orange-900/10">
+        <label class="input-label">火山方舟用量查询凭据</label>
+        <div class="mt-2 grid gap-4 sm:grid-cols-2">
+          <input v-model="volcengineAccessKeyID" type="text" class="input" placeholder="AccessKey ID" />
+          <input v-model="volcengineSecretAccessKey" type="password" class="input" placeholder="Secret AccessKey" />
+        </div>
+        <p class="input-hint mt-2">用于查询 Agent Plan 5 小时、周限和月限；与 ark- 推理 API Key 不同。</p>
       </div>
 
       <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek / OpenCode) -->
@@ -4190,6 +4212,8 @@ const openCodeGoProtocolRules = ref<OpenCodeGoProtocolRule[]>(
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
 const zhipuOrganization = ref('')
 const zhipuProject = ref('')
+const volcengineAccessKeyID = ref('')
+const volcengineSecretAccessKey = ref('')
 const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -5352,6 +5376,8 @@ const resetForm = () => {
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  volcengineAccessKeyID.value = ''
+  volcengineSecretAccessKey.value = ''
   modelProvider.value = 'none'
   upstreamRequestIdHeader.value = ''
   upstreamBillingAutoProbeEnabled.value = true
@@ -5864,6 +5890,10 @@ const handleSubmit = async () => {
     if (form.platform === 'zhipu' && accountMode.value === 'coding') {
       if (zhipuOrganization.value.trim()) credentials.zhipu_organization = zhipuOrganization.value.trim()
       if (zhipuProject.value.trim()) credentials.zhipu_project = zhipuProject.value.trim()
+    }
+    if (form.platform === 'volcengine') {
+      if (volcengineAccessKeyID.value.trim()) credentials.volcengine_access_key_id = volcengineAccessKeyID.value.trim()
+      if (volcengineSecretAccessKey.value.trim()) credentials.volcengine_secret_access_key = volcengineSecretAccessKey.value.trim()
     }
     if (form.platform === 'opencode_go') {
       applyOpenCodeGoProtocolRules(credentials, openCodeGoProtocolRules.value, 'create')

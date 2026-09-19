@@ -20,6 +20,7 @@ export const CONCRETE_PLATFORM_OPTIONS = [
   { value: 'zhipu', label: 'Zhipu GLM' },
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'minimax', label: 'MiniMax' },
+  { value: 'volcengine', label: 'Volcengine Ark' },
   { value: 'opencode_go', label: 'OpenCode' }
 ] as const satisfies readonly PlatformOption<AccountPlatform>[]
 

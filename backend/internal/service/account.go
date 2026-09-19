@@ -1389,6 +1389,8 @@ func (a *Account) GetOpenAIBaseURL() string {
 		return DefaultMiniMaxBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultChatBaseURL()
+	case PlatformVolcengine:
+		return DefaultVolcengineBaseURL
 	default:
 		return "https://api.openai.com"
 	}
@@ -1511,6 +1513,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultMiniMaxAnthropicBaseURL
 		case PlatformOpenCodeGo:
 			return a.openCodeDefaultAnthropicBaseURL()
+		case PlatformVolcengine:
+			return DefaultVolcengineBaseURL
 		}
 	case APIProtocolChatCompletions, APIProtocolResponses:
 		switch a.Platform {
@@ -1530,6 +1534,8 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultMiniMaxBaseURL
 		case PlatformOpenCodeGo:
 			return a.openCodeDefaultChatBaseURL()
+		case PlatformVolcengine:
+			return DefaultVolcengineBaseURL
 		}
 	}
 	return ""
@@ -1570,6 +1576,8 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 		return DefaultMiniMaxAnthropicBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultAnthropicBaseURL()
+	case PlatformVolcengine:
+		return DefaultVolcengineBaseURL
 	default:
 		return ""
 	}
@@ -1601,6 +1609,8 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 		return DefaultMiniMaxBaseURL
 	case PlatformOpenCodeGo:
 		return a.openCodeDefaultChatBaseURL()
+	case PlatformVolcengine:
+		return DefaultVolcengineBaseURL
 	default:
 		return a.GetOpenAIBaseURL()
 	}
@@ -1638,6 +1648,8 @@ func (a *Account) GetCodingPlanProvider() string {
 		strings.Contains(baseURL, "minimaxi.com"),
 		strings.Contains(baseURL, "minimax.com"):
 		return PlatformMiniMax
+	case strings.Contains(baseURL, "volces.com/api/plan"):
+		return PlatformVolcengine
 	default:
 		return ""
 	}

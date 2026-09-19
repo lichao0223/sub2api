@@ -11,6 +11,7 @@ var SensitiveCredentialKeys = []string{
 	"password", "sso_token", "sso", "sso-rw", "clearTextPassword",
 	// 云服务凭据
 	"aws_secret_access_key", "aws_session_token",
+	"volcengine_secret_access_key",
 	"service_account_json", "service_account", "private_key",
 }
 

@@ -230,9 +230,9 @@ func monitorAccountQuotaCapability(account *Account) error {
 	switch account.Platform {
 	case PlatformOpenCodeGo:
 		return nil
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax:
+	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformVolcengine:
 		if account.IsCodingPlan() {
-			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu && p != PlatformMiniMax {
+			if p := account.GetCodingPlanProvider(); p != PlatformKimi && p != PlatformZhipu && p != PlatformMiniMax && p != PlatformVolcengine {
 				return ErrChannelMonitorAccountNotSupportable
 			}
 			return nil

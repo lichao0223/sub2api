@@ -1236,6 +1236,7 @@ function generateRoutedCodexFiles(
     zhipu: 'glm-4.7',
     deepseek: 'deepseek-v4-pro',
     minimax: 'MiniMax-M3',
+    volcengine: 'doubao-seed-1-6-250615',
     opencode_go: 'glm-5.3',
     composite: 'gpt-5.5'
   }
@@ -1251,6 +1252,7 @@ function generateRoutedCodexFiles(
     zhipu: 'Zhipu',
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
+    volcengine: 'Volcengine Ark',
     opencode_go: 'OpenCode',
     composite: 'Composite'
   }

@@ -2,11 +2,14 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -131,11 +134,14 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
-	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformOpenCodeGo {
+	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformOpenCodeGo && provider != PlatformVolcengine {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan or opencode go account")
 	}
 
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
+	if provider == PlatformVolcengine {
+		return s.queryVolcengineUsage(ctx, account)
+	}
 	if apiKey == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_APIKEY", "account api_key is empty")
 	}
@@ -268,6 +274,189 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		result.Persisted = true
 	}
 	return result, nil
+}
+
+const volcengineQuotaHost = "open.volcengineapi.com"
+
+func volcHMAC(key []byte, data string) []byte {
+	h := hmac.New(sha256.New, key)
+	_, _ = h.Write([]byte(data))
+	return h.Sum(nil)
+}
+func volcHex(data []byte) string { return fmt.Sprintf("%x", data) }
+
+func (s *CNProviderQuotaService) queryVolcengineUsage(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
+	ak := strings.TrimSpace(account.GetCredential("volcengine_access_key_id"))
+	sk := strings.TrimSpace(account.GetCredential("volcengine_secret_access_key"))
+	if ak == "" || sk == "" {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_AKSK", "volcengine AccessKey ID and Secret are required")
+	}
+	region := "cn-beijing"
+	if host := strings.Split(strings.TrimPrefix(strings.TrimPrefix(account.GetOpenAIBaseURL(), "https://"), "http://"), "/")[0]; strings.Contains(host, ".") {
+		parts := strings.Split(host, ".")
+		for _, p := range parts {
+			if strings.HasPrefix(p, "cn-") || strings.HasPrefix(p, "ap-") {
+				region = p
+				break
+			}
+		}
+	}
+	var body map[string]any
+	for _, action := range []string{"GetAFPUsage", "GetCodingPlanUsage"} {
+		v, status, err := s.volcengineOpenAPICall(ctx, account, ak, sk, region, action)
+		if err != nil {
+			if status == http.StatusUnauthorized || status == http.StatusForbidden || strings.Contains(strings.ToLower(err.Error()), "authorization") || strings.Contains(strings.ToLower(err.Error()), "accessdenied") || strings.Contains(strings.ToLower(err.Error()), "signature") {
+				return &CNProviderQuotaProbeResult{Provider: providerOrVolc(), Source: "coding_plan", Success: false, CredentialValid: false, StatusCode: status, FetchedAt: time.Now().Unix(), Error: err.Error()}, nil
+			}
+			continue
+		}
+		body = v
+		result := v
+		if x, ok := v["Result"].(map[string]any); ok {
+			result = x
+		}
+		if action == "GetAFPUsage" {
+			tiers := parseVolcAFPQuota(result)
+			if len(tiers) > 0 {
+				plan := "Agent Plan"
+				if p, ok := result["PlanType"].(string); ok && strings.TrimSpace(p) != "" { plan += " " + strings.TrimSpace(p) }
+				return s.persistCNQuota(ctx, account, tiers, plan, "volcengine"), nil
+			}
+		}
+		if action == "GetCodingPlanUsage" {
+			tiers := parseVolcCodingQuota(result)
+			if len(tiers) > 0 {
+				return s.persistCNQuota(ctx, account, tiers, "Coding Plan", "volcengine"), nil
+			}
+		}
+	}
+	return &CNProviderQuotaProbeResult{Provider: PlatformVolcengine, Source: "coding_plan", Success: false, CredentialValid: true, FetchedAt: time.Now().Unix(), Error: fmt.Sprintf("no active Agent Plan or Coding Plan subscription: %v", body)}, nil
+}
+
+func providerOrVolc() string { return PlatformVolcengine }
+
+func (s *CNProviderQuotaService) persistCNQuota(ctx context.Context, account *Account, tiers []CNQuotaTier, plan, provider string) *CNProviderQuotaProbeResult {
+	now := time.Now().UTC()
+	result := &CNProviderQuotaProbeResult{Provider: provider, Source: "coding_plan", Success: true, CredentialValid: true, Tiers: tiers, PlanLevel: plan, StatusCode: 200, FetchedAt: now.Unix()}
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, cnQuotaExtraUpdates(provider, tiers, now)); err == nil {
+		result.Persisted = true
+	}
+	return result
+}
+
+func (s *CNProviderQuotaService) volcengineOpenAPICall(ctx context.Context, account *Account, ak, sk, region, action string) (map[string]any, int, error) {
+	const ctype = "application/json; charset=utf-8"
+	now := time.Now().UTC()
+	xd := now.Format("20060102T150405Z")
+	sd := now.Format("20060102")
+	q := "Action=" + url.QueryEscape(action) + "&Region=" + url.QueryEscape(region) + "&Version=2024-01-01"
+	hash := sha256.Sum256(nil)
+	sh := fmt.Sprintf("%x", hash[:])
+	signed := "host;x-date;x-content-sha256;content-type"
+	ch := fmt.Sprintf("host:%s\nx-date:%s\nx-content-sha256:%s\ncontent-type:%s\n", volcengineQuotaHost, xd, sh, ctype)
+	cr := fmt.Sprintf("POST\n/\n%s\n%s\n%s\n%s", q, ch, signed, sh)
+	scope := sd + "/" + region + "/ark/request"
+	crHash := sha256.Sum256([]byte(cr))
+	st := "HMAC-SHA256\n" + xd + "\n" + scope + "\n" + volcHex(crHash[:])
+	kd := volcHMAC([]byte(sk), sd)
+	kr := volcHMAC(kd, region)
+	ks := volcHMAC(kr, "ark")
+	ksign := volcHMAC(ks, "request")
+	sig := volcHex(volcHMAC(ksign, st))
+	auth := "HMAC-SHA256 Credential=" + ak + "/" + scope + ", SignedHeaders=" + signed + ", Signature=" + sig
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://"+volcengineQuotaHost+"/?"+q, strings.NewReader(""))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Authorization", auth)
+	req.Header.Set("X-Date", xd)
+	req.Header.Set("X-Content-Sha256", sh)
+	req.Header.Set("Content-Type", ctype)
+	resp, err := s.httpUpstream.Do(req, s.resolveProxyURL(ctx, account), account.ID, maxInt(account.Concurrency, 1))
+	if err != nil {
+		return nil, 0, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, cnQuotaMaxBodyBytes))
+	var v map[string]any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, resp.StatusCode, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, resp.StatusCode, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, truncate(string(raw), 240))
+	}
+	if meta, ok := v["ResponseMetadata"].(map[string]any); ok {
+		if e, ok := meta["Error"].(map[string]any); ok {
+			return nil, resp.StatusCode, fmt.Errorf("%v: %v", e["Code"], e["Message"])
+		}
+	}
+	return v, resp.StatusCode, nil
+}
+
+func parseVolcAFPQuota(result map[string]any) []CNQuotaTier {
+	out := []CNQuotaTier{}
+	for key, win := range map[string]string{"AFPFiveHour": "5h", "AFPWeekly": "weekly", "AFPMonthly": "monthly"} {
+		if x, ok := result[key].(map[string]any); ok {
+			q, _ := toFloat(x["Quota"])
+			u, _ := toFloat(x["Used"])
+			if q > 0 {
+				reset, _ := volcResetTime(x["ResetTime"])
+				out = append(out, CNQuotaTier{Window: win, UsedPercent: u / q * 100, ResetAt: reset})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Window < out[j].Window })
+	return out
+}
+func parseVolcCodingQuota(result map[string]any) []CNQuotaTier {
+	arr, _ := result["QuotaUsage"].([]any)
+	out := []CNQuotaTier{}
+	for _, raw := range arr {
+		x, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		label, _ := x["Level"].(string)
+		var w string
+		switch strings.ToLower(label) {
+		case "session", "5h", "fivehour":
+			w = "5h"
+		case "weekly", "week", "7d":
+			w = "weekly"
+		case "monthly", "month":
+			w = "monthly"
+		}
+		if w == "" {
+			continue
+		}
+		p, _ := toFloat(x["Percent"])
+		reset, _ := volcResetTime(x["ResetTime"])
+		out = append(out, CNQuotaTier{Window: w, UsedPercent: p, ResetAt: reset})
+	}
+	return out
+}
+func toFloat(v any) (float64, bool) {
+	switch x := v.(type) {
+	case float64:
+		return x, true
+	case json.Number:
+		f, e := x.Float64()
+		return f, e == nil
+	case string:
+		f, e := strconv.ParseFloat(x, 64)
+		return f, e == nil
+	}
+	return 0, false
+}
+func volcResetTime(v any) (string, bool) {
+	f, ok := toFloat(v)
+	if !ok || f <= 0 {
+		return "", false
+	}
+	if f > 1e12 {
+		f /= 1000
+	}
+	return time.Unix(int64(f), 0).UTC().Format(time.RFC3339), true
 }
 
 func (s *CNProviderQuotaService) loadCodingPlanAccount(ctx context.Context, accountID int64) (*Account, error) {

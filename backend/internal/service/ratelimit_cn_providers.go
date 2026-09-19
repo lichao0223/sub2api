@@ -180,7 +180,7 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	}
 	provider := account.Platform
 	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset}
-	if account.IsOpenCodeGo() {
+	if account.IsOpenCodeGo() || account.Platform == PlatformVolcengine {
 		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
 	}
 	var earliest *time.Time

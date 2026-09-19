@@ -159,6 +159,14 @@
           </div>
           <p class="input-hint">{{ t(`admin.accounts.cnProviders.accountMode.${editAccountMode}Desc`) }}</p>
         </div>
+        <div v-if="account.platform === 'volcengine' && editAccountMode === 'coding'" class="rounded-lg border border-orange-200 bg-orange-50/50 p-4 dark:border-orange-900/40 dark:bg-orange-900/10">
+          <label class="input-label">火山方舟用量查询凭据</label>
+          <div class="mt-2 grid gap-4 sm:grid-cols-2">
+            <input v-model="editVolcengineAccessKeyID" type="text" class="input" placeholder="AccessKey ID" />
+            <input v-model="editVolcengineSecretAccessKey" type="password" class="input" placeholder="Secret AccessKey（留空保持不变）" />
+          </div>
+          <p class="input-hint mt-2">用于查询 Agent Plan 5 小时、周限和月限。</p>
+        </div>
         <!-- API Protocol Selection (CN providers / OpenCode) -->
         <div v-if="isCNApiKeyAccount">
           <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
@@ -3272,6 +3280,8 @@ function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
 const editZhipuOrganization = ref('')
 const editZhipuProject = ref('')
+const editVolcengineAccessKeyID = ref('')
+const editVolcengineSecretAccessKey = ref('')
 const editAdaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
@@ -4331,6 +4341,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         editZhipuOrganization.value = typeof credentials.zhipu_organization === 'string' ? credentials.zhipu_organization : ''
         editZhipuProject.value = typeof credentials.zhipu_project === 'string' ? credentials.zhipu_project : ''
       }
+      if (newAccount.platform === 'volcengine') {
+        editVolcengineAccessKeyID.value = typeof credentials.volcengine_access_key_id === 'string' ? credentials.volcengine_access_key_id : ''
+        editVolcengineSecretAccessKey.value = ''
+      }
       if (newAccount.platform === 'opencode_go') {
         editOpenCodeGoProtocolRules.value =
           parseOpenCodeGoProtocolRules(credentials.protocol_rules) ??
@@ -4347,7 +4361,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             : newAccount.platform === 'kimi' ||
                 newAccount.platform === 'zhipu' ||
                 newAccount.platform === 'deepseek' ||
-                newAccount.platform === 'opencode_go'
+                newAccount.platform === 'opencode_go' ||
+                newAccount.platform === 'volcengine'
               ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
@@ -5113,6 +5128,10 @@ const handleSubmit = async () => {
             delete newCredentials.zhipu_organization
             delete newCredentials.zhipu_project
           }
+        }
+        if (props.account.platform === 'volcengine') {
+          if (editVolcengineAccessKeyID.value.trim()) newCredentials.volcengine_access_key_id = editVolcengineAccessKeyID.value.trim()
+          if (editVolcengineSecretAccessKey.value.trim()) newCredentials.volcengine_secret_access_key = editVolcengineSecretAccessKey.value.trim()
         }
       }
 

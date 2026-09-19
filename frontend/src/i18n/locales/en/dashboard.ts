@@ -505,6 +505,7 @@ export default {
       zhipu: 'Zhipu GLM',
       deepseek: 'DeepSeek',
       minimax: 'MiniMax',
+      volcengine: 'Volcengine Ark',
       opencode_go: 'OpenCode'
     },
     // Check modes (how a monitor performs its checks)

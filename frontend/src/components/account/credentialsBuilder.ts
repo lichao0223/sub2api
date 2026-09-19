@@ -46,6 +46,7 @@ export function isHeaderOverrideCapable(platform: string, type: string): boolean
     platform === 'zhipu' ||
     platform === 'deepseek' ||
     platform === 'minimax' ||
+    platform === 'volcengine' ||
     platform === 'opencode_go'
   ) {
     return type === 'apikey'
@@ -260,14 +261,14 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 export type OpenCodeAccountMode = 'zen' | 'go'
-export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax'
+export type CnProviderPlatform = 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'volcengine'
 
 /** deepseek / kimi / minimax 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
 export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
 
 export function isCNProviderPlatform(platform: string): platform is CnProviderPlatform {
-  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax'
+	return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'volcengine'
 }
 
 /** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点。 */
@@ -358,7 +359,7 @@ export function applyOpenCodeGoProtocolRules(
 }
 
 export function isMultiProtocolApiKeyPlatform(platform: string): boolean {
-  return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'opencode_go'
+	return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'volcengine' || platform === 'opencode_go'
 }
 
 export interface CnBaseUrlPreset {
@@ -403,7 +404,8 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
     { mode: 'coding', protocol: 'chat_completions', label: 'MiniMax Coding Intl', url: 'https://api.minimax.io/v1' },
     { mode: 'coding', protocol: 'anthropic', label: 'MiniMax Coding Intl Anthropic', url: 'https://api.minimax.io/anthropic' },
     { mode: 'coding', protocol: 'responses', label: 'MiniMax Coding Intl Responses', url: 'https://api.minimax.io/v1' }
-  ]
+  ],
+  volcengine: []
 }
 
 /** 返回指定供应商 + 账号类型 + API 协议的默认 base url。 */
@@ -424,6 +426,8 @@ export function defaultCNBaseUrl(
         return 'https://api.minimaxi.com/anthropic'
       case 'opencode_go':
         return mode === 'zen' ? OPENCODE_ZEN_ANTHROPIC_BASE_URL : OPENCODE_GO_ANTHROPIC_BASE_URL
+      case 'volcengine':
+        return 'https://ark.cn-beijing.volces.com/api/plan/v3'
       default:
         return ''
     }
@@ -442,6 +446,8 @@ export function defaultCNBaseUrl(
       return 'https://api.minimaxi.com/v1'
     case 'opencode_go':
       return mode === 'zen' ? OPENCODE_ZEN_BASE_URL : OPENCODE_GO_BASE_URL
+    case 'volcengine':
+      return 'https://ark.cn-beijing.volces.com/api/plan/v3'
     default:
       return ''
   }
@@ -465,7 +471,7 @@ export function defaultCNAdaptiveBaseUrls(
 
 export function cnQuotaCellVisible(platform: string, accountMode: string): boolean {
   if (platform === 'opencode_go') return accountMode !== 'zen'
-  return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax') && accountMode === 'coding'
+  return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax' || platform === 'volcengine') && accountMode === 'coding'
 }
 
 export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {
