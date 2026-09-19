@@ -319,7 +319,9 @@ func (s *CNProviderQuotaService) queryVolcengineUsage(ctx context.Context, accou
 			tiers := parseVolcAFPQuota(result)
 			if len(tiers) > 0 {
 				plan := "Agent Plan"
-				if p, ok := result["PlanType"].(string); ok && strings.TrimSpace(p) != "" { plan += " " + strings.TrimSpace(p) }
+				if p, ok := result["PlanType"].(string); ok && strings.TrimSpace(p) != "" {
+					plan += " " + strings.TrimSpace(p)
+				}
 				return s.persistCNQuota(ctx, account, tiers, plan, "volcengine"), nil
 			}
 		}
@@ -376,7 +378,9 @@ func (s *CNProviderQuotaService) volcengineOpenAPICall(ctx context.Context, acco
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, cnQuotaMaxBodyBytes))
 	var v map[string]any
 	if err := json.Unmarshal(raw, &v); err != nil {
