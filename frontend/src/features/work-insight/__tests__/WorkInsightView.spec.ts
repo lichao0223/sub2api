@@ -114,8 +114,8 @@ describe('WorkInsightView', () => {
     await wrapper.findAll('[role="tab"]')[2].trigger('click')
     await nextTick()
 
-    expect(wrapper.text()).toContain('自动禁用超限 API Key')
-    expect(wrapper.text()).toContain('连续超限次数')
+    expect(wrapper.text()).toContain('自动禁用超限用户')
+    expect(wrapper.text()).toContain('当天超限次数')
     expect(wrapper.text()).toContain('用户白名单')
     expect(wrapper.findAll('input[type="number"]').map(input => input.element.value)).toContain('3')
     wrapper.unmount()

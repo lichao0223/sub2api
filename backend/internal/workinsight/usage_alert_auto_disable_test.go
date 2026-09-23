@@ -9,12 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type authCacheInvalidatorStub struct{ keys []string }
+type authCacheInvalidatorStub struct {
+	keys    []string
+	userIDs []int64
+}
 
 func (s *authCacheInvalidatorStub) InvalidateAuthCacheByKey(_ context.Context, key string) {
 	s.keys = append(s.keys, key)
 }
-func (s *authCacheInvalidatorStub) InvalidateAuthCacheByUserID(context.Context, int64)  {}
+func (s *authCacheInvalidatorStub) InvalidateAuthCacheByUserID(_ context.Context, id int64) {
+	s.userIDs = append(s.userIDs, id)
+}
 func (s *authCacheInvalidatorStub) InvalidateAuthCacheByGroupID(context.Context, int64) {}
 
 func TestUsageAlertAutoDisableUpdatesQualifiedKeysAndInvalidatesCache(t *testing.T) {
@@ -22,9 +27,12 @@ func TestUsageAlertAutoDisableUpdatesQualifiedKeysAndInvalidatesCache(t *testing
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 	now := time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(`(?s)WITH candidate_keys AS .*UPDATE api_keys SET status=\$8`).
-		WithArgs(now.Add(-usageAlertLookback), 300000, 3, sqlmock.AnyArg(), "active", "active", "admin", "disabled").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "key"}).AddRow(12, 8, "sk-secret"))
+	location, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	dayStart := time.Date(2026, 9, 7, 0, 0, 0, 0, location).UTC()
+	mock.ExpectQuery(`(?s)WITH qualified_users AS .*UPDATE users SET status=\$8`).
+		WithArgs(dayStart, dayStart.AddDate(0, 0, 1), 300000, 3, "active", "admin", sqlmock.AnyArg(), "disabled").
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(8))
 	invalidator := &authCacheInvalidatorStub{}
 	svc := &Service{repo: NewRepository(db), authCache: invalidator}
 	cfg := storedConfig{Config: DefaultConfig()}
@@ -36,7 +44,7 @@ func TestUsageAlertAutoDisableUpdatesQualifiedKeysAndInvalidatesCache(t *testing
 
 	svc.runUsageAlertAutoDisable(context.Background(), now, cfg)
 
-	require.Equal(t, []string{"sk-secret"}, invalidator.keys)
+	require.Equal(t, []int64{8}, invalidator.userIDs)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 

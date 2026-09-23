@@ -16,11 +16,10 @@ import (
 )
 
 const (
-	jobBatchScheduler  = "ai_work_insight_batch_scheduler"
-	jobReconciliation  = "ai_work_insight_reconciliation"
-	jobDailyFinalize   = "ai_work_insight_daily_finalize"
-	jobCleanup         = "ai_work_insight_cleanup"
-	usageAlertLookback = 10 * time.Minute
+	jobBatchScheduler = "ai_work_insight_batch_scheduler"
+	jobReconciliation = "ai_work_insight_reconciliation"
+	jobDailyFinalize  = "ai_work_insight_daily_finalize"
+	jobCleanup        = "ai_work_insight_cleanup"
 )
 
 func (s *Service) scheduler(ctx context.Context) {
@@ -121,20 +120,26 @@ func (s *Service) runUsageAlertAutoDisable(parent context.Context, now time.Time
 	}
 	ctx, cancel := context.WithTimeout(parent, 10*time.Second)
 	defer cancel()
-	disabled, err := s.repo.DisableAPIKeysOverInputThreshold(ctx, now.Add(-usageAlertLookback), cfg.UsageAlertInputTokens, cfg.UsageAlertConsecutiveCount, cfg.UsageAlertExemptUserIDs)
+	location, err := time.LoadLocation(cfg.Timezone)
+	if err != nil {
+		logger.L().Warn("work_insight.usage_alert_invalid_timezone", zap.String("timezone", cfg.Timezone), zap.Error(err))
+		return
+	}
+	localNow := now.In(location)
+	dayStart := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, location)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	disabled, err := s.repo.DisableUsersOverDailyInputThreshold(ctx, dayStart.UTC(), dayEnd.UTC(), cfg.UsageAlertInputTokens, cfg.UsageAlertConsecutiveCount, cfg.UsageAlertExemptUserIDs)
 	if err != nil {
 		logger.L().Warn("work_insight.usage_alert_auto_disable_failed", zap.Error(err))
 		return
 	}
-	ids := make([]int64, 0, len(disabled))
-	for _, apiKey := range disabled {
-		ids = append(ids, apiKey.ID)
+	for _, userID := range disabled {
 		if s.authCache != nil {
-			s.authCache.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+			s.authCache.InvalidateAuthCacheByUserID(ctx, userID)
 		}
 	}
-	if len(ids) > 0 {
-		logger.L().Warn("work_insight.usage_alert_api_keys_disabled", zap.Int64s("api_key_ids", ids), zap.Int("threshold", cfg.UsageAlertInputTokens), zap.Int("consecutive", cfg.UsageAlertConsecutiveCount))
+	if len(disabled) > 0 {
+		logger.L().Warn("work_insight.usage_alert_users_disabled", zap.Int64s("user_ids", disabled), zap.Int("threshold", cfg.UsageAlertInputTokens), zap.Int("daily_count", cfg.UsageAlertConsecutiveCount))
 	}
 }
 

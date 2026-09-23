@@ -266,6 +266,41 @@ type DisabledAPIKey struct {
 	Key        string
 }
 
+// DisableUsersOverDailyInputThreshold disables users whose daily usage contains
+// at least consecutive requests above the configured input-token threshold.
+func (r *Repository) DisableUsersOverDailyInputThreshold(ctx context.Context, start, end time.Time, threshold, consecutive int, exemptUserIDs []int64) ([]int64, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		WITH qualified_users AS (
+			SELECT u.id
+			FROM users u
+			WHERE u.deleted_at IS NULL AND u.status=$5 AND u.role<>$6
+				AND NOT COALESCE(u.id=ANY($7::bigint[]),FALSE)
+				AND (
+					SELECT COUNT(*) FROM usage_logs ul
+					WHERE ul.user_id=u.id AND ul.created_at >= $1 AND ul.created_at < $2 AND ul.input_tokens > $3
+				) >= $4
+		)
+		UPDATE users SET status=$8,updated_at=NOW()
+		FROM qualified_users
+		WHERE users.id=qualified_users.id AND users.status=$5 AND users.deleted_at IS NULL
+		RETURNING users.id`,
+		start, end, threshold, consecutive, service.StatusActive, service.RoleAdmin,
+		pq.Array(exemptUserIDs), service.StatusDisabled)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (r *Repository) DisableAPIKeysOverInputThreshold(ctx context.Context, since time.Time, threshold, consecutive int, exemptUserIDs []int64) ([]DisabledAPIKey, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		WITH candidate_keys AS (
