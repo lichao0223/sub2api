@@ -28,8 +28,6 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
-	UsageDisplayCurrency                string                   `json:"usage_display_currency"`
-	UsageDisplayUSDToCNYRate            float64                  `json:"usage_display_usd_to_cny_rate"`
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
@@ -40,16 +38,13 @@ type SystemSettings struct {
 	InvitationCodeEnabled               bool                     `json:"invitation_code_enabled"`
 	TotpEnabled                         bool                     `json:"totp_enabled"`                   // TOTP 双因素认证
 	TotpEncryptionKeyConfigured         bool                     `json:"totp_encryption_key_configured"` // TOTP 加密密钥是否已配置
-	SessionBindingEnabled               bool                     `json:"session_binding_enabled"`        // 会话 IP/UA 绑定
-	StepUpEnabled                       bool                     `json:"step_up_enabled"`                // 敏感操作 step-up 2FA
-	AuditLogRetentionDays               int                      `json:"audit_log_retention_days"`       // 审计日志保留天数
-	LoginIPBlockEnabled                 bool                     `json:"login_ip_block_enabled"`
-	LoginIPBlockThreshold               int                      `json:"login_ip_block_threshold"`
-	LoginIPBlockDurationSeconds         int                      `json:"login_ip_block_duration_seconds"`
 	PasskeyEnabled                      bool                     `json:"passkey_enabled"`
 	PasskeyConfigured                   bool                     `json:"passkey_configured"`
 	PasskeyRPID                         string                   `json:"passkey_rp_id"`
 	PasskeyRPOrigins                    []string                 `json:"passkey_rp_origins"`
+	SessionBindingEnabled               bool                     `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
+	StepUpEnabled                       bool                     `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
+	AuditLogRetentionDays               int                      `json:"audit_log_retention_days"` // 审计日志保留天数
 	LoginAgreementEnabled               bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode                  string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt             string                   `json:"login_agreement_updated_at"`
@@ -207,24 +202,24 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	OpenAITTFTMode                          string `json:"openai_ttft_mode"`
-	EnableFingerprintUnification            bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough               bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                        bool   `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection  bool   `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                 string `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks           string `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection      bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl              bool   `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization       bool   `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion             string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent                    string `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion                string `json:"openai_codex_client_version"`
-	OpenAICodexClientVersionSynced          string `json:"openai_codex_client_version_synced"`
-	OpenAICodexVersionAutoSyncEnabled       bool   `json:"openai_codex_version_auto_sync_enabled"`
-	OpenAICodexTicketEnabled                bool   `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketHarvestProxyURL        string `json:"openai_codex_ticket_harvest_proxy_url"`
-	OpenAICodexTicketHarvestProxyConfigured bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
+	OpenAITTFTMode                         string `json:"openai_ttft_mode"`
+	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks          string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection     bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl             bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization      bool   `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion            string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                   string `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion               string `json:"openai_codex_client_version"`
+	OpenAICodexClientVersionSynced         string `json:"openai_codex_client_version_synced"`
+	OpenAICodexVersionAutoSyncEnabled      bool   `json:"openai_codex_version_auto_sync_enabled"`
+	ClaudeCodeClientVersion                string `json:"claude_code_client_version"`
+	ClaudeCodeClientVersionSynced          string `json:"claude_code_client_version_synced"`
+	ClaudeCodeVersionAutoSyncEnabled       bool   `json:"claude_code_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -289,9 +284,6 @@ type SystemSettings struct {
 	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL              string   `json:"payment_help_image_url"`
 	PaymentHelpText                  string   `json:"payment_help_text"`
-	TokenRankingUSDToCNYRate         float64  `json:"token_ranking_usd_to_cny_rate"`
-	TokenRankingExcludedModels       []string `json:"token_ranking_excluded_models"`
-	TokenRankingExcludedGroupIDs     []int64  `json:"token_ranking_excluded_group_ids"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -317,7 +309,6 @@ type SystemSettings struct {
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
-	ChannelMonitorAllowPrivateEndpoints  bool   `json:"channel_monitor_allow_private_endpoints"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
@@ -369,6 +360,8 @@ type DefaultSubscriptionSetting struct {
 }
 
 type PublicSettings struct {
+	UsageDisplayCurrency                string                   `json:"usage_display_currency"`
+	UsageDisplayUSDToCNYRate            float64                  `json:"usage_display_usd_to_cny_rate"`
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	ForceEmailOnThirdPartySignup        bool                     `json:"force_email_on_third_party_signup"`
@@ -420,13 +413,11 @@ type PublicSettings struct {
 	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
 	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
 	PaymentEnabled                      bool                     `json:"payment_enabled"`
-	UsageDisplayCurrency                string                   `json:"usage_display_currency"`
-	UsageDisplayUSDToCNYRate            float64                  `json:"usage_display_usd_to_cny_rate"`
-	Version                             string                   `json:"version"`
 	// PaymentBalanceDisabled mirrors the payment-config BALANCE_PAYMENT_DISABLED switch so the
 	// user shell can derive the site billing mode (recharge & subscription / recharge only /
 	// subscription only) before any authenticated checkout call.
-	PaymentBalanceDisabled bool `json:"payment_balance_disabled"`
+	PaymentBalanceDisabled bool   `json:"payment_balance_disabled"`
+	Version                string `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移，如 "Asia/Shanghai" / "+08:00"）。
 	// 高峰时段等按服务器本地时间判定的窗口，前端展示时据此标注，避免用户按浏览器本地时间误读。
 	ServerTimezone              string  `json:"server_timezone"`

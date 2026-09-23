@@ -1755,111 +1755,6 @@
             </div>
           </div>
 
-          <!-- Login failure IP blocking -->
-          <div class="card">
-            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t("admin.settings.loginIPBlock.title") }}
-              </h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t("admin.settings.loginIPBlock.description") }}
-              </p>
-            </div>
-            <div class="space-y-5 p-6">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <label class="font-medium text-gray-900 dark:text-white">
-                    {{ t("admin.settings.loginIPBlock.enabled") }}
-                  </label>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.loginIPBlock.enabledHint") }}
-                  </p>
-                </div>
-                <Toggle v-model="form.login_ip_block_enabled" />
-              </div>
-
-              <div
-                v-if="form.login_ip_block_enabled"
-                class="grid gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 sm:grid-cols-2"
-              >
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t("admin.settings.loginIPBlock.threshold") }}
-                  </label>
-                  <input
-                    v-model.number="form.login_ip_block_threshold"
-                    type="number"
-                    min="1"
-                    max="100"
-                    class="input w-full"
-                  />
-                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.loginIPBlock.thresholdHint") }}
-                  </p>
-                </div>
-                <div>
-                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {{ t("admin.settings.loginIPBlock.duration") }}
-                  </label>
-                  <Select
-                    v-model="form.login_ip_block_duration_seconds"
-                    :options="loginIPBlockDurationOptions"
-                    :searchable="false"
-                  />
-                </div>
-              </div>
-
-              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
-                <div class="mb-3 flex items-center justify-between">
-                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
-                    {{ t("admin.settings.loginIPBlock.current") }}
-                  </h3>
-                  <button type="button" class="btn btn-secondary btn-sm" @click="loadLoginIPBlocks">
-                    {{ t("common.refresh") }}
-                  </button>
-                </div>
-                <div v-if="loginIPBlocksLoading" class="py-4 text-sm text-gray-500">
-                  {{ t("common.loading") }}
-                </div>
-                <div v-else-if="loginIPBlocksCurrent.length === 0" class="py-4 text-sm text-gray-500">
-                  {{ t("admin.settings.loginIPBlock.emptyCurrent") }}
-                </div>
-                <div v-else data-testid="login-ip-blocks-scroll" class="max-h-96 overflow-auto">
-                  <table class="min-w-full text-sm">
-                    <thead data-testid="login-ip-blocks-header" class="sticky top-0 z-10 bg-white text-left text-xs text-gray-500 dark:bg-dark-800">
-                      <tr>
-                        <th class="px-3 py-2">IP</th>
-                        <th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.blockedAt") }}</th>
-                        <th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.remaining") }}</th>
-                        <th class="px-3 py-2 text-right">{{ t("common.actions") }}</th>
-                      </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
-                      <tr v-for="item in pagedLoginIPBlocks" :key="item.ip" data-testid="login-ip-block-row">
-                        <td class="whitespace-nowrap px-3 py-2 font-mono">{{ item.ip }}</td>
-                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockTime(item.blocked_at) }}</td>
-                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockRemaining(item) }}</td>
-                        <td class="px-3 py-2 text-right">
-                          <button type="button" class="btn btn-secondary btn-sm text-red-600" @click="unblockLoginIP(item.ip)">
-                            {{ t("admin.settings.loginIPBlock.unblock") }}
-                          </button>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-                <Pagination
-                  v-if="loginIPBlocksCurrent.length > loginIPBlocksPageSize"
-                  :total="loginIPBlocksCurrent.length"
-                  :page="loginIPBlocksPage"
-                  :page-size="loginIPBlocksPageSize"
-                  @update:page="loginIPBlocksPage = $event"
-                  @update:pageSize="handleLoginIPBlocksPageSizeChange"
-                />
-              </div>
-            </div>
-          </div>
-
           <!-- API Key IP ACL Settings -->
           <div class="card">
             <div
@@ -4607,42 +4502,6 @@
               </h2>
             </div>
             <div class="p-6 space-y-4">
-                <div class="flex items-center justify-between gap-4">
-                  <div class="min-w-0">
-                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-                      {{ t("admin.settings.gatewayForwarding.codexTicketEnabled") }}
-                    </h3>
-                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                      {{ t("admin.settings.gatewayForwarding.codexTicketEnabledDesc") }}
-                    </p>
-                  </div>
-                  <Toggle
-                    id="codex-ticket-enabled"
-                    v-model="form.openai_codex_ticket_enabled"
-                  />
-                </div>
-                <div>
-                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
-                  </h3>
-                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyDesc") }}
-                  </p>
-                  <input
-                    id="codex-ticket-harvest-proxy"
-                    v-model="form.openai_codex_ticket_harvest_proxy_url"
-                    type="text"
-                    class="input mt-3 w-full font-mono text-sm"
-                    :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestProxyPlaceholder')"
-                    autocomplete="off"
-                  />
-                  <p
-                    v-if="form.openai_codex_ticket_harvest_proxy_configured"
-                    class="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
-                  >
-                    {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
-                  </p>
-                </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexClientRestrictionTitle") }}
@@ -5045,6 +4904,90 @@
                     @click="saveOllamaCloudUsageSettings"
                   >
                     {{ ollamaCloudUsageSaving ? t("common.saving") : t("common.save") }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- OpenCode Go Usage Settings -->
+          <div class="card" data-testid="opencode-go-usage-global-settings">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.opencodeGoUsage.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.opencodeGoUsage.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div v-if="opencodeGoUsageLoading" class="flex items-center gap-2 text-gray-500">
+                <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.opencodeGoUsage.enabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="opencodeGoUsageForm.enabled"
+                    :aria-label="t('admin.settings.opencodeGoUsage.enabled')"
+                    data-testid="opencode-go-usage-global-enabled"
+                  />
+                </div>
+                <div v-if="opencodeGoUsageForm.enabled" class="space-y-4 border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="opencode-go-usage-debounce">
+                      {{ t("admin.settings.opencodeGoUsage.debounceMinutes") }}
+                    </label>
+                    <input
+                      id="opencode-go-usage-debounce"
+                      v-model.number="opencodeGoUsageForm.debounce_minutes"
+                      type="number"
+                      min="1"
+                      max="60"
+                      class="input w-32"
+                      data-testid="opencode-go-usage-global-debounce"
+                      @keydown.enter.prevent="saveOpenCodeGoUsageSettings"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.debounceHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="opencode-go-usage-interval">
+                      {{ t("admin.settings.opencodeGoUsage.intervalMinutes") }}
+                    </label>
+                    <input
+                      id="opencode-go-usage-interval"
+                      v-model.number="opencodeGoUsageForm.interval_minutes"
+                      type="number"
+                      min="5"
+                      max="1440"
+                      class="input w-32"
+                      data-testid="opencode-go-usage-global-interval"
+                      @keydown.enter.prevent="saveOpenCodeGoUsageSettings"
+                    />
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.opencodeGoUsage.intervalHint") }}
+                    </p>
+                  </div>
+                </div>
+                <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="opencodeGoUsageSaving"
+                    data-testid="opencode-go-usage-global-save"
+                    @click="saveOpenCodeGoUsageSettings"
+                  >
+                    {{ opencodeGoUsageSaving ? t("common.saving") : t("common.save") }}
                   </button>
                 </div>
               </template>
@@ -5914,6 +5857,61 @@
                   </p>
                 </div>
                 <Toggle v-model="form.openai_codex_version_auto_sync_enabled" />
+              </div>
+
+              <!-- Claude Code 客户端版本号 -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.claudeCodeClientVersion",
+                    )
+                  }}
+                </label>
+                <input
+                  v-model="form.claude_code_client_version"
+                  type="text"
+                  class="input w-full font-mono text-sm"
+                  placeholder="2.1.280"
+                />
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.claudeCodeClientVersionHint",
+                    )
+                  }}
+                </p>
+              </div>
+
+              <!-- Claude Code 版本号自动同步 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <label
+                    class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                  >
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.claudeCodeVersionAutoSync",
+                      )
+                    }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.gatewayForwarding.claudeCodeVersionAutoSyncHint",
+                      )
+                    }}
+                  </p>
+                  <p
+                    v-if="claudeSyncedVersionLabel"
+                    class="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {{ claudeSyncedVersionLabel }}
+                  </p>
+                </div>
+                <Toggle v-model="form.claude_code_version_auto_sync_enabled" />
               </div>
 
             </div>
@@ -6956,34 +6954,6 @@
               </button>
             </div>
           </div>
-
-          <div class="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-dark-700 dark:bg-dark-900">
-            <div class="border-b border-gray-200 px-6 py-4 dark:border-dark-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Token 使用排名</h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">金额展示与模型排除规则，独立于支付功能。</p>
-            </div>
-            <div class="grid grid-cols-1 gap-5 p-6 lg:grid-cols-2">
-              <div>
-                <label class="input-label">用量金额展示币种</label>
-                <Select v-model="form.usage_display_currency" :options="[{ value: 'CNY', label: '人民币（CNY）' }, { value: 'USD', label: '美元（USD）' }]" />
-                <p class="mt-1 text-xs text-gray-400">统一控制用量、预警、洞察和 Token 排名中的费用展示；计费数据仍以 USD 保存。</p>
-              </div>
-              <div>
-                <label class="input-label">USD → CNY 汇率</label>
-                <input v-model.number="form.token_ranking_usd_to_cny_rate" type="number" min="0.0001" step="0.0001" class="input" placeholder="7.2" />
-                <p class="mt-1 text-xs text-gray-400">默认 7.2，仅用于 Token 使用排名的金额展示。</p>
-              </div>
-              <div>
-                <label class="input-label">金额排除模型</label>
-                <textarea v-model="tokenRankingExcludedModelsText" data-testid="token-ranking-excluded-models" class="input min-h-24 resize-y" placeholder="每行一个，例如：gpt-* 或 openai/o" />
-                <p class="mt-1 text-xs text-gray-400">支持名称包含匹配和 * 通配符；只排除金额，Token 数和请求数仍会统计。</p>
-              </div>
-              <div>
-                <GroupSelector v-model="form.token_ranking_excluded_group_ids" :groups="tokenRankingGroups" label="金额排除分组" />
-                <p class="mt-1 text-xs text-gray-400">模型排除规则仅对选中的分组生效；未选择时不排除任何金额，其他分组的金额仍会统计。</p>
-              </div>
-            </div>
-          </div>
 	        </div>
 	        <!-- /Tab: General -->
 
@@ -7189,10 +7159,8 @@
         </div>
         <!-- /Tab: Login Agreement -->
 
-        <!-- Tab: Features (功能开关) -->
+	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
-
-        <NonworkCalendarSettings />
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -7321,18 +7289,6 @@
                 </div>
                 <Toggle v-model="form.channel_monitor_show_quota" />
               </div>
-            </div>
-
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  {{ t('admin.settings.features.channelMonitor.allowPrivateEndpoints') }}
-                </label>
-                <p class="mt-0.5 text-xs text-amber-600 dark:text-amber-400">
-                  {{ t('admin.settings.features.channelMonitor.allowPrivateEndpointsHint') }}
-                </p>
-              </div>
-              <Toggle v-model="form.channel_monitor_allow_private_endpoints" />
             </div>
           </div>
         </div>
@@ -9027,7 +8983,6 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
-  LoginIPBlockRecord,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -9039,8 +8994,6 @@ import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
-import GroupSelector from "@/components/common/GroupSelector.vue";
-import Pagination from "@/components/common/Pagination.vue";
 import {
   SITE_BILLING_MODES,
   SITE_BILLING_MODE_I18N_KEYS,
@@ -9059,7 +9012,6 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
-import NonworkCalendarSettings from "@/views/admin/settings/NonworkCalendarSettings.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
   useStepUp,
@@ -9202,24 +9154,7 @@ const adminApiKeyExists = ref(false);
 const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
-const loginIPBlocksLoading = ref(false);
-const loginIPBlocksCurrent = ref<LoginIPBlockRecord[]>([]);
-const loginIPBlocksPage = ref(1);
-const loginIPBlocksPageSize = ref(10);
-const pagedLoginIPBlocks = computed(() => {
-  const start = (loginIPBlocksPage.value - 1) * loginIPBlocksPageSize.value;
-  return loginIPBlocksCurrent.value.slice(start, start + loginIPBlocksPageSize.value);
-});
-const loginIPBlockDurationOptions = computed(() => [
-  { value: 1800, label: t("admin.settings.loginIPBlock.duration30m") },
-  { value: 3600, label: t("admin.settings.loginIPBlock.duration1h") },
-  { value: 21600, label: t("admin.settings.loginIPBlock.duration6h") },
-  { value: 86400, label: t("admin.settings.loginIPBlock.duration1d") },
-  { value: 604800, label: t("admin.settings.loginIPBlock.duration7d") },
-  { value: 0, label: t("admin.settings.loginIPBlock.durationPermanent") },
-]);
 const subscriptionGroups = ref<AdminGroup[]>([]);
-const tokenRankingGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -9234,6 +9169,14 @@ const ollamaCloudUsageSaving = ref(false);
 const ollamaCloudUsageForm = reactive({
   enabled: false,
   interval_minutes: 60,
+  debounce_minutes: 1,
+});
+
+const opencodeGoUsageLoading = ref(true);
+const opencodeGoUsageSaving = ref(false);
+const opencodeGoUsageForm = reactive({
+  enabled: false,
+  interval_minutes: 15,
   debounce_minutes: 1,
 });
 
@@ -9808,9 +9751,6 @@ const form = reactive<SettingsForm>({
   session_binding_enabled: false,
   step_up_enabled: false,
   audit_log_retention_days: 180,
-  login_ip_block_enabled: false,
-  login_ip_block_threshold: 5,
-  login_ip_block_duration_seconds: 1800,
   login_agreement_enabled: false,
   login_agreement_mode: "modal",
   login_agreement_updated_at: "2026-03-31",
@@ -9849,11 +9789,6 @@ const form = reactive<SettingsForm>({
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_subscription_usd_to_cny_rate: 0,
-  token_ranking_usd_to_cny_rate: 7.2,
-  token_ranking_excluded_models: [],
-  token_ranking_excluded_group_ids: [],
-  usage_display_currency: "CNY",
-  usage_display_usd_to_cny_rate: 7.2,
   payment_recharge_fee_rate: 0,
   payment_enabled_types: [],
   payment_help_image_url: "",
@@ -10052,9 +9987,10 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
-  openai_codex_ticket_enabled: false,
-  openai_codex_ticket_harvest_proxy_url: "",
-  openai_codex_ticket_harvest_proxy_configured: false,
+  claude_code_client_version: "",
+  // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
+  claude_code_client_version_synced: "",
+  claude_code_version_auto_sync_enabled: true,
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -10073,7 +10009,6 @@ const form = reactive<SettingsForm>({
   channel_monitor_enabled: true,
   channel_monitor_mode: 'v1' as 'v1' | 'v2',
   channel_monitor_default_interval_seconds: 60,
-  channel_monitor_allow_private_endpoints: false,
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
   channel_monitor_hide_user_ranking: false,
@@ -10092,15 +10027,6 @@ const form = reactive<SettingsForm>({
   // Allow user view error requests
   allow_user_view_error_requests: false,
 });
-
-const tokenRankingExcludedModelsText = ref("");
-
-function parseTokenRankingExcludedModels(value: string): string[] {
-  return value
-    .split(/\r?\n/)
-    .map((model) => model.trim())
-    .filter(Boolean);
-}
 
 // 人机验证 UI 状态：单卡片「总开关 + 服务商单选」，落库仍是三个独立
 // enabled 键（与上游一致），由下面的映射保证同一时间至多一家启用。
@@ -11052,6 +10978,14 @@ const codexSyncedVersionLabel = computed(() => {
   });
 });
 
+const claudeSyncedVersionLabel = computed(() => {
+  const synced = form.claude_code_client_version_synced?.trim();
+  if (!synced) return "";
+  return t("admin.settings.gatewayForwarding.claudeCodeVersionSyncedValue", {
+    version: synced,
+  });
+});
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -11065,9 +10999,6 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
-    tokenRankingExcludedModelsText.value = (
-      form.token_ranking_excluded_models || []
-    ).join("\n");
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -11239,13 +11170,11 @@ async function loadSettings() {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
-    tokenRankingGroups.value = groups;
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
   } catch (_error: unknown) {
-    tokenRankingGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -11504,12 +11433,6 @@ async function saveSettings() {
       audit_log_retention_days: Number.isFinite(form.audit_log_retention_days)
         ? form.audit_log_retention_days
         : 180,
-      login_ip_block_enabled: form.login_ip_block_enabled,
-      login_ip_block_threshold: Math.min(
-        100,
-        Math.max(1, Math.floor(Number(form.login_ip_block_threshold) || 5)),
-      ),
-      login_ip_block_duration_seconds: form.login_ip_block_duration_seconds,
       login_agreement_enabled: form.login_agreement_enabled,
       login_agreement_mode: form.login_agreement_mode,
       login_agreement_updated_at: form.login_agreement_updated_at,
@@ -11696,9 +11619,9 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
-      openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
-      openai_codex_ticket_harvest_proxy_url:
-        form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
+      claude_code_client_version: form.claude_code_client_version?.trim() || "",
+      claude_code_version_auto_sync_enabled:
+        form.claude_code_version_auto_sync_enabled,
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:
@@ -11729,13 +11652,6 @@ async function saveSettings() {
         Number(form.payment_balance_recharge_multiplier) || 1,
       payment_subscription_usd_to_cny_rate:
         Number(form.payment_subscription_usd_to_cny_rate) || 0,
-      token_ranking_usd_to_cny_rate:
-        Number(form.token_ranking_usd_to_cny_rate) || 7.2,
-      token_ranking_excluded_models: parseTokenRankingExcludedModels(
-        tokenRankingExcludedModelsText.value,
-      ),
-      token_ranking_excluded_group_ids: form.token_ranking_excluded_group_ids,
-      usage_display_currency: form.usage_display_currency,
       payment_recharge_fee_rate: Number(form.payment_recharge_fee_rate) || 0,
       payment_enabled_types: form.payment_enabled_types,
       payment_load_balance_strategy: form.payment_load_balance_strategy,
@@ -11802,8 +11718,6 @@ async function saveSettings() {
       channel_monitor_mode: form.channel_monitor_mode === 'v1' ? 'v1' : 'v2',
       channel_monitor_default_interval_seconds:
         Number(form.channel_monitor_default_interval_seconds) || 60,
-      channel_monitor_allow_private_endpoints:
-        form.channel_monitor_allow_private_endpoints,
       channel_monitor_hide_throughput: Boolean(form.channel_monitor_hide_throughput),
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       channel_monitor_hide_user_ranking: Boolean(form.channel_monitor_hide_user_ranking),
@@ -11868,9 +11782,6 @@ async function saveSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
-    tokenRankingExcludedModelsText.value = (
-      form.token_ranking_excluded_models || []
-    ).join("\n");
     if (updated.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
     }
@@ -12048,51 +11959,6 @@ async function loadAdminApiKey() {
   }
 }
 
-async function loadLoginIPBlocks() {
-  loginIPBlocksLoading.value = true;
-  try {
-    const result = await adminAPI.settings.getLoginIPBlocks();
-    loginIPBlocksCurrent.value = result.current || [];
-    const totalPages = Math.max(1, Math.ceil(loginIPBlocksCurrent.value.length / loginIPBlocksPageSize.value));
-    loginIPBlocksPage.value = Math.min(loginIPBlocksPage.value, totalPages);
-  } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t("common.error")));
-  } finally {
-    loginIPBlocksLoading.value = false;
-  }
-}
-
-function handleLoginIPBlocksPageSizeChange(pageSize: number) {
-  loginIPBlocksPageSize.value = pageSize;
-  loginIPBlocksPage.value = 1;
-}
-
-async function unblockLoginIP(clientIP: string) {
-  if (!confirm(t("admin.settings.loginIPBlock.unblockConfirm", { ip: clientIP }))) return;
-  try {
-    await adminAPI.settings.unblockLoginIP(clientIP);
-    appStore.showSuccess(t("admin.settings.loginIPBlock.unblocked"));
-    await loadLoginIPBlocks();
-  } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t("common.error")));
-  }
-}
-
-function formatLoginIPBlockTime(value?: string): string {
-  if (!value) return "-";
-  return new Date(value).toLocaleString();
-}
-
-function formatLoginIPBlockRemaining(item: LoginIPBlockRecord): string {
-  if (item.permanent) return t("admin.settings.loginIPBlock.durationPermanent");
-  const seconds = Math.max(0, item.remaining_seconds || 0);
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.ceil((seconds % 3600) / 60);
-  return hours > 0
-    ? t("admin.settings.loginIPBlock.remainingHours", { hours, minutes })
-    : t("admin.settings.loginIPBlock.remainingMinutes", { minutes });
-}
-
 async function createAdminApiKey() {
   adminApiKeyOperating.value = true;
   try {
@@ -12203,6 +12069,37 @@ async function saveOllamaCloudUsageSettings() {
     );
   } finally {
     ollamaCloudUsageSaving.value = false;
+  }
+}
+
+async function loadOpenCodeGoUsageSettings() {
+  opencodeGoUsageLoading.value = true;
+  try {
+    Object.assign(
+      opencodeGoUsageForm,
+      await adminAPI.accounts.getOpenCodeGoUsageSettings(),
+    );
+  } catch (_error: unknown) {
+    // Keep the fail-safe disabled defaults when this optional setting cannot be loaded.
+  } finally {
+    opencodeGoUsageLoading.value = false;
+  }
+}
+
+async function saveOpenCodeGoUsageSettings() {
+  opencodeGoUsageSaving.value = true;
+  try {
+    const updated = await adminAPI.accounts.updateOpenCodeGoUsageSettings({
+      ...opencodeGoUsageForm,
+    });
+    Object.assign(opencodeGoUsageForm, updated);
+    appStore.showSuccess(t("admin.settings.opencodeGoUsage.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(error, t("admin.settings.opencodeGoUsage.saveFailed")),
+    );
+  } finally {
+    opencodeGoUsageSaving.value = false;
   }
 }
 
@@ -12954,9 +12851,9 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
-  loadLoginIPBlocks();
   loadUpstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
+  loadOpenCodeGoUsageSettings();
   loadOverloadCooldownSettings();
   loadRateLimit429CooldownSettings();
   loadPanelRateLimitSettings();

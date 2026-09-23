@@ -22,10 +22,6 @@ import (
 
 // UpdateSettingsRequest 更新设置请求
 type UpdateSettingsRequest struct {
-	UsageDisplayCurrency         string   `json:"usage_display_currency"`
-	TokenRankingUSDToCNYRate     *float64 `json:"token_ranking_usd_to_cny_rate"`
-	TokenRankingExcludedModels   []string `json:"token_ranking_excluded_models"`
-	TokenRankingExcludedGroupIDs []int64  `json:"token_ranking_excluded_group_ids"`
 	// 注册设置
 	RegistrationEnabled                 bool                         `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                         `json:"email_verify_enabled"`
@@ -40,9 +36,6 @@ type UpdateSettingsRequest struct {
 	SessionBindingEnabled               *bool                        `json:"session_binding_enabled"`  // 会话 IP/UA 绑定（省略=保持现值）
 	StepUpEnabled                       *bool                        `json:"step_up_enabled"`          // 敏感操作 step-up 2FA（省略=保持现值）
 	AuditLogRetentionDays               int                          `json:"audit_log_retention_days"` // 审计日志保留天数
-	LoginIPBlockEnabled                 *bool                        `json:"login_ip_block_enabled"`
-	LoginIPBlockThreshold               *int                         `json:"login_ip_block_threshold"`
-	LoginIPBlockDurationSeconds         *int                         `json:"login_ip_block_duration_seconds"`
 	LoginAgreementEnabled               bool                         `json:"login_agreement_enabled"`
 	LoginAgreementMode                  string                       `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt             string                       `json:"login_agreement_updated_at"`
@@ -264,8 +257,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
-	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketHarvestProxyURL       string  `json:"openai_codex_ticket_harvest_proxy_url"`
+	ClaudeCodeClientVersion                *string `json:"claude_code_client_version"`
+	ClaudeCodeVersionAutoSyncEnabled       *bool   `json:"claude_code_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -341,7 +334,6 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorEnabled                *bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   *string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds *int    `json:"channel_monitor_default_interval_seconds"`
-	ChannelMonitorAllowPrivateEndpoints  *bool   `json:"channel_monitor_allow_private_endpoints"`
 	ChannelMonitorHideThroughput         *bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        *bool   `json:"channel_monitor_hide_user_ranking"`
@@ -527,18 +519,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	stepUpEnabled := previousSettings.StepUpEnabled
 	if req.StepUpEnabled != nil {
 		stepUpEnabled = *req.StepUpEnabled
-	}
-	loginIPBlockEnabled := previousSettings.LoginIPBlockEnabled
-	if req.LoginIPBlockEnabled != nil {
-		loginIPBlockEnabled = *req.LoginIPBlockEnabled
-	}
-	loginIPBlockThreshold := previousSettings.LoginIPBlockThreshold
-	if req.LoginIPBlockThreshold != nil {
-		loginIPBlockThreshold = *req.LoginIPBlockThreshold
-	}
-	loginIPBlockDurationSeconds := previousSettings.LoginIPBlockDurationSeconds
-	if req.LoginIPBlockDurationSeconds != nil {
-		loginIPBlockDurationSeconds = *req.LoginIPBlockDurationSeconds
 	}
 	passkeyEnabled := previousSettings.PasskeyEnabled
 	if req.PasskeyEnabled != nil {
@@ -1477,6 +1457,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 		req.OpenAICodexClientVersion = &normalized
 	}
+	if req.ClaudeCodeClientVersion != nil {
+		// 该值会被拼进出站 User-Agent 与 billing attribution，必须是合法版本号；空串表示跟随自动同步。
+		normalized := strings.TrimSpace(*req.ClaudeCodeClientVersion)
+		if normalized != "" && service.NormalizeClaudeCodeClientVersion(normalized) == "" {
+			response.Error(c, http.StatusBadRequest, "claude_code_client_version must be empty or a valid version (e.g. 2.1.258)")
+			return
+		}
+		req.ClaudeCodeClientVersion = &normalized
+	}
 
 	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
 	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
@@ -1538,9 +1527,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SessionBindingEnabled:               sessionBindingEnabled,
 		StepUpEnabled:                       stepUpEnabled,
 		AuditLogRetentionDays:               req.AuditLogRetentionDays,
-		LoginIPBlockEnabled:                 loginIPBlockEnabled,
-		LoginIPBlockThreshold:               loginIPBlockThreshold,
-		LoginIPBlockDurationSeconds:         loginIPBlockDurationSeconds,
 		LoginAgreementEnabled:               req.LoginAgreementEnabled,
 		LoginAgreementMode:                  loginAgreementMode,
 		LoginAgreementUpdatedAt:             loginAgreementUpdatedAt,
@@ -1793,18 +1779,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
 		}(),
-		OpenAICodexTicketEnabled: func() bool {
-			if req.OpenAICodexTicketEnabled != nil {
-				return *req.OpenAICodexTicketEnabled
+		ClaudeCodeClientVersion: func() string {
+			if req.ClaudeCodeClientVersion != nil {
+				return *req.ClaudeCodeClientVersion
 			}
-			return previousSettings.OpenAICodexTicketEnabled
+			return previousSettings.ClaudeCodeClientVersion
 		}(),
-		OpenAICodexTicketHarvestProxyURL: func() string {
-			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
-			if service.IsMaskedProxyURL(next) {
-				return previousSettings.OpenAICodexTicketHarvestProxyURL
+		// 同步值由自动同步任务独占写入，面板保存时原样带回，避免被清空。
+		ClaudeCodeClientVersionSynced: previousSettings.ClaudeCodeClientVersionSynced,
+		ClaudeCodeVersionAutoSyncEnabled: func() bool {
+			if req.ClaudeCodeVersionAutoSyncEnabled != nil {
+				return *req.ClaudeCodeVersionAutoSyncEnabled
 			}
-			return next
+			return previousSettings.ClaudeCodeVersionAutoSyncEnabled
 		}(),
 		MinCodexVersion:       strings.TrimSpace(req.MinCodexVersion),
 		MaxCodexVersion:       strings.TrimSpace(req.MaxCodexVersion),
@@ -1936,12 +1923,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ChannelMonitorDefaultIntervalSeconds
 			}
 			return previousSettings.ChannelMonitorDefaultIntervalSeconds
-		}(),
-		ChannelMonitorAllowPrivateEndpoints: func() bool {
-			if req.ChannelMonitorAllowPrivateEndpoints != nil {
-				return *req.ChannelMonitorAllowPrivateEndpoints
-			}
-			return previousSettings.ChannelMonitorAllowPrivateEndpoints
 		}(),
 		ChannelMonitorHideThroughput: func() bool {
 			if req.ChannelMonitorHideThroughput != nil {
@@ -2106,18 +2087,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
-	if req.TokenRankingUSDToCNYRate != nil {
-		if err := h.settingService.UpdateTokenRankingSettings(c.Request.Context(), *req.TokenRankingUSDToCNYRate, req.TokenRankingExcludedModels, req.TokenRankingExcludedGroupIDs); err != nil {
-			response.BadRequest(c, err.Error())
-			return
-		}
-	}
-	if strings.TrimSpace(req.UsageDisplayCurrency) != "" {
-		if err := h.settingService.UpdateUsageDisplayCurrency(c.Request.Context(), req.UsageDisplayCurrency); err != nil {
-			response.BadRequest(c, err.Error())
-			return
-		}
-	}
 	if h.opsService != nil {
 		h.opsService.SetMonitoringEnabled(settings.OpsMonitoringEnabled)
 	}
@@ -2198,8 +2167,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if updatedPaymentCfg == nil {
 		updatedPaymentCfg = &service.PaymentConfig{}
 	}
-	tokenRankingSettings := h.settingService.GetTokenRankingSettings(c.Request.Context())
-	usageDisplayCurrency := h.settingService.GetUsageDisplayCurrency(c.Request.Context())
 	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
 	payload := dto.SystemSettings{
@@ -2220,9 +2187,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SessionBindingEnabled:                                  updatedSettings.SessionBindingEnabled,
 		StepUpEnabled:                                          updatedSettings.StepUpEnabled,
 		AuditLogRetentionDays:                                  updatedSettings.AuditLogRetentionDays,
-		LoginIPBlockEnabled:                                    updatedSettings.LoginIPBlockEnabled,
-		LoginIPBlockThreshold:                                  updatedSettings.LoginIPBlockThreshold,
-		LoginIPBlockDurationSeconds:                            updatedSettings.LoginIPBlockDurationSeconds,
 		LoginAgreementEnabled:                                  updatedSettings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     updatedSettings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                updatedSettings.LoginAgreementUpdatedAt,
@@ -2372,9 +2336,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
-		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
-		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
-		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
+		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
+		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
+		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,
 		MaxCodexVersion:                                        updatedSettings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  updatedSettings.CodexCLIOnlyBlacklist,
@@ -2434,11 +2398,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
-		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
-		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
-		TokenRankingExcludedGroupIDs:                           tokenRankingSettings.ExcludedGroupIDs,
-		UsageDisplayCurrency:                                   usageDisplayCurrency,
-		UsageDisplayUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,
@@ -2450,7 +2409,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
 		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorAllowPrivateEndpoints:  updatedSettings.ChannelMonitorAllowPrivateEndpoints,
 		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:        updatedSettings.ChannelMonitorHideUserRanking,

@@ -132,10 +132,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 	}
 	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
 
-	tokenRankingSettings := h.settingService.GetTokenRankingSettings(c.Request.Context())
 	payload := dto.SystemSettings{
-		UsageDisplayCurrency:                                   h.settingService.GetUsageDisplayCurrency(c.Request.Context()),
-		UsageDisplayUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
 		EmailVerifyEnabled:                                     settings.EmailVerifyEnabled,
 		RegistrationEmailSuffixWhitelist:                       settings.RegistrationEmailSuffixWhitelist,
@@ -153,9 +150,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
 		StepUpEnabled:                                          settings.StepUpEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
-		LoginIPBlockEnabled:                                    settings.LoginIPBlockEnabled,
-		LoginIPBlockThreshold:                                  settings.LoginIPBlockThreshold,
-		LoginIPBlockDurationSeconds:                            settings.LoginIPBlockDurationSeconds,
 		LoginAgreementEnabled:                                  settings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                settings.LoginAgreementUpdatedAt,
@@ -309,9 +303,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               settings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         settings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      settings.OpenAICodexVersionAutoSyncEnabled,
-		OpenAICodexTicketEnabled:                               settings.OpenAICodexTicketEnabled,
-		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
-		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
+		ClaudeCodeClientVersion:                                settings.ClaudeCodeClientVersion,
+		ClaudeCodeClientVersionSynced:                          settings.ClaudeCodeClientVersionSynced,
+		ClaudeCodeVersionAutoSyncEnabled:                       settings.ClaudeCodeVersionAutoSyncEnabled,
 		MinCodexVersion:                                        settings.MinCodexVersion,
 		MaxCodexVersion:                                        settings.MaxCodexVersion,
 		CodexCLIOnlyBlacklist:                                  settings.CodexCLIOnlyBlacklist,
@@ -372,9 +366,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               paymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    paymentCfg.HelpImageURL,
 		PaymentHelpText:                                        paymentCfg.HelpText,
-		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
-		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
-		TokenRankingExcludedGroupIDs:                           tokenRankingSettings.ExcludedGroupIDs,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,
@@ -386,7 +377,6 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorAllowPrivateEndpoints:  settings.ChannelMonitorAllowPrivateEndpoints,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,

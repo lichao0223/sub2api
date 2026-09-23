@@ -398,6 +398,7 @@ export function deriveWeChatConnectStoredMode(
  * System settings interface
  */
 export interface SystemSettings {
+	 token_ranking_usd_to_cny_rate?: number;
   // Registration settings
   registration_enabled: boolean;
   email_verify_enabled: boolean;
@@ -416,9 +417,6 @@ export interface SystemSettings {
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
-  login_ip_block_enabled: boolean;
-  login_ip_block_threshold: number;
-  login_ip_block_duration_seconds: number;
   login_agreement_enabled: boolean;
   login_agreement_mode: "modal" | "checkbox" | string;
   login_agreement_updated_at: string;
@@ -642,9 +640,9 @@ export interface SystemSettings {
   openai_codex_client_version: string;
   openai_codex_client_version_synced: string;
   openai_codex_version_auto_sync_enabled: boolean;
-  openai_codex_ticket_enabled: boolean;
-  openai_codex_ticket_harvest_proxy_url: string;
-  openai_codex_ticket_harvest_proxy_configured: boolean;
+  claude_code_client_version: string;
+  claude_code_client_version_synced: string;
+  claude_code_version_auto_sync_enabled: boolean;
   // codex_cli_only 加固
   min_codex_version: string;
   max_codex_version: string;
@@ -671,11 +669,6 @@ export interface SystemSettings {
   payment_balance_disabled: boolean;
   payment_balance_recharge_multiplier: number;
   payment_subscription_usd_to_cny_rate: number;
-  token_ranking_usd_to_cny_rate: number;
-  token_ranking_excluded_models: string[];
-  token_ranking_excluded_group_ids: number[];
-  usage_display_currency: 'USD' | 'CNY' | string;
-  usage_display_usd_to_cny_rate: number;
   payment_recharge_fee_rate: number;
   payment_load_balance_strategy: string;
   payment_product_name_prefix: string;
@@ -734,7 +727,6 @@ export interface SystemSettings {
   channel_monitor_enabled: boolean;
   channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds: number;
-  channel_monitor_allow_private_endpoints: boolean;
   channel_monitor_hide_throughput?: boolean;
   channel_monitor_show_quota?: boolean;
   channel_monitor_hide_user_ranking?: boolean;
@@ -775,9 +767,6 @@ export interface UpdateSettingsRequest {
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days?: number; // 审计日志保留天数
-  login_ip_block_enabled?: boolean;
-  login_ip_block_threshold?: number;
-  login_ip_block_duration_seconds?: number;
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;
@@ -974,8 +963,8 @@ export interface UpdateSettingsRequest {
   openai_codex_user_agent?: string;
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;
-  openai_codex_ticket_enabled?: boolean;
-  openai_codex_ticket_harvest_proxy_url?: string;
+  claude_code_client_version?: string;
+  claude_code_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;
@@ -1000,10 +989,6 @@ export interface UpdateSettingsRequest {
   payment_balance_disabled?: boolean;
   payment_balance_recharge_multiplier?: number;
   payment_subscription_usd_to_cny_rate?: number;
-  token_ranking_usd_to_cny_rate?: number;
-  token_ranking_excluded_models?: string[];
-  token_ranking_excluded_group_ids?: number[];
-  usage_display_currency?: 'USD' | 'CNY' | string;
   payment_recharge_fee_rate?: number;
   payment_load_balance_strategy?: string;
   payment_product_name_prefix?: string;
@@ -1050,7 +1035,6 @@ export interface UpdateSettingsRequest {
   channel_monitor_enabled?: boolean;
   channel_monitor_mode?: 'v1' | 'v2';
   channel_monitor_default_interval_seconds?: number;
-  channel_monitor_allow_private_endpoints?: boolean;
   channel_monitor_hide_throughput?: boolean;
   channel_monitor_show_quota?: boolean;
   channel_monitor_hide_user_ranking?: boolean;
@@ -1295,34 +1279,6 @@ export async function deleteAdminApiKey(): Promise<{ message: string }> {
     "/admin/settings/admin-api-key",
   );
   return data;
-}
-
-export interface LoginIPBlockRecord {
-  ip: string;
-  blocked_at?: string;
-  duration_seconds?: number;
-  permanent?: boolean;
-  remaining_seconds?: number;
-  event?: "blocked" | "unblocked";
-  unblocked_at?: string;
-}
-
-export interface LoginIPBlockList {
-  current: LoginIPBlockRecord[];
-  history: LoginIPBlockRecord[];
-}
-
-export async function getLoginIPBlocks(): Promise<LoginIPBlockList> {
-  const { data } = await apiClient.get<LoginIPBlockList>(
-    "/admin/settings/login-ip-blocks",
-  );
-  return data;
-}
-
-export async function unblockLoginIP(ip: string): Promise<void> {
-  await apiClient.delete(
-    `/admin/settings/login-ip-blocks/${encodeURIComponent(ip)}`,
-  );
 }
 
 // ==================== Overload Cooldown Settings ====================
@@ -1631,8 +1587,6 @@ export const settingsAPI = {
   getAdminApiKey,
   regenerateAdminApiKey,
   deleteAdminApiKey,
-  getLoginIPBlocks,
-  unblockLoginIP,
   getOverloadCooldownSettings,
   updateOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
