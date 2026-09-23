@@ -145,6 +145,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 		externalOrganizationIDs[i] = strings.TrimSpace(externalOrganizationIDs[i])
 	}
 	username = strings.TrimSpace(username)
+	username = escapeLike(username)
 	coverage, err := r.GetNonworkStatsCoverage(ctx, startDate, endDate, tz)
 	if err != nil {
 		return nil, err
@@ -175,13 +176,13 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			  )
 			  AND (
 				  $7 = ''
-				  OR u.username ILIKE '%%' || $7 || '%%'
+				  OR u.username ILIKE '%%' || $7 || '%%' ESCAPE '\'
 				  OR EXISTS (
 					  SELECT 1
 					  FROM external_user_mappings eum_name
 					  WHERE eum_name.user_id = u.id
 					    AND eum_name.deleted_at IS NULL
-					    AND eum_name.username_snapshot ILIKE '%%' || $7 || '%%'
+						AND eum_name.username_snapshot ILIKE '%%' || $7 || '%%' ESCAPE '\'
 				  )
 			  )
 		),
