@@ -257,6 +257,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketHarvestProxyURL       *string `json:"openai_codex_ticket_harvest_proxy_url"`
 	ClaudeCodeClientVersion                *string `json:"claude_code_client_version"`
 	ClaudeCodeVersionAutoSyncEnabled       *bool   `json:"claude_code_version_auto_sync_enabled"`
 
@@ -1466,6 +1468,19 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		}
 		req.ClaudeCodeClientVersion = &normalized
 	}
+	if req.OpenAICodexTicketHarvestProxyURL != nil {
+		normalized := strings.TrimSpace(*req.OpenAICodexTicketHarvestProxyURL)
+		if normalized != "" && !service.IsMaskedProxyURL(normalized) {
+			if err := service.ValidateOpenAICodexTicketHarvestProxyURL(normalized); err != nil {
+				response.BadRequest(c, err.Error())
+				return
+			}
+		}
+		if normalized == "" || service.IsMaskedProxyURL(normalized) {
+			normalized = previousSettings.OpenAICodexTicketHarvestProxyURL
+		}
+		req.OpenAICodexTicketHarvestProxyURL = &normalized
+	}
 
 	// codex_cli_only 加固：最低/最高 Codex 版本（空=禁用，或合法 semver；max>=min）
 	if req.MinCodexVersion != "" && !semverPattern.MatchString(req.MinCodexVersion) {
@@ -1778,6 +1793,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.OpenAICodexVersionAutoSyncEnabled
 			}
 			return previousSettings.OpenAICodexVersionAutoSyncEnabled
+		}(),
+		OpenAICodexTicketEnabled: func() bool {
+			if req.OpenAICodexTicketEnabled != nil {
+				return *req.OpenAICodexTicketEnabled
+			}
+			return previousSettings.OpenAICodexTicketEnabled
+		}(),
+		OpenAICodexTicketHarvestProxyURL: func() string {
+			if req.OpenAICodexTicketHarvestProxyURL != nil {
+				return *req.OpenAICodexTicketHarvestProxyURL
+			}
+			return previousSettings.OpenAICodexTicketHarvestProxyURL
 		}(),
 		ClaudeCodeClientVersion: func() string {
 			if req.ClaudeCodeClientVersion != nil {
@@ -2336,6 +2363,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersion:                               updatedSettings.OpenAICodexClientVersion,
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
+		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
+		OpenAICodexTicketHarvestProxyConfigured:                updatedSettings.OpenAICodexTicketHarvestProxyURL != "",
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
 		ClaudeCodeClientVersionSynced:                          updatedSettings.ClaudeCodeClientVersionSynced,
 		ClaudeCodeVersionAutoSyncEnabled:                       updatedSettings.ClaudeCodeVersionAutoSyncEnabled,

@@ -57,6 +57,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_5h_",
 	"codex_7d_",
 	"codex_reset_credit_",
+	"codex_turn_ticket:",
 	"passive_usage_",
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
@@ -671,6 +672,7 @@ func lockAndMergeAccountProbeExtra(
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
 			extra -> 'opencode_go_usage_snapshot'
+			, extra
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -699,22 +701,59 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		currentExtra                   []byte
 	)
-	if err := rows.Scan(
-		&identityUnchanged,
-		&ollamaGroupIdentityUnchanged,
-		&ollamaProxyIdentityUnchanged,
-		&currentEnabled,
-		&currentRateSyncEnabled,
-		&currentSnapshot,
-		&currentOllamaSession,
-		&currentOllamaAutoRefresh,
-		&currentOllamaSnapshot,
-		&opencodeGroupIdentityUnchanged,
-		&currentOpenCodeAutoRefresh,
-		&currentOpenCodeSnapshot,
-	); err != nil {
+	columns, err := rows.Columns()
+	if err != nil {
 		return nil, err
+	}
+	values := make([]any, len(columns))
+	for i := range values {
+		values[i] = new(any)
+	}
+	if err := rows.Scan(values...); err != nil {
+		return nil, err
+	}
+	read := func(index int, dst *[]byte) {
+		if index >= len(values) || dst == nil {
+			return
+		}
+		raw, _ := (*(values[index].(*any))).([]byte)
+		if raw != nil {
+			*dst = raw
+		} else if value, ok := (*(values[index].(*any))).(string); ok {
+			*dst = []byte(value)
+		}
+	}
+	readBool := func(index int, dst *bool) {
+		if index >= len(values) || dst == nil {
+			return
+		}
+		switch value := (*(values[index].(*any))).(type) {
+		case bool:
+			*dst = value
+		case int64:
+			*dst = value != 0
+		case []byte:
+			*dst = string(value) == "true" || string(value) == "1"
+		}
+	}
+	readBool(0, &identityUnchanged)
+	readBool(1, &ollamaGroupIdentityUnchanged)
+	readBool(2, &ollamaProxyIdentityUnchanged)
+	read(3, &currentEnabled)
+	read(4, &currentRateSyncEnabled)
+	read(5, &currentSnapshot)
+	read(6, &currentOllamaSession)
+	read(7, &currentOllamaAutoRefresh)
+	read(8, &currentOllamaSnapshot)
+	readBool(9, &opencodeGroupIdentityUnchanged)
+	read(10, &currentOpenCodeAutoRefresh)
+	read(11, &currentOpenCodeSnapshot)
+	if len(values) == 10 {
+		read(9, &currentExtra)
+	} else if len(values) >= 13 {
+		read(12, &currentExtra)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -825,6 +864,19 @@ func lockAndMergeAccountProbeExtra(
 				extra[service.OpenCodeGoUsageSnapshotExtraKey] = snapshot
 			}
 		}
+	}
+	if len(currentExtra) > 0 {
+		if databaseExtra, ok, err := decodeAccountExtraJSON(currentExtra); err != nil {
+			return nil, err
+		} else if ok {
+			if databaseMap, isMap := databaseExtra.(map[string]any); isMap {
+				extra = service.MergeOpenAICodexTicketExtra(extra, databaseMap)
+			} else {
+				extra = service.MergeOpenAICodexTicketExtra(extra, nil)
+			}
+		}
+	} else {
+		extra = service.MergeOpenAICodexTicketExtra(extra, nil)
 	}
 	return extra, nil
 }
