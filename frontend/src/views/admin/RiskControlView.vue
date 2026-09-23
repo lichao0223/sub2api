@@ -1132,7 +1132,7 @@
                 {{ inputDetailRow.group_name }}
               </span>
             </div>
-            <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50">{{ inputDetailText }}</pre>
+            <pre class="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100 shadow-inner dark:bg-black/50"><template v-for="(segment, index) in inputDetailSegments" :key="index"><mark v-if="segment.hit" class="rounded bg-red-500/80 px-0.5 text-white">{{ segment.text }}</mark><template v-else>{{ segment.text }}</template></template></pre>
           </div>
         </div>
 
@@ -1668,6 +1668,27 @@ const riskThresholdRows = computed<RiskThresholdRow[]>(() => (
 const inputDetailText = computed(() => {
   if (!inputDetailRow.value) return '-'
   return inputDetailRow.value.input_excerpt || inputDetailRow.value.error || '-'
+})
+
+const inputDetailSegments = computed(() => {
+  const text = inputDetailText.value
+  const keyword = inputDetailRow.value?.matched_keyword?.trim() ?? ''
+  if (!text || text === '-' || !keyword) return [{ text, hit: false }]
+  const source = text.toLocaleLowerCase()
+  const needle = keyword.toLocaleLowerCase()
+  const segments: Array<{ text: string; hit: boolean }> = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const start = source.indexOf(needle, cursor)
+    if (start < 0) {
+      segments.push({ text: text.slice(cursor), hit: false })
+      break
+    }
+    if (start > cursor) segments.push({ text: text.slice(cursor, start), hit: false })
+    segments.push({ text: text.slice(start, start + keyword.length), hit: true })
+    cursor = start + keyword.length
+  }
+  return segments
 })
 
 const queueUsagePercent = computed(() => `${Math.min(100, Math.max(0, status.value?.queue_usage_percent ?? 0)).toFixed(1)}%`)

@@ -62,7 +62,9 @@ const (
 	defaultContentModerationTimeoutMS = 3000
 	maxContentModerationTimeoutMS     = 30000
 	maxModerationInputRunes           = 12000
-	maxModerationExcerptRunes         = 240
+	// Keep the stored audit input aligned with the moderation input limit so the
+	// admin detail view can show the complete redacted text.
+	maxModerationExcerptRunes = maxModerationInputRunes
 
 	defaultContentModerationWorkerCount          = 4
 	maxContentModerationWorkerCount              = 32
