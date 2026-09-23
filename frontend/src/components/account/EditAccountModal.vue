@@ -4364,6 +4364,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
                 newAccount.platform === 'opencode_go' ||
                 newAccount.platform === 'volcengine'
               ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
+              : newAccount.platform === 'qoder'
+                ? 'https://api.qoder.com.cn/api/v1/cloud'
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
       ? editAdaptiveBaseUrls.value.chat_completions

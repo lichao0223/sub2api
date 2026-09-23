@@ -4235,6 +4235,7 @@ const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
 const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
 const isOpenCodeGoPlatform = computed(() => form.platform === 'opencode_go')
 const isMultiProtocolPlatform = computed(() => isCNPlatform.value || isOpenCodeGoPlatform.value)
+const qoderDefaultBaseUrl = 'https://api.qoder.com.cn/api/v1/cloud'
 function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
   return isOpenCodeGoPlatform.value ? openCodeAccountMode.value : accountMode.value
 }
@@ -4337,7 +4338,7 @@ function selectQoderPlatform() {
   form.platform = 'qoder'
   form.type = 'apikey'
   accountCategory.value = 'apikey'
-  apiKeyBaseUrl.value = 'https://api.qoder.com.cn/api/v1/cloud'
+  apiKeyBaseUrl.value = qoderDefaultBaseUrl
 }
 // 账号类型 / 协议变更时同步默认 base url。
 watch(openCodeAccountMode, (mode, previousMode) => {
@@ -4910,7 +4911,9 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    if (isCNProviderPlatform(newPlatform) || newPlatform === 'opencode_go') {
+    if (newPlatform === 'qoder') {
+      apiKeyBaseUrl.value = qoderDefaultBaseUrl
+    } else if (isCNProviderPlatform(newPlatform) || newPlatform === 'opencode_go') {
       const mode = newPlatform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
       apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, mode, apiProtocol.value)
     } else {
@@ -5870,7 +5873,9 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
-          : 'https://api.anthropic.com'
+          : form.platform === 'qoder'
+            ? qoderDefaultBaseUrl
+            : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
   const credentials: Record<string, unknown> = {
