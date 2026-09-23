@@ -1255,6 +1255,7 @@ function generateRoutedCodexFiles(
     deepseek: 'DeepSeek',
     minimax: 'MiniMax',
     volcengine: 'Volcengine Ark',
+    qoder: 'Qoder CN',
     opencode_go: 'OpenCode',
     composite: 'Composite'
   }

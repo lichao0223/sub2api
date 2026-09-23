@@ -230,6 +230,7 @@ const GRADIENT_TEXT: Record<Platform, string> = {
   deepseek: 'text-teal-100',
   minimax: 'text-rose-100',
   volcengine: 'text-blue-100',
+  qoder: 'text-cyan-100',
   opencode_go: 'text-amber-100',
   composite: 'text-cyan-100',
 }
@@ -246,6 +247,7 @@ const GRADIENT_SUBTEXT: Record<Platform, string> = {
   deepseek: 'text-teal-200',
   minimax: 'text-rose-200',
   volcengine: 'text-blue-200',
+  qoder: 'text-cyan-200',
   opencode_go: 'text-amber-200',
   composite: 'text-cyan-200',
 }

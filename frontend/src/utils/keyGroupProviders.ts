@@ -13,6 +13,7 @@ const PROVIDER_BY_PLATFORM: Record<GroupPlatform, KeyGroupProvider> = {
   deepseek: 'domestic',
   minimax: 'domestic',
   volcengine: 'domestic',
+  qoder: 'domestic',
   gemini: 'other',
   grok: 'other',
   antigravity: 'other',
