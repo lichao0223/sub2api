@@ -6,8 +6,11 @@ registries=("ghcr.io/${owner,,}/sub2api")
 if [[ ${SIMPLE_RELEASE:-false} != true && ${DOCKERHUB_USERNAME:-skip} != skip ]]; then
   registries+=("${DOCKERHUB_USERNAME}/sub2api")
 fi
-arches=(amd64 arm64)
-if [[ ${SIMPLE_RELEASE:-false} == true ]]; then arches=(amd64); fi
+mapfile -t arches < <(find .release-context -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort)
+if ((${#arches[@]} == 0)); then
+  echo 'no release contexts found' >&2
+  exit 1
+fi
 for arch in "${arches[@]}"; do
   args=(--platform "linux/$arch" --file ".release-context/$arch/Dockerfile"
     --label "org.opencontainers.image.version=$RELEASE_VERSION"
@@ -26,13 +29,17 @@ for arch in "${arches[@]}"; do
   fi
   docker buildx build "${args[@]}" ".release-context/$arch"
 done
-if [[ ${DRY_RUN:-false} != true && ${SIMPLE_RELEASE:-false} != true ]]; then
+if [[ ${DRY_RUN:-false} != true && ${#arches[@]} -gt 1 ]]; then
   major=${RELEASE_VERSION%%.*}
   minor=${RELEASE_VERSION#*.}; minor=${minor%%.*}
   for registry in "${registries[@]}"; do
+    sources=()
+    for arch in "${arches[@]}"; do
+      sources+=("$registry:$RELEASE_VERSION-$arch")
+    done
     docker buildx imagetools create \
       --tag "$registry:$RELEASE_VERSION" --tag "$registry:latest" \
       --tag "$registry:$major.$minor" --tag "$registry:$major" \
-      "$registry:$RELEASE_VERSION-amd64" "$registry:$RELEASE_VERSION-arm64"
+      "${sources[@]}"
   done
 fi
