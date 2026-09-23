@@ -143,8 +143,8 @@ const tomorrow = () => {
   const d = new Date()
   d.setDate(d.getDate() + 1)
   return formatDateToString(d)
-})
-const maximumDate = computed(() => props.maxDate || tomorrow.value)
+}
+const maximumDate = computed(() => props.maxDate || tomorrow())
 
 // Helper function to format date to YYYY-MM-DD using local timezone
 const formatDateToString = (date: Date): string => {
@@ -247,7 +247,7 @@ const periodPresets: DatePreset[] = [
       const now = new Date()
       const start = new Date(now)
       start.setDate(now.getDate() - (now.getDay() + 6) % 7)
-      return { start: formatDateToString(start), end: today.value }
+      return { start: formatDateToString(start), end: today() }
     }
   },
   dayPresets[6],
@@ -255,7 +255,7 @@ const periodPresets: DatePreset[] = [
   {
     labelKey: 'dates.thisYear',
     value: 'thisYear',
-    getRange: () => ({ start: `${new Date().getFullYear()}-01-01`, end: today.value })
+    getRange: () => ({ start: `${new Date().getFullYear()}-01-01`, end: today() })
   },
   {
     labelKey: 'dates.lastYear',
@@ -267,8 +267,8 @@ const periodPresets: DatePreset[] = [
   }
 ]
 const shortPeriodPresets = [dayPresets[0], dayPresets[1], dayPresets[3], dayPresets[5], dayPresets[6], dayPresets[7]]
-const availablePresets = computed(() => (props.periodMode ? (props.periodDayOnly ? shortPeriodPresets : periodPresets) : dayPresets).filter(preset => preset.value !== 'today' || maximumDate.value >= today.value))
-const currentMonth = computed(() => today.value.slice(0, 7))
+const availablePresets = computed(() => (props.periodMode ? (props.periodDayOnly ? shortPeriodPresets : periodPresets) : dayPresets).filter(preset => preset.value !== 'today' || maximumDate.value >= today()))
+const currentMonth = computed(() => today().slice(0, 7))
 const yearOptions = computed(() => Array.from({ length: 10 }, (_, index) => String(new Date().getFullYear() - index)))
 const startMonth = computed({
   get: () => localStartDate.value.slice(0, 7),
@@ -279,7 +279,7 @@ const endMonth = computed({
   set: (value: string) => {
     const [year, month] = value.split('-').map(Number)
     const end = formatDateToString(new Date(year, month, 0))
-    localEndDate.value = end > today.value ? today.value : end
+    localEndDate.value = end > today() ? today() : end
   }
 })
 const startYear = computed({
@@ -290,7 +290,7 @@ const endYear = computed({
   get: () => localEndDate.value.slice(0, 4),
   set: (value: string) => {
     const end = `${value}-12-31`
-    localEndDate.value = end > today.value ? today.value : end
+    localEndDate.value = end > today() ? today() : end
   }
 })
 
