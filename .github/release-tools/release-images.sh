@@ -18,7 +18,7 @@ for arch in "${arches[@]}"; do
     --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY")
   for registry in "${registries[@]}"; do
     args+=(--tag "$registry:$RELEASE_VERSION-$arch")
-    if [[ ${SIMPLE_RELEASE:-false} == true ]]; then
+    if [[ ${SIMPLE_RELEASE:-false} == true || ${#arches[@]} -eq 1 ]]; then
       args+=(--tag "$registry:$RELEASE_VERSION" --tag "$registry:latest")
     fi
   done

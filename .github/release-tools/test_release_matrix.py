@@ -188,6 +188,8 @@ class ReleaseMatrixTest(unittest.TestCase):
                 else:
                     self.assertNotIn('imagetools', log)
                     self.assertIn('fixturehub/sub2api:9.8.7-amd64', log)
+                    self.assertIn('fixturehub/sub2api:latest', log)
+                    self.assertIn('ghcr.io/exampleowner/sub2api:latest', log)
 
 
 
