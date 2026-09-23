@@ -58,9 +58,9 @@ func (a *FrameAccumulator) Line(line string) *Frame {
 		a.id = strings.TrimSpace(strings.TrimPrefix(line, "id:"))
 	case strings.HasPrefix(line, "data:"):
 		if a.data.Len() > 0 {
-			a.data.WriteByte('\n')
+			_ = a.data.WriteByte('\n')
 		}
-		a.data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
+		_, _ = a.data.WriteString(strings.TrimSpace(strings.TrimPrefix(line, "data:")))
 	}
 	return nil
 }

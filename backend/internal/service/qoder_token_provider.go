@@ -10,7 +10,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -25,13 +24,13 @@ const (
 )
 
 type QoderTokenProvider struct {
-	redis        *redis.Client
+	cache        QoderCache
 	httpUpstream HTTPUpstream
 }
 
-func NewQoderTokenProvider(redisClient *redis.Client, httpUpstream HTTPUpstream) *QoderTokenProvider {
+func NewQoderTokenProvider(cache QoderCache, httpUpstream HTTPUpstream) *QoderTokenProvider {
 	return &QoderTokenProvider{
-		redis:        redisClient,
+		cache:        cache,
 		httpUpstream: httpUpstream,
 	}
 }
@@ -45,15 +44,15 @@ func (p *QoderTokenProvider) GetAccessToken(ctx context.Context, account *Accoun
 	hash := qoderPATHash(pat)
 	cacheKey := qoderJTCachePrefix + hash
 
-	if p.redis != nil {
-		if cached, err := p.redis.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
+	if p.cache != nil {
+		if cached, err := p.cache.Get(ctx, cacheKey); err == nil && cached != "" {
 			return cached, nil
 		}
 	}
 
 	lockKey := qoderJTLockPrefix + hash
-	if p.redis != nil {
-		acquired, err := p.redis.SetNX(ctx, lockKey, "1", qoderJTLockTTL).Result()
+	if p.cache != nil {
+		acquired, err := p.cache.SetNX(ctx, lockKey, "1", qoderJTLockTTL)
 		if err == nil && !acquired {
 			token, waitErr := p.waitForKey(ctx, cacheKey)
 			if waitErr == nil {
@@ -61,7 +60,7 @@ func (p *QoderTokenProvider) GetAccessToken(ctx context.Context, account *Accoun
 			}
 		}
 		if acquired {
-			defer p.redis.Del(context.Background(), lockKey)
+			defer func() { _ = p.cache.Del(context.Background(), lockKey) }()
 		}
 	}
 
@@ -70,8 +69,8 @@ func (p *QoderTokenProvider) GetAccessToken(ctx context.Context, account *Accoun
 		return "", err
 	}
 
-	if p.redis != nil {
-		if setErr := p.redis.Set(ctx, cacheKey, token, ttl).Err(); setErr != nil {
+	if p.cache != nil {
+		if setErr := p.cache.Set(ctx, cacheKey, token, ttl); setErr != nil {
 			logger.L().Warn("qoder direct: failed to cache job token",
 				zap.Int64("account_id", account.ID),
 				zap.Error(setErr),
@@ -113,7 +112,7 @@ func (p *QoderTokenProvider) waitForKey(ctx context.Context, cacheKey string) (s
 			return "", ctx.Err()
 		case <-time.After(qoderJTLockPollEvery):
 		}
-		if cached, err := p.redis.Get(ctx, cacheKey).Result(); err == nil && cached != "" {
+		if cached, err := p.cache.Get(ctx, cacheKey); err == nil && cached != "" {
 			return cached, nil
 		}
 	}

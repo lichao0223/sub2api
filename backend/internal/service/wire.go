@@ -26,6 +26,35 @@ func ProvideGrokOAuthService(proxyRepo ProxyRepository, oauthClient GrokOAuthCli
 	return svc
 }
 
+type qoderRedisCache struct{ client *redis.Client }
+
+func (c *qoderRedisCache) Get(ctx context.Context, key string) (string, error) {
+	value, err := c.client.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return "", nil
+	}
+	return value, err
+}
+
+func (c *qoderRedisCache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	return c.client.Set(ctx, key, value, ttl).Err()
+}
+
+func (c *qoderRedisCache) SetNX(ctx context.Context, key, value string, ttl time.Duration) (bool, error) {
+	return c.client.SetNX(ctx, key, value, ttl).Result()
+}
+
+func (c *qoderRedisCache) Del(ctx context.Context, key string) error {
+	return c.client.Del(ctx, key).Err()
+}
+
+func ProvideQoderCache(redisClient *redis.Client) QoderCache {
+	if redisClient == nil {
+		return nil
+	}
+	return &qoderRedisCache{client: redisClient}
+}
+
 // BuildInfo contains build information
 type BuildInfo struct {
 	Version   string
@@ -855,6 +884,7 @@ var ProviderSet = wire.NewSet(
 	NewAdminService,
 	NewExternalUserService,
 	ProvideLegacyKimiProvider,
+	ProvideQoderCache,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,

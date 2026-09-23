@@ -23,7 +23,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
 )
@@ -545,16 +544,16 @@ func NewOpenAIGatewayService(
 	balanceNotifyService *BalanceNotifyService,
 	settingService *SettingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
-	redisClients ...*redis.Client,
+	qoderCaches ...QoderCache,
 ) *OpenAIGatewayService {
 	// enforceCodexIdentityHeaders 是 HTTP / 透传 / WS / 探针 等出站路径共用的纯函数收口点，
 	// 拿不到配置，故在此发布进程级开关快照。配置取反义，零值即「强制统一出口开启」。
 	if cfg != nil {
 		SetCodexIdentityEnforcementEnabled(!cfg.Gateway.DisableCodexIdentityEnforcement)
 	}
-	var redisClient *redis.Client
-	if len(redisClients) > 0 {
-		redisClient = redisClients[0]
+	var qoderCache QoderCache
+	if len(qoderCaches) > 0 {
+		qoderCache = qoderCaches[0]
 	}
 	svc := &OpenAIGatewayService{
 		accountRepo:         accountRepo,
@@ -588,8 +587,8 @@ func NewOpenAIGatewayService(
 		balanceNotifyService:  balanceNotifyService,
 		settingService:        settingService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
-		qoderService:          NewQoderGatewayService(accountRepo, httpUpstream, redisClient, cfg, settingService),
-		qoderTokenProvider:    NewQoderTokenProvider(redisClient, httpUpstream),
+		qoderService:          NewQoderGatewayService(accountRepo, httpUpstream, qoderCache, cfg, settingService),
+		qoderTokenProvider:    NewQoderTokenProvider(qoderCache, httpUpstream),
 		liveAttestation:       liveattestation.NewProvider(),
 		liveAttestationCipher: newLiveAttestationCipher(cfg),
 		responseHeaderFilter:  compileResponseHeaderFilter(cfg),

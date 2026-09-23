@@ -16,7 +16,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 )
 
 // qoderDefaultBaseURL is the Qoder Cloud Agents API root used when an account
@@ -30,7 +29,7 @@ const qoderDefaultBaseURL = qoder.DefaultBaseURL
 type QoderGatewayService struct {
 	accountRepo    AccountRepository
 	httpUpstream   HTTPUpstream
-	redis          *redis.Client
+	cache          QoderCache
 	cfg            *config.Config
 	settingService *SettingService
 }
@@ -40,14 +39,14 @@ type QoderGatewayService struct {
 func NewQoderGatewayService(
 	accountRepo AccountRepository,
 	httpUpstream HTTPUpstream,
-	redisClient *redis.Client,
+	cache QoderCache,
 	cfg *config.Config,
 	settingService *SettingService,
 ) *QoderGatewayService {
 	return &QoderGatewayService{
 		accountRepo:    accountRepo,
 		httpUpstream:   httpUpstream,
-		redis:          redisClient,
+		cache:          cache,
 		cfg:            cfg,
 		settingService: settingService,
 	}
@@ -264,17 +263,17 @@ func qoderFlattenHistory(chatCtx *qoderChatContext) string {
 	}
 	var b strings.Builder
 	if strings.TrimSpace(chatCtx.System) != "" {
-		b.WriteString("System instructions:\n")
-		b.WriteString(chatCtx.System)
-		b.WriteString("\n\n")
+		_, _ = b.WriteString("System instructions:\n")
+		_, _ = b.WriteString(chatCtx.System)
+		_, _ = b.WriteString("\n\n")
 	}
 	if len(prior) > 0 {
-		b.WriteString("Previous conversation:\n")
+		_, _ = b.WriteString("Previous conversation:\n")
 		for _, t := range prior {
-			b.WriteString(t.Role)
-			b.WriteString(": ")
-			b.WriteString(t.Text)
-			b.WriteString("\n")
+			_, _ = b.WriteString(t.Role)
+			_, _ = b.WriteString(": ")
+			_, _ = b.WriteString(t.Text)
+			_, _ = b.WriteString("\n")
 		}
 	}
 	return strings.TrimSpace(b.String())
@@ -444,7 +443,7 @@ func (s *QoderGatewayService) streamQoderToClient(ctx context.Context, c *gin.Co
 					ms := int(time.Since(startTime).Milliseconds())
 					res.FirstTokenMs = &ms
 				}
-				acc.WriteString(text)
+				_, _ = acc.WriteString(text)
 				writeChunk(map[string]any{"content": text}, nil)
 			}
 			if frame.IsTurnEnd() {
@@ -510,7 +509,7 @@ func (s *QoderGatewayService) collectQoderToClient(ctx context.Context, c *gin.C
 				ms := int(time.Since(startTime).Milliseconds())
 				res.FirstTokenMs = &ms
 			}
-			acc.WriteString(text)
+			_, _ = acc.WriteString(text)
 		}
 		if frame.IsTurnEnd() {
 			break

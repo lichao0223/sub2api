@@ -113,11 +113,11 @@ func qoderResourceName(kind string, account *Account) string {
 }
 
 func (s *QoderGatewayService) acquireQoderProvisionLock(ctx context.Context, accountID int64) (func(), bool) {
-	if s.redis == nil {
+	if s.cache == nil {
 		return func() {}, true
 	}
 	key := fmt.Sprintf("qoder:provision:%d", accountID)
-	ok, err := s.redis.SetNX(ctx, key, "1", qoderProvisionLockTTL).Result()
+	ok, err := s.cache.SetNX(ctx, key, "1", qoderProvisionLockTTL)
 	if err != nil {
 		// Redis trouble should not block provisioning; proceed without the lock.
 		return func() {}, true
@@ -125,7 +125,7 @@ func (s *QoderGatewayService) acquireQoderProvisionLock(ctx context.Context, acc
 	if !ok {
 		return func() {}, false
 	}
-	return func() { _ = s.redis.Del(context.Background(), key).Err() }, true
+	return func() { _ = s.cache.Del(context.Background(), key) }, true
 }
 
 // waitForQoderProvision polls the account row until a peer publishes the

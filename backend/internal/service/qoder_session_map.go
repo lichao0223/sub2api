@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -35,14 +34,14 @@ type qoderSessionState struct {
 // stateless Chat Completions client resume a stateful Qoder session.
 func qoderConversationKey(accountID int64, model, system string, turns []qoderTurn) string {
 	h := sha256.New()
-	h.Write([]byte(model))
-	h.Write([]byte{0})
-	h.Write([]byte(system))
+	_, _ = h.Write([]byte(model))
+	_, _ = h.Write([]byte{0})
+	_, _ = h.Write([]byte(system))
 	for _, t := range turns {
-		h.Write([]byte{0})
-		h.Write([]byte(t.Role))
-		h.Write([]byte{1})
-		h.Write([]byte(t.Text))
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte(t.Role))
+		_, _ = h.Write([]byte{1})
+		_, _ = h.Write([]byte(t.Text))
 	}
 	sum := hex.EncodeToString(h.Sum(nil))
 	return fmt.Sprintf("qoder:conv:%d:%s", accountID, sum)
@@ -51,13 +50,10 @@ func qoderConversationKey(accountID int64, model, system string, turns []qoderTu
 // lookupQoderSession returns the session state bound to the given conversation
 // prefix, or (nil, nil) on a miss. A nil redis client always misses.
 func (s *QoderGatewayService) lookupQoderSession(ctx context.Context, key string) (*qoderSessionState, error) {
-	if s.redis == nil {
+	if s.cache == nil {
 		return nil, nil
 	}
-	raw, err := s.redis.Get(ctx, key).Result()
-	if err == redis.Nil {
-		return nil, nil
-	}
+	raw, err := s.cache.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -75,14 +71,14 @@ func (s *QoderGatewayService) lookupQoderSession(ctx context.Context, key string
 // standard TTL. Failures are logged and swallowed: a lost binding only forces a
 // new session on the next turn, never a request failure.
 func (s *QoderGatewayService) storeQoderSession(ctx context.Context, key string, state qoderSessionState) {
-	if s.redis == nil {
+	if s.cache == nil {
 		return
 	}
 	payload, err := json.Marshal(state)
 	if err != nil {
 		return
 	}
-	if err := s.redis.Set(ctx, key, payload, qoderSessionMapTTL).Err(); err != nil {
+	if err := s.cache.Set(ctx, key, string(payload), qoderSessionMapTTL); err != nil {
 		logger.L().With(zap.String("component", "service.qoder_gateway")).
 			Warn("qoder.session_map_store_failed", zap.String("key", key), zap.Error(err))
 	}
