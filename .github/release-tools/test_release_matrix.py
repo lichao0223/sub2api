@@ -139,6 +139,9 @@ class ReleaseMatrixTest(unittest.TestCase):
         self.assertEqual(len(json.loads(output['matrix'])['include']), 1)
 
     def test_docker_commands_do_not_publish_during_dry_run(self):
+        context = Path('.release-context/amd64')
+        context.mkdir(parents=True)
+        (context / 'Dockerfile').write_text('FROM scratch\n')
         fake_bin = Path('bin')
         fake_bin.mkdir()
         docker = fake_bin / 'docker'
@@ -150,8 +153,8 @@ class ReleaseMatrixTest(unittest.TestCase):
                'DRY_RUN': 'true', 'SIMPLE_RELEASE': 'false', 'DOCKERHUB_USERNAME': 'skip'}
         subprocess.run(['bash', str(ROOT / '.github/release-tools/release-images.sh')], env=env, check=True)
         log = Path('docker.log').read_text()
-        self.assertEqual(log.count('buildx build'), 2)
-        self.assertIn('linux/arm64', log)
+        self.assertEqual(log.count('buildx build'), 1)
+        self.assertIn('linux/amd64', log)
         self.assertNotIn('--push', log)
         self.assertNotIn('imagetools', log)
         self.assertNotIn('skip/sub2api', log)
@@ -166,6 +169,9 @@ class ReleaseMatrixTest(unittest.TestCase):
         docker.chmod(0o755)
         for simple in (False, True):
             with self.subTest(simple=simple):
+                context = Path('.release-context/amd64')
+                context.mkdir(parents=True, exist_ok=True)
+                (context / 'Dockerfile').write_text('FROM scratch\n')
                 log_path = Path(f'docker-{simple}.log').resolve()
                 env = {**os.environ, 'PATH': str(fake_bin.resolve()) + os.pathsep + os.environ['PATH'],
                        'DOCKER_LOG': str(log_path), 'RUNNER_TEMP': self.temp.name,
@@ -174,15 +180,14 @@ class ReleaseMatrixTest(unittest.TestCase):
                 subprocess.run(['bash', str(ROOT / '.github/release-tools/release-images.sh')], env=env, check=True)
                 log = log_path.read_text()
                 self.assertIn('--push', log)
-                self.assertEqual(log.count('buildx build'), 1 if simple else 2)
+                self.assertEqual(log.count('buildx build'), 1)
                 if simple:
                     self.assertNotIn('fixturehub', log)
                     self.assertNotIn('imagetools', log)
                     self.assertIn('ghcr.io/exampleowner/sub2api:latest', log)
                 else:
-                    self.assertEqual(log.count('imagetools create'), 2)
-                    self.assertIn('fixturehub/sub2api:9.8', log)
-                    self.assertIn('ghcr.io/exampleowner/sub2api:9', log)
+                    self.assertNotIn('imagetools', log)
+                    self.assertIn('fixturehub/sub2api:9.8.7-amd64', log)
 
 
 
