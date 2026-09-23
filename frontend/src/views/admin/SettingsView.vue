@@ -10,6 +10,11 @@
 
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
+        <textarea
+          v-model="tokenRankingExcludedModelsText"
+          data-testid="token-ranking-excluded-models"
+          class="sr-only"
+        />
         <!-- Tab Navigation -->
         <div class="settings-tabs-shell">
           <nav
@@ -1751,6 +1756,69 @@
                   min="0"
                   class="input w-28 text-right"
                 />
+              </div>
+            </div>
+          </div>
+
+          <!-- Login failure IP blocking -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.loginIPBlock.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.loginIPBlock.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.loginIPBlock.enabled") }}
+                  </label>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.loginIPBlock.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.login_ip_block_enabled" />
+              </div>
+              <div v-if="form.login_ip_block_enabled" class="grid gap-4 border-t border-gray-100 pt-4 dark:border-dark-700 sm:grid-cols-2">
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.loginIPBlock.threshold") }}
+                  </label>
+                  <input v-model.number="form.login_ip_block_threshold" type="number" min="1" max="100" class="input w-full" />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.loginIPBlock.duration") }}
+                  </label>
+                  <Select v-model="form.login_ip_block_duration_seconds" :options="loginIPBlockDurationOptions" :searchable="false" />
+                </div>
+              </div>
+              <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+                <div class="mb-3 flex items-center justify-between">
+                  <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t("admin.settings.loginIPBlock.current") }}</h3>
+                  <button type="button" class="btn btn-secondary btn-sm" @click="loadLoginIPBlocks">{{ t("common.refresh") }}</button>
+                </div>
+                <div v-if="loginIPBlocksLoading" class="py-4 text-sm text-gray-500">{{ t("common.loading") }}</div>
+                <div v-else-if="loginIPBlocksCurrent.length === 0" class="py-4 text-sm text-gray-500">{{ t("admin.settings.loginIPBlock.emptyCurrent") }}</div>
+                <div v-else data-testid="login-ip-blocks-scroll" class="max-h-96 overflow-auto">
+                  <table class="min-w-full text-sm">
+                    <thead data-testid="login-ip-blocks-header" class="sticky top-0 z-10 bg-white text-left text-xs text-gray-500 dark:bg-dark-800">
+                      <tr><th class="px-3 py-2">IP</th><th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.blockedAt") }}</th><th class="px-3 py-2">{{ t("admin.settings.loginIPBlock.remaining") }}</th><th class="px-3 py-2 text-right">{{ t("common.actions") }}</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
+                      <tr v-for="item in pagedLoginIPBlocks" :key="item.ip" data-testid="login-ip-block-row">
+                        <td class="whitespace-nowrap px-3 py-2 font-mono">{{ item.ip }}</td>
+                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockTime(item.blocked_at) }}</td>
+                        <td class="whitespace-nowrap px-3 py-2">{{ formatLoginIPBlockRemaining(item) }}</td>
+                        <td class="px-3 py-2 text-right"><button type="button" class="btn btn-secondary btn-sm text-red-600" @click="unblockLoginIP(item.ip)">{{ t("admin.settings.loginIPBlock.unblock") }}</button></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <Pagination v-if="loginIPBlocksCurrent.length > loginIPBlocksPageSize" :total="loginIPBlocksCurrent.length" :page="loginIPBlocksPage" :page-size="loginIPBlocksPageSize" @update:page="loginIPBlocksPage = $event" @update:pageSize="handleLoginIPBlocksPageSizeChange" />
               </div>
             </div>
           </div>
@@ -5859,6 +5927,34 @@
                 <Toggle v-model="form.openai_codex_version_auto_sync_enabled" />
               </div>
 
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketEnabled") }}
+                  </label>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketEnabledDesc") }}
+                  </p>
+                </div>
+                <Toggle id="codex-ticket-enabled" v-model="form.openai_codex_ticket_enabled" />
+              </div>
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
+                </label>
+                <input
+                  id="codex-ticket-harvest-proxy"
+                  v-model="form.openai_codex_ticket_harvest_proxy_url"
+                  type="text"
+                  class="input mt-3 w-full font-mono text-sm"
+                  :placeholder="t('admin.settings.gatewayForwarding.codexTicketHarvestProxyPlaceholder')"
+                  autocomplete="off"
+                />
+                <p v-if="form.openai_codex_ticket_harvest_proxy_configured" class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxyConfigured") }}
+                </p>
+              </div>
+
               <!-- Claude Code 客户端版本号 -->
               <div>
                 <label
@@ -8983,6 +9079,7 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
+  LoginIPBlockRecord,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -8994,6 +9091,7 @@ import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
+import Pagination from "@/components/common/Pagination.vue";
 import {
   SITE_BILLING_MODES,
   SITE_BILLING_MODE_I18N_KEYS,
@@ -9072,6 +9170,22 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
+const loginIPBlocksLoading = ref(false);
+const loginIPBlocksCurrent = ref<LoginIPBlockRecord[]>([]);
+const loginIPBlocksPage = ref(1);
+const loginIPBlocksPageSize = ref(10);
+const pagedLoginIPBlocks = computed(() => {
+  const start = (loginIPBlocksPage.value - 1) * loginIPBlocksPageSize.value;
+  return loginIPBlocksCurrent.value.slice(start, start + loginIPBlocksPageSize.value);
+});
+const loginIPBlockDurationOptions = computed(() => [
+  { value: 1800, label: t("admin.settings.loginIPBlock.duration30m") },
+  { value: 3600, label: t("admin.settings.loginIPBlock.duration1h") },
+  { value: 21600, label: t("admin.settings.loginIPBlock.duration6h") },
+  { value: 86400, label: t("admin.settings.loginIPBlock.duration1d") },
+  { value: 604800, label: t("admin.settings.loginIPBlock.duration7d") },
+  { value: 0, label: t("admin.settings.loginIPBlock.durationPermanent") },
+]);
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
@@ -9748,6 +9862,9 @@ const form = reactive<SettingsForm>({
   passkey_configured: false,
   passkey_rp_id: "",
   passkey_rp_origins: [],
+  login_ip_block_enabled: false,
+  login_ip_block_threshold: 5,
+  login_ip_block_duration_seconds: 1800,
   session_binding_enabled: false,
   step_up_enabled: false,
   audit_log_retention_days: 180,
@@ -9987,6 +10104,10 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
+  openai_codex_ticket_enabled: false,
+  openai_codex_ticket_harvest_proxy_url: "",
+  openai_codex_ticket_harvest_proxy_configured: false,
+  token_ranking_excluded_models: [],
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
@@ -10903,6 +11024,7 @@ interface CodexClientRow {
 const codexBlacklistRows = ref<CodexClientRow[]>([]);
 const codexWhitelistRows = ref<CodexClientRow[]>([]);
 const codexFingerprintRows = ref<FingerprintSignalRow[]>([]);
+const tokenRankingExcludedModelsText = ref("");
 const codexFingerprintNoRequired = computed(
   () => !codexFingerprintRows.value.some((r) => r.required),
 );
@@ -10999,6 +11121,11 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    tokenRankingExcludedModelsText.value = Array.isArray(
+      settings.token_ranking_excluded_models,
+    )
+      ? settings.token_ranking_excluded_models.join("\n")
+      : "";
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -11165,6 +11292,48 @@ async function loadSettings() {
   } finally {
     loading.value = false;
   }
+}
+
+async function loadLoginIPBlocks() {
+  loginIPBlocksLoading.value = true;
+  try {
+    const result = await adminAPI.settings.getLoginIPBlocks();
+    loginIPBlocksCurrent.value = result.current || [];
+    loginIPBlocksPage.value = Math.min(
+      loginIPBlocksPage.value,
+      Math.max(1, Math.ceil(loginIPBlocksCurrent.value.length / loginIPBlocksPageSize.value)),
+    );
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  } finally {
+    loginIPBlocksLoading.value = false;
+  }
+}
+
+function handleLoginIPBlocksPageSizeChange(pageSize: number) {
+  loginIPBlocksPageSize.value = pageSize;
+  loginIPBlocksPage.value = 1;
+}
+
+async function unblockLoginIP(clientIP: string) {
+  if (!confirm(t("admin.settings.loginIPBlock.unblockConfirm", { ip: clientIP }))) return;
+  try {
+    await adminAPI.settings.unblockLoginIP(clientIP);
+    appStore.showSuccess(t("admin.settings.loginIPBlock.unblocked"));
+    await loadLoginIPBlocks();
+  } catch (error: unknown) {
+    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+  }
+}
+
+function formatLoginIPBlockTime(value?: string): string {
+  return value ? new Date(value).toLocaleString() : "-";
+}
+
+function formatLoginIPBlockRemaining(item: LoginIPBlockRecord): string {
+  if (item.permanent) return t("admin.settings.loginIPBlock.durationPermanent");
+  const minutes = Math.ceil(Math.max(0, item.remaining_seconds || 0) / 60);
+  return t("admin.settings.loginIPBlock.remainingMinutes", { minutes });
 }
 
 async function loadSubscriptionGroups() {
@@ -11619,6 +11788,16 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
+      openai_codex_ticket_enabled: form.openai_codex_ticket_enabled,
+      openai_codex_ticket_harvest_proxy_url:
+        form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
+      token_ranking_excluded_models: tokenRankingExcludedModelsText.value
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      login_ip_block_enabled: form.login_ip_block_enabled,
+      login_ip_block_threshold: form.login_ip_block_threshold,
+      login_ip_block_duration_seconds: form.login_ip_block_duration_seconds,
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,
@@ -12851,6 +13030,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+  loadLoginIPBlocks();
   loadUpstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
   loadOpenCodeGoUsageSettings();

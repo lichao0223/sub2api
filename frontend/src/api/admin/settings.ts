@@ -16,6 +16,15 @@ export interface DefaultSubscriptionSetting {
   validity_days: number;
 }
 
+export interface LoginIPBlockRecord {
+  ip: string;
+  blocked_at?: string;
+  remaining_seconds?: number;
+  permanent?: boolean;
+  event?: string;
+  unblocked_at?: string;
+}
+
 // ── 平台限额类型 ──────────────────────────────────────────────────
 export type PlatformType = "anthropic" | "openai" | "gemini" | "antigravity" | "grok"
 export type QuotaWindowType = "daily" | "weekly" | "monthly"
@@ -398,6 +407,7 @@ export function deriveWeChatConnectStoredMode(
  * System settings interface
  */
 export interface SystemSettings {
+	 token_ranking_excluded_models?: string[];
 	 token_ranking_usd_to_cny_rate?: number;
   // Registration settings
   registration_enabled: boolean;
@@ -417,6 +427,9 @@ export interface SystemSettings {
   session_binding_enabled: boolean; // 会话 IP/UA 绑定
   step_up_enabled: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days: number; // 审计日志保留天数
+  login_ip_block_enabled: boolean;
+  login_ip_block_threshold: number;
+  login_ip_block_duration_seconds: number;
   login_agreement_enabled: boolean;
   login_agreement_mode: "modal" | "checkbox" | string;
   login_agreement_updated_at: string;
@@ -640,6 +653,9 @@ export interface SystemSettings {
   openai_codex_client_version: string;
   openai_codex_client_version_synced: string;
   openai_codex_version_auto_sync_enabled: boolean;
+  openai_codex_ticket_enabled: boolean;
+  openai_codex_ticket_harvest_proxy_url: string;
+  openai_codex_ticket_harvest_proxy_configured: boolean;
   claude_code_client_version: string;
   claude_code_client_version_synced: string;
   claude_code_version_auto_sync_enabled: boolean;
@@ -754,6 +770,7 @@ export interface SystemSettings {
 }
 
 export interface UpdateSettingsRequest {
+	 token_ranking_excluded_models?: string[];
   registration_enabled?: boolean;
   email_verify_enabled?: boolean;
   registration_email_suffix_whitelist?: string[];
@@ -767,6 +784,9 @@ export interface UpdateSettingsRequest {
   session_binding_enabled?: boolean; // 会话 IP/UA 绑定
   step_up_enabled?: boolean; // 敏感操作 step-up 2FA
   audit_log_retention_days?: number; // 审计日志保留天数
+  login_ip_block_enabled?: boolean;
+  login_ip_block_threshold?: number;
+  login_ip_block_duration_seconds?: number;
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;
@@ -963,6 +983,8 @@ export interface UpdateSettingsRequest {
   openai_codex_user_agent?: string;
   openai_codex_client_version?: string;
   openai_codex_version_auto_sync_enabled?: boolean;
+  openai_codex_ticket_enabled?: boolean;
+  openai_codex_ticket_harvest_proxy_url?: string;
   claude_code_client_version?: string;
   claude_code_version_auto_sync_enabled?: boolean;
   // codex_cli_only 加固
@@ -1082,6 +1104,20 @@ export async function updateSettings(
     settings,
   );
   return data;
+}
+
+export async function getLoginIPBlocks(): Promise<{
+  current: LoginIPBlockRecord[];
+  history: LoginIPBlockRecord[];
+}> {
+  const { data } = await apiClient.get<{ current: LoginIPBlockRecord[]; history: LoginIPBlockRecord[] }>(
+    "/admin/settings/login-ip-blocks",
+  );
+  return data;
+}
+
+export async function unblockLoginIP(ip: string): Promise<void> {
+  await apiClient.delete(`/admin/settings/login-ip-blocks/${encodeURIComponent(ip)}`);
 }
 
 /**
@@ -1577,6 +1613,8 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  getLoginIPBlocks,
+  unblockLoginIP,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,
