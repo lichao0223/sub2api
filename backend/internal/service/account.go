@@ -271,6 +271,10 @@ func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }
 
+func (a *Account) IsQoder() bool {
+	return a != nil && a.Platform == PlatformQoder
+}
+
 func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
@@ -301,7 +305,7 @@ func (a *Account) IsCNProvider() bool {
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
+	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformQoder || a.IsCNProvider() || a.IsOpenCodeGo())
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -1763,6 +1767,28 @@ func (a *Account) GetOpenAIApiKey() string {
 		return ""
 	}
 	return a.GetCredential("api_key")
+}
+
+func (a *Account) GetQoderApiKey() string {
+	if !a.IsQoder() {
+		return ""
+	}
+	return a.GetCredential("api_key")
+}
+
+func (a *Account) GetQoderBaseURL() string {
+	if !a.IsQoder() {
+		return ""
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return qoderDefaultBaseURL
+	}
+	return strings.TrimRight(baseURL, "/")
+}
+
+func (a *Account) IsQoderDirect() bool {
+	return a.IsQoder() && strings.EqualFold(strings.TrimSpace(a.GetCredential("mode")), "direct")
 }
 
 // GetOpenAIProtocolAPIKey 返回 OpenAI 协议族 APIKey 账号的密钥。

@@ -299,7 +299,7 @@ func allowOpenAICompatibleMessagesDispatch(c *gin.Context, apiKey *service.APIKe
 	if apiKey == nil || apiKey.Group == nil {
 		return true
 	}
-	if apiKey.Group.Platform == service.PlatformGrok {
+	if apiKey.Group.Platform == service.PlatformGrok || apiKey.Group.Platform == service.PlatformQoder {
 		return true
 	}
 	// 国产供应商分组与 grok 同语义:/v1/messages 就是其主要服务形态(anthropic
@@ -324,7 +324,7 @@ func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, m
 	return compositeTargetPlatformAllowed(c, apiKey, model,
 		service.PlatformOpenAI, service.PlatformGrok,
 		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek,
-		service.PlatformMiniMax, service.PlatformVolcengine, service.PlatformOpenCodeGo)
+		service.PlatformMiniMax, service.PlatformVolcengine, service.PlatformOpenCodeGo, service.PlatformQoder)
 }
 
 // isResponsesWebSocketCompositePlatform 限定 composite 分组在 Responses WebSocket

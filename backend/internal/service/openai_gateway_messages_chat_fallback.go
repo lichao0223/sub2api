@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -107,6 +108,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	)
 
 	// 3. Build and send upstream request via the shared CC pipeline
+	if account.Platform == PlatformQoder && !account.IsQoderDirect() {
+		return s.forwardAnthropicViaQoder(ctx, c, account, chatBody, clientStream, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
 	if err != nil {
 		return nil, err
@@ -140,6 +144,37 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	}
 	return result, err
 }
+
+func (s *OpenAIGatewayService) forwardAnthropicViaQoder(ctx context.Context, c *gin.Context, account *Account, chatBody []byte, clientStream bool, originalModel, billingModel, upstreamModel string, reasoningEffort, serviceTier *string, startTime time.Time) (*OpenAIForwardResult, error) {
+	pr, pw := io.Pipe()
+	go func() {
+		defer func() { _ = pw.Close() }()
+		w := &qoderPipeResponseWriter{w: pw, header: make(http.Header)}
+		if clientStream {
+			w.header.Set("Content-Type", "text/event-stream")
+		} else {
+			w.header.Set("Content-Type", "application/json")
+		}
+		ginCtx, _ := gin.CreateTestContext(w)
+		ginCtx.Request = c.Request
+		_, _ = s.qoderService.ForwardChatCompletions(ctx, ginCtx, account, chatBody, "", billingModel)
+	}()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: pr}
+	if clientStream {
+		return s.streamChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+	}
+	return s.bufferChatCompletionsAsAnthropic(c, resp, originalModel, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+}
+
+type qoderPipeResponseWriter struct {
+	w      *io.PipeWriter
+	header http.Header
+}
+
+func (w *qoderPipeResponseWriter) Header() http.Header         { return w.header }
+func (w *qoderPipeResponseWriter) WriteHeader(int)             {}
+func (w *qoderPipeResponseWriter) Write(b []byte) (int, error) { return w.w.Write(b) }
+func (w *qoderPipeResponseWriter) Flush()                      {}
 
 func (s *OpenAIGatewayService) bufferChatCompletionsAsAnthropic(
 	c *gin.Context,

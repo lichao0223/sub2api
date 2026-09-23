@@ -49,6 +49,9 @@
     <path d="M4 17 8 7l4 10 4-10 4 10" />
     <path d="M6 17h12" />
   </svg>
+  <svg v-else-if="platform === 'qoder'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 5h14v14H5z" /><path d="M8 12h8M12 8v8" />
+  </svg>
   <!-- OpenCode official mark -->
   <svg v-else-if="platform === 'opencode_go'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd">
     <path d="M16 6H8v12h8V6zm4 16H4V2h16v20z" />

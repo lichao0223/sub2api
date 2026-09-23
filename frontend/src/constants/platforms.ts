@@ -21,6 +21,7 @@ export const CONCRETE_PLATFORM_OPTIONS = [
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'minimax', label: 'MiniMax' },
   { value: 'volcengine', label: 'Volcengine Ark' },
+  { value: 'qoder', label: 'Qoder CN' },
   { value: 'opencode_go', label: 'OpenCode' }
 ] as const satisfies readonly PlatformOption<AccountPlatform>[]
 

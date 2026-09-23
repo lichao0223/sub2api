@@ -230,6 +230,19 @@
           </button>
           <button
             type="button"
+            @click="selectQoderPlatform"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'qoder'
+                ? 'bg-white text-cyan-600 shadow-sm dark:bg-dark-600 dark:text-cyan-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="qoder" size="sm" />
+            Qoder CN
+          </button>
+          <button
+            type="button"
             @click="selectOpenCodeGoPlatform()"
             :class="[
               'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
@@ -4319,6 +4332,12 @@ function selectOpenCodeGoPlatform() {
   apiKeyBaseUrl.value = defaultCNBaseUrl('opencode_go', openCodeAccountMode.value, 'adaptive')
   resetAdaptiveBaseUrls('opencode_go', openCodeAccountMode.value)
   openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(openCodeAccountMode.value))
+}
+function selectQoderPlatform() {
+  form.platform = 'qoder'
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiKeyBaseUrl.value = 'https://api.qoder.com.cn/api/v1/cloud'
 }
 // 账号类型 / 协议变更时同步默认 base url。
 watch(openCodeAccountMode, (mode, previousMode) => {

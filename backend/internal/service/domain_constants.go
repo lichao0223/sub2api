@@ -49,6 +49,7 @@ const (
 	PlatformDeepseek   = domain.PlatformDeepseek
 	PlatformMiniMax    = domain.PlatformMiniMax
 	PlatformVolcengine = domain.PlatformVolcengine
+	PlatformQoder      = domain.PlatformQoder
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
 	PlatformComposite  = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
@@ -120,7 +121,7 @@ func IsOpenCodeGo(platform string) bool {
 // IsMultiProtocolAPIKeyProvider 报告 platform 是否为多协议 API Key 网关
 // （国产供应商 + OpenCode）：走 OpenAI 网关、支持 adaptive 协议分流。
 func IsMultiProtocolAPIKeyProvider(platform string) bool {
-	return IsCNProvider(platform) || platform == PlatformOpenCodeGo
+	return IsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformQoder
 }
 
 // AllowedQuotaPlatforms 是允许设置 user × platform quota 的平台列表（单一权威来源）。
