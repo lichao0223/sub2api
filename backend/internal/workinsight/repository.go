@@ -266,8 +266,10 @@ type DisabledAPIKey struct {
 	Key        string
 }
 
-// DisableUsersOverDailyInputThreshold disables users whose daily usage contains
-// at least consecutive requests above the configured input-token threshold.
+// DisableUsersOverDailyInputThreshold disables users whose usage since the
+// latest user update (or the start of the day) reaches the configured count.
+// Updating status advances updated_at, which starts a fresh counter after an
+// automatic disable and after an administrator re-enables the user.
 func (r *Repository) DisableUsersOverDailyInputThreshold(ctx context.Context, start, end time.Time, threshold, consecutive int, exemptUserIDs []int64) ([]int64, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		WITH qualified_users AS (
@@ -277,7 +279,7 @@ func (r *Repository) DisableUsersOverDailyInputThreshold(ctx context.Context, st
 				AND NOT COALESCE(u.id=ANY($7::bigint[]),FALSE)
 				AND (
 					SELECT COUNT(*) FROM usage_logs ul
-					WHERE ul.user_id=u.id AND ul.created_at >= $1 AND ul.created_at < $2 AND ul.input_tokens > $3
+					WHERE ul.user_id=u.id AND ul.created_at >= GREATEST($1, u.updated_at) AND ul.created_at < $2 AND ul.input_tokens > $3
 				) >= $4
 		)
 		UPDATE users SET status=$8,updated_at=NOW()
