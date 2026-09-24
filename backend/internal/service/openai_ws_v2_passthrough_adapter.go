@@ -697,6 +697,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		}
 		firstClientMessage = liteFirstMessage
 	}
+	firstClientMessage = normalizeOpenAIRequestLocale(ctx, account, firstClientMessage, "ws", time.Now())
 	originalFirstClientMessage := firstClientMessage
 	if next, policyErr := applyOpenAIWSReasoningEffortPolicy(firstClientMessage, hooks); policyErr != nil {
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, policyErr.Error(), policyErr)
@@ -982,6 +983,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
+			payload = normalizeOpenAIRequestLocale(ctx, account, payload, "ws", time.Now())
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}

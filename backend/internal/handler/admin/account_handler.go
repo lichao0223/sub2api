@@ -955,6 +955,10 @@ func ifNoneMatchMatched(ifNoneMatch, etag string) bool {
 
 // GetByID handles getting an account by ID
 // GET /api/v1/admin/accounts/:id
+func (h *AccountHandler) GetOpenAIRequestTimezones(c *gin.Context) {
+	response.Success(c, gin.H{"default": service.DefaultOpenAIRequestTimezone, "timezones": service.OpenAIRequestTimezoneOptions()})
+}
+
 func (h *AccountHandler) GetByID(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {

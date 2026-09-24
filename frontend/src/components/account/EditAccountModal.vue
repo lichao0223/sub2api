@@ -25,6 +25,7 @@
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
+      <OpenAIRequestTimezoneField v-if="account.platform === 'openai'" v-model="openAIRequestTimezone" />
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
@@ -3184,6 +3185,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
+import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import AccountSchedulingEditor from '@/components/account/AccountSchedulingEditor.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -3763,6 +3765,7 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openAIRequestTimezone = ref('Asia/Singapore')
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4237,6 +4240,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+	openAIRequestTimezone.value = typeof extra?.openai_request_timezone === 'string' ? extra.openai_request_timezone : 'Asia/Singapore'
 	editModelProvider.value = extra?.model_provider === 'glm' || extra?.model_provider === 'deepseek' || extra?.model_provider === 'volcengine'
 		? extra.model_provider
 		: 'none'
@@ -5776,6 +5780,7 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      newExtra.openai_request_timezone = openAIRequestTimezone.value
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value

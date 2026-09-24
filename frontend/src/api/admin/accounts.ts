@@ -410,6 +410,11 @@ export async function clearRateLimit(id: number): Promise<Account> {
   return data
 }
 
+export async function getOpenAIRequestTimezones(): Promise<{ default: string; timezones: string[] }> {
+  const { data } = await apiClient.get<{ default: string; timezones: string[] }>('/admin/accounts/openai-request-timezones')
+  return data
+}
+
 /**
  * Recover account runtime state in one call
  * @param id - Account ID
@@ -1136,6 +1141,7 @@ export const accountsAPI = {
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
   getById,
+  getOpenAIRequestTimezones,
   create,
   duplicate,
   update,

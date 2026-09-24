@@ -614,6 +614,8 @@ export default {
       },
       // OpenAI specific hints
       openai: {
+        requestTimezone: 'Request timezone',
+        requestTimezoneDesc: 'Replaces the timezone and date in the OpenAI request environment context.',
         baseUrlHint: 'Leave default for official OpenAI API',
         apiKeyHint: 'Your OpenAI API Key',
         oauthPassthrough: 'Auto passthrough (auth only)',

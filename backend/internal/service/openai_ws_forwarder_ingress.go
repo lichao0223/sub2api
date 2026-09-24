@@ -788,11 +788,13 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	if buildHdrErr != nil {
 		return fmt.Errorf("build ws headers: %w", buildHdrErr)
 	}
+	normalizeOpenAIRequestAcceptLanguage(account, wsHeaders)
 	baseAcquireReq := openAIWSAcquireRequest{
 		Account: account,
 		WSURL:   wsURL,
 		Headers: wsHeaders,
 		HeadersFactory: func(factoryCtx context.Context, headers http.Header) (http.Header, error) {
+			normalizeOpenAIRequestAcceptLanguage(account, headers)
 			return s.refreshOpenAIAgentIdentityHeaders(factoryCtx, account, headers)
 		},
 		ProxyURL: func() string {
