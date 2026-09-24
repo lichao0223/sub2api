@@ -53,9 +53,17 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 	var winner *accountSchedulingThresholdCandidate
 	switch decision.Platform {
 	case PlatformOpenAI:
-		winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
+		if account.IsVolcengineAgentPlan() {
+			winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformVolcengine), threshold, now)
+		} else {
+			winner = pickLatestResetSchedulingCandidate(openAIThresholdCandidates(account, now), threshold, now)
+		}
 	case PlatformAnthropic:
-		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
+		if account.IsVolcengineAgentPlan() {
+			winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, PlatformVolcengine), threshold, now)
+		} else {
+			winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
+		}
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
 	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformVolcengine:

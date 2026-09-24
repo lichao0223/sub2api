@@ -1400,8 +1400,13 @@
             <option value="none">无</option>
             <option value="glm">GLM</option>
             <option value="deepseek">DeepSeek</option>
+            <option value="volcengine">火山方舟 Agent Plan</option>
           </select>
-          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。</p>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
+          <div v-if="modelProvider === 'volcengine'" class="mt-3 grid gap-3 sm:grid-cols-2">
+            <input v-model="volcengineAccessKeyID" type="text" class="input" placeholder="AccessKey ID" />
+            <input v-model="volcengineSecretAccessKey" type="password" class="input" placeholder="Secret AccessKey" />
+          </div>
         </div>
 
         <div v-if="!isMultiProtocolPlatform || apiProtocol !== 'adaptive'">
@@ -4210,7 +4215,7 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
-const modelProvider = ref<'none' | 'glm' | 'deepseek'>('none')
+const modelProvider = ref<'none' | 'glm' | 'deepseek' | 'volcengine'>('none')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
@@ -5915,7 +5920,7 @@ const handleSubmit = async () => {
       if (zhipuOrganization.value.trim()) credentials.zhipu_organization = zhipuOrganization.value.trim()
       if (zhipuProject.value.trim()) credentials.zhipu_project = zhipuProject.value.trim()
     }
-    if (form.platform === 'volcengine') {
+    if (form.platform === 'volcengine' || modelProvider.value === 'volcengine') {
       if (volcengineAccessKeyID.value.trim()) credentials.volcengine_access_key_id = volcengineAccessKeyID.value.trim()
       if (volcengineSecretAccessKey.value.trim()) credentials.volcengine_secret_access_key = volcengineSecretAccessKey.value.trim()
     }

@@ -34,8 +34,13 @@
             <option value="none">无</option>
             <option value="glm">GLM</option>
             <option value="deepseek">DeepSeek</option>
+            <option value="volcengine">火山方舟 Agent Plan</option>
           </select>
-          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额。</p>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
+          <div v-if="editModelProvider === 'volcengine'" class="mt-3 grid gap-3 sm:grid-cols-2">
+            <input v-model="editVolcengineAccessKeyID" type="text" class="input" placeholder="AccessKey ID" />
+            <input v-model="editVolcengineSecretAccessKey" type="password" class="input" placeholder="Secret AccessKey（留空保持不变）" />
+          </div>
         </div>
 
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
@@ -3417,7 +3422,7 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
-const editModelProvider = ref<'none' | 'glm' | 'deepseek'>('none')
+const editModelProvider = ref<'none' | 'glm' | 'deepseek' | 'volcengine'>('none')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -4232,9 +4237,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
-	editModelProvider.value = extra?.model_provider === 'glm' || extra?.model_provider === 'deepseek'
+	editModelProvider.value = extra?.model_provider === 'glm' || extra?.model_provider === 'deepseek' || extra?.model_provider === 'volcengine'
 		? extra.model_provider
 		: 'none'
+	if (editModelProvider.value === 'volcengine') {
+		editVolcengineAccessKeyID.value = typeof credentials?.volcengine_access_key_id === 'string' ? credentials.volcengine_access_key_id : ''
+		editVolcengineSecretAccessKey.value = ''
+	}
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
@@ -4511,10 +4520,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         editZhipuOrganization.value = typeof credentials.zhipu_organization === 'string' ? credentials.zhipu_organization : ''
         editZhipuProject.value = typeof credentials.zhipu_project === 'string' ? credentials.zhipu_project : ''
       }
-      if (newAccount.platform === 'volcengine') {
-        editVolcengineAccessKeyID.value = typeof credentials.volcengine_access_key_id === 'string' ? credentials.volcengine_access_key_id : ''
-        editVolcengineSecretAccessKey.value = ''
-      }
+		if (newAccount.platform === 'volcengine') {
+			editVolcengineAccessKeyID.value = typeof credentials.volcengine_access_key_id === 'string' ? credentials.volcengine_access_key_id : ''
+			editVolcengineSecretAccessKey.value = ''
+		}
       if (newAccount.platform === 'opencode_go') {
         editOpenCodeGoProtocolRules.value =
           parseOpenCodeGoProtocolRules(credentials.protocol_rules) ??
@@ -5305,6 +5314,13 @@ const handleSubmit = async () => {
           if (editVolcengineAccessKeyID.value.trim()) newCredentials.volcengine_access_key_id = editVolcengineAccessKeyID.value.trim()
           if (editVolcengineSecretAccessKey.value.trim()) newCredentials.volcengine_secret_access_key = editVolcengineSecretAccessKey.value.trim()
         }
+      }
+      if (editModelProvider.value === 'volcengine') {
+        if (editVolcengineAccessKeyID.value.trim()) newCredentials.volcengine_access_key_id = editVolcengineAccessKeyID.value.trim()
+        if (editVolcengineSecretAccessKey.value.trim()) newCredentials.volcengine_secret_access_key = editVolcengineSecretAccessKey.value.trim()
+      } else if (editModelProvider.value === 'none') {
+        delete newCredentials.volcengine_access_key_id
+        delete newCredentials.volcengine_secret_access_key
       }
 
       // Handle API key

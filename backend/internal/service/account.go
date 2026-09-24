@@ -1415,7 +1415,20 @@ func (a *Account) GetAccountMode() string {
 
 // IsCodingPlan 报告账号是否为 Coding Plan 模式（用于滚动用量窗口冷却）。
 func (a *Account) IsCodingPlan() bool {
-	return a.GetAccountMode() == AccountModeCoding
+	return a.GetAccountMode() == AccountModeCoding || a.IsVolcengineAgentPlan()
+}
+
+// IsVolcengineAgentPlan supports the legacy OpenAI/Anthropic account form where
+// Volcengine is selected as model_provider instead of as the account platform.
+func (a *Account) IsVolcengineAgentPlan() bool {
+	if a == nil {
+		return false
+	}
+	if a.Platform == PlatformVolcengine {
+		return true
+	}
+	return (a.Platform == PlatformOpenAI || a.Platform == PlatformAnthropic) &&
+		strings.EqualFold(strings.TrimSpace(a.GetExtraString("model_provider")), PlatformVolcengine)
 }
 
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
@@ -1635,6 +1648,9 @@ func (a *Account) GetCNAPIKey() string {
 func (a *Account) GetCodingPlanProvider() string {
 	if a == nil {
 		return ""
+	}
+	if a.IsVolcengineAgentPlan() {
+		return PlatformVolcengine
 	}
 	if a.IsOpenCodeGoPlan() {
 		return PlatformOpenCodeGo

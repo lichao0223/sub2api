@@ -480,6 +480,9 @@ func validateCodingPlanAccount(account *Account) error {
 	if account == nil {
 		return infraerrors.New(http.StatusNotFound, "CN_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
 	}
+	if account.IsVolcengineAgentPlan() {
+		return nil
+	}
 	if account.IsOpenCodeGoPlan() {
 		return nil
 	}

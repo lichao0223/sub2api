@@ -175,12 +175,15 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
 	}
-	if !account.IsOpenCodeGo() && (!account.IsCNProvider() || !account.IsCodingPlan()) {
+	if !account.IsOpenCodeGo() && !account.IsVolcengineAgentPlan() && (!account.IsCNProvider() || !account.IsCodingPlan()) {
 		return nil
 	}
 	provider := account.Platform
+	if account.IsVolcengineAgentPlan() {
+		provider = PlatformVolcengine
+	}
 	suffixes := []string{cnExtraSuffix5hReset, cnExtraSuffixWeeklyReset}
-	if account.IsOpenCodeGo() || account.Platform == PlatformVolcengine {
+	if account.IsOpenCodeGo() || provider == PlatformVolcengine {
 		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
 	}
 	var earliest *time.Time

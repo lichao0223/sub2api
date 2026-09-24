@@ -339,6 +339,18 @@ func TestGetCodingPlanProvider_MiniMax(t *testing.T) {
 	}}).GetCodingPlanProvider())
 }
 
+func TestGetCodingPlanProvider_LegacyVolcengineModelProvider(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"model_provider": PlatformVolcengine},
+	}
+	require.True(t, account.IsVolcengineAgentPlan())
+	require.True(t, account.IsCodingPlan())
+	require.Equal(t, PlatformVolcengine, account.GetCodingPlanProvider())
+}
+
 // TestCNBalanceURL Kimi 固定端点；DeepSeek 基于 base_url 拼接。
 func TestCNBalanceURL(t *testing.T) {
 	t.Parallel()
