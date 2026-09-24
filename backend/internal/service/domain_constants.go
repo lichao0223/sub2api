@@ -142,6 +142,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformZhipu,
 	PlatformDeepseek,
 	PlatformMiniMax,
+	PlatformVolcengine,
 	PlatformOpenCodeGo,
 }
 

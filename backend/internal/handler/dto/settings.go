@@ -28,6 +28,8 @@ type CustomEndpoint struct {
 
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
+	UsageDisplayCurrency                string                   `json:"usage_display_currency"`
+	UsageDisplayUSDToCNYRate            float64                  `json:"usage_display_usd_to_cny_rate"`
 	RegistrationEnabled                 bool                     `json:"registration_enabled"`
 	EmailVerifyEnabled                  bool                     `json:"email_verify_enabled"`
 	RegistrationEmailSuffixWhitelist    []string                 `json:"registration_email_suffix_whitelist"`
@@ -45,6 +47,9 @@ type SystemSettings struct {
 	SessionBindingEnabled               bool                     `json:"session_binding_enabled"`  // 会话 IP/UA 绑定
 	StepUpEnabled                       bool                     `json:"step_up_enabled"`          // 敏感操作 step-up 2FA
 	AuditLogRetentionDays               int                      `json:"audit_log_retention_days"` // 审计日志保留天数
+	LoginIPBlockEnabled                 bool                     `json:"login_ip_block_enabled"`
+	LoginIPBlockThreshold               int                      `json:"login_ip_block_threshold"`
+	LoginIPBlockDurationSeconds         int                      `json:"login_ip_block_duration_seconds"`
 	LoginAgreementEnabled               bool                     `json:"login_agreement_enabled"`
 	LoginAgreementMode                  string                   `json:"login_agreement_mode"`
 	LoginAgreementUpdatedAt             string                   `json:"login_agreement_updated_at"`
@@ -287,6 +292,9 @@ type SystemSettings struct {
 	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL              string   `json:"payment_help_image_url"`
 	PaymentHelpText                  string   `json:"payment_help_text"`
+	TokenRankingUSDToCNYRate         float64  `json:"token_ranking_usd_to_cny_rate"`
+	TokenRankingExcludedModels       []string `json:"token_ranking_excluded_models"`
+	TokenRankingExcludedGroupIDs     []int64  `json:"token_ranking_excluded_group_ids"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -312,6 +320,7 @@ type SystemSettings struct {
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
+	ChannelMonitorAllowPrivateEndpoints  bool   `json:"channel_monitor_allow_private_endpoints"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`

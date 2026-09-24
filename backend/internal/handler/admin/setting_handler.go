@@ -131,6 +131,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		paymentCfg = &service.PaymentConfig{}
 	}
 	passkeyConfigured, passkeyRPID, passkeyRPOrigins := h.settingService.PasskeyConfiguration()
+	tokenRankingSettings := h.settingService.GetTokenRankingSettings(c.Request.Context())
 
 	payload := dto.SystemSettings{
 		RegistrationEnabled:                                    settings.RegistrationEnabled,
@@ -150,6 +151,9 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		SessionBindingEnabled:                                  settings.SessionBindingEnabled,
 		StepUpEnabled:                                          settings.StepUpEnabled,
 		AuditLogRetentionDays:                                  settings.AuditLogRetentionDays,
+		LoginIPBlockEnabled:                                    settings.LoginIPBlockEnabled,
+		LoginIPBlockThreshold:                                  settings.LoginIPBlockThreshold,
+		LoginIPBlockDurationSeconds:                            settings.LoginIPBlockDurationSeconds,
 		LoginAgreementEnabled:                                  settings.LoginAgreementEnabled,
 		LoginAgreementMode:                                     settings.LoginAgreementMode,
 		LoginAgreementUpdatedAt:                                settings.LoginAgreementUpdatedAt,
@@ -369,6 +373,11 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               paymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    paymentCfg.HelpImageURL,
 		PaymentHelpText:                                        paymentCfg.HelpText,
+		UsageDisplayCurrency:                                   h.settingService.GetUsageDisplayCurrency(c.Request.Context()),
+		UsageDisplayUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
+		TokenRankingUSDToCNYRate:                               tokenRankingSettings.USDToCNYRate,
+		TokenRankingExcludedModels:                             tokenRankingSettings.ExcludedModels,
+		TokenRankingExcludedGroupIDs:                           tokenRankingSettings.ExcludedGroupIDs,
 		PaymentCancelRateLimitEnabled:                          paymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              paymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           paymentCfg.CancelRateLimitWindow,
@@ -380,6 +389,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorAllowPrivateEndpoints:  settings.ChannelMonitorAllowPrivateEndpoints,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
