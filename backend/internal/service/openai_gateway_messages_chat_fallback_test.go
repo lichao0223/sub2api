@@ -112,7 +112,8 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			model:      "gpt-5.6-luna",
 			mapped:     "gpt-5.6-luna",
 			effortJSON: `,"output_config":{"effort":"max"},"thinking":{"type":"disabled"}`,
-			wantEffort: "none",
+			wantEffort:          "none",
+			wantRequestedEffort: "none",
 		},
 	}
 
