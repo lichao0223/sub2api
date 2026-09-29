@@ -581,7 +581,7 @@ const userTrendChartData = computed(() => {
 
 // Format helpers
 const formatUserTrendValue = (value: number): string =>
-  userTrendMetric.value === 'tokens' ? formatTokens(value) : `$${formatCost(value)}`
+  userTrendMetric.value === 'tokens' ? formatTokens(value) : `${usageCurrencySymbol()}${formatUsageCost(value)}`
 
 const formatTokens = (value: number | undefined): string => {
   if (value === undefined || value === null) return '0'
