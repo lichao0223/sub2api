@@ -31,6 +31,9 @@ type ChatCompletionsToResponsesOptions struct {
 // ChatCompletionsToResponsesWithOptions converts Chat Completions with optional
 // provider-specific compatibility behavior.
 func ChatCompletionsToResponsesWithOptions(req *ChatCompletionsRequest, opts *ChatCompletionsToResponsesOptions) (*ResponsesRequest, error) {
+	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
+		return nil, err
+	}
 	input, err := convertChatMessagesToResponsesInput(req.Messages, opts)
 	if err != nil {
 		return nil, err
