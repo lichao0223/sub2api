@@ -45,6 +45,7 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
+      getOpenAIRequestTimezones: vi.fn().mockResolvedValue({ default: 'Asia/Shanghai', timezones: ['Asia/Shanghai'] }),
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -248,7 +249,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await selectButtonByText(wrapper, 'API Key')
 
     const provider = wrapper.get('[data-testid="model-provider-select"]')
-    expect(provider.findAll('option').map(option => option.text())).toEqual(['无', 'GLM', 'DeepSeek'])
+    expect(provider.findAll('option').map(option => option.text())).toEqual(['无', 'GLM', 'DeepSeek', '火山方舟 Agent Plan'])
     await provider.setValue('glm')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('GLM account')
     await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-test')
@@ -532,6 +533,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
         { pattern: 'gpt-*', protocol: 'responses' },
         { pattern: 'muse-spark-*', protocol: 'responses' },
         { pattern: 'claude-*', protocol: 'anthropic' },
+        { pattern: 'qwen3.8-max', protocol: 'chat_completions' },
         { pattern: 'qwen*', protocol: 'anthropic' }
       ]
     })

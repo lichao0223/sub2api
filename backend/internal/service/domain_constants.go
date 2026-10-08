@@ -56,6 +56,7 @@ const (
 	PlatformMiniMax    = domain.PlatformMiniMax
 	PlatformVolcengine = domain.PlatformVolcengine
 	PlatformQoder      = domain.PlatformQoder
+	PlatformTypeSafe   = domain.PlatformTypeSafe
 	PlatformOpenCodeGo = domain.PlatformOpenCodeGo
 	PlatformComposite  = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
@@ -144,6 +145,7 @@ var AllowedQuotaPlatforms = []string{
 	PlatformMiniMax,
 	PlatformVolcengine,
 	PlatformOpenCodeGo,
+	PlatformTypeSafe,
 }
 
 // AllowedSchedulingThresholdPlatforms 是允许设置账号自动停调阈值的平台列表。

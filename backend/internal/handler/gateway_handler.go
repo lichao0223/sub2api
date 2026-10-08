@@ -25,6 +25,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/qoder"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -222,6 +223,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 	if !compositeTargetPlatformResolved(c, apiKey, reqModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
+		return
+	}
+	if rejectSystemOneOnlyPlatform(c, apiKey, h.errorResponse) {
 		return
 	}
 
@@ -1172,7 +1176,7 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID)
+		availableModels := h.compositeAvailableModels(c.Request.Context(), groupID, "", true)
 		if apiKey != nil && apiKey.Group != nil && apiKey.Group.ModelAllowlistEnabled() {
 			source := availableModels
 			if len(source) == 0 {
@@ -1214,6 +1218,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	}
 	if platform == service.PlatformGrok {
 		writeGrokModelsList(c, xai.DefaultModelIDs())
+		return
+	}
+	if platform == service.PlatformTypeSafe {
+		writeModelsList(c, platform, []string{typesafe.JevLatestModel})
 		return
 	}
 
@@ -1267,19 +1275,19 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 		platform = group.Platform
 	}
 	if platform == service.PlatformComposite {
-		availableModels := h.compositeAvailableModels(ctx, groupID)
+		availableModels := h.compositeAvailableModels(ctx, groupID, service.CompositeRouteEndpointResponses, false)
 		fallbackModels := defaultCodexModelIDsForPlatform(service.PlatformComposite)
+		models := availableModels
+		if len(models) == 0 {
+			models = fallbackModels
+		}
 		if group.ModelAllowlistEnabled() {
-			source := availableModels
-			if len(source) == 0 {
-				source = fallbackModels
-			}
-			return group.ModelAllowlist.FilterForListing(source)
+			models = group.ModelAllowlist.FilterForListing(models)
 		}
-		if len(availableModels) > 0 {
-			return availableModels
+		if filtered, err := h.gatewayService.FilterCompositeCodexModels(ctx, group.ID, models); err == nil {
+			return filtered
 		}
-		return fallbackModels
+		return models
 	}
 
 	availableModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
@@ -1293,14 +1301,20 @@ func (h *GatewayHandler) codexModelIDsForGroup(ctx context.Context, group *servi
 	return fallbackModels
 }
 
-func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64) []string {
+// compositeAvailableModels lists the models the composite group can serve.
+// includeSystemOne adds TypeSafe models, which only work through /v1/systemone;
+// LLM client catalogs (Codex) must exclude them.
+func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *int64, endpoint string, includeSystemOne bool) []string {
 	if h == nil || h.gatewayService == nil {
 		return nil
 	}
 	seen := make(map[string]struct{})
 	models := make([]string, 0)
 	schedulablePlatforms := h.gatewayService.GetSchedulablePlatforms(ctx, groupID)
-	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformVolcengine, service.PlatformQoder, service.PlatformOpenCodeGo} {
+	for _, platform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformVolcengine, service.PlatformQoder, service.PlatformOpenCodeGo, service.PlatformTypeSafe} {
+		if platform == service.PlatformTypeSafe && !includeSystemOne {
+			continue
+		}
 		platformModels := h.gatewayService.GetAvailableModels(ctx, groupID, platform)
 		if len(platformModels) == 0 {
 			// CN 供应商没有静态默认模型列表（defaultModelIDsForPlatform 的
@@ -1319,6 +1333,16 @@ func (h *GatewayHandler) compositeAvailableModels(ctx context.Context, groupID *
 			}
 			seen[model] = struct{}{}
 			models = append(models, model)
+		}
+	}
+	// A route can expose a public ID that no account model mapping contains.
+	// On lookup failure, retain the existing account-derived catalog only.
+	if routeModels, err := h.gatewayService.GetCompositeRouteModels(ctx, groupID, endpoint, includeSystemOne); err == nil {
+		for _, model := range routeModels {
+			if _, ok := seen[model]; !ok {
+				seen[model] = struct{}{}
+				models = append(models, model)
+			}
 		}
 	}
 	return models
@@ -1486,9 +1510,14 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return xai.DefaultModelIDs()
 	case service.PlatformOpenCodeGo:
 		return service.DefaultOpenCodeGoModelIDs()
+	case service.PlatformTypeSafe:
+		return []string{"jev-latest"}
 	case service.PlatformComposite:
 		ids := make([]string, 0)
 		seen := make(map[string]struct{})
+		// TypeSafe is deliberately absent: jev-latest only works through
+		// /v1/systemone, so the static fallback never advertises it to LLM
+		// clients. compositeAvailableModels lists it when the group can serve it.
 		for _, concretePlatform := range []string{service.PlatformAnthropic, service.PlatformGemini, service.PlatformOpenAI, service.PlatformAntigravity, service.PlatformGrok, service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax, service.PlatformVolcengine, service.PlatformOpenCodeGo} {
 			for _, id := range defaultModelIDsForPlatform(concretePlatform) {
 				if _, ok := seen[id]; ok {
@@ -2172,6 +2201,9 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	}
 	if !compositeTargetPlatformResolved(c, apiKey, parsedReq.Model) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by composite groups")
+		return
+	}
+	if rejectSystemOneOnlyPlatform(c, apiKey, h.errorResponse) {
 		return
 	}
 

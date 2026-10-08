@@ -112,11 +112,11 @@ const handleClose = () => {
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
-  if (props.show && props.closeOnEscape && event.key === 'Escape') {
+  if (props.show && props.closeOnEscape && event.key === 'Escape' && [...openDialogs].pop() === dialogId) {
     emit('close')
     return
   }
-  if (!props.show || event.key !== 'Tab' || !dialogRef.value) return
+  if (!props.show || [...openDialogs].pop() !== dialogId || event.key !== 'Tab' || !dialogRef.value) return
   const focusable = Array.from(dialogRef.value.querySelectorAll<HTMLElement>(focusableSelector))
   if (!focusable.length) {
     event.preventDefault()
