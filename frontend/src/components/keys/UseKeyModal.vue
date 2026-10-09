@@ -1338,6 +1338,8 @@ function generateRoutedCodexFiles(
     qoder: 'Qoder CN',
     opencode_go: 'OpenCode',
     typesafe: 'TypeSafe / Jev',
+    command_code: 'Command Code',
+    cline: 'Cline',
     composite: 'Composite'
   }
   const label = labels[platform]

@@ -184,7 +184,7 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
-	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax volcengine qoder opencode_go typesafe composite"`
+	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -258,7 +258,7 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
-	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax volcengine qoder opencode_go typesafe composite"`
+	Platform                  string                         `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -332,7 +332,7 @@ type UpdateGroupRequest struct {
 type CompositeRouteRequest struct {
 	PublicModel    string `json:"public_model" binding:"required"`
 	MatchType      string `json:"match_type" binding:"omitempty,oneof=exact prefix"`
-	TargetPlatform string `json:"target_platform" binding:"required,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax volcengine qoder opencode_go typesafe"`
+	TargetPlatform string `json:"target_platform" binding:"required,concrete_platform"`
 	UpstreamModel  string `json:"upstream_model"`
 	Endpoint       string `json:"endpoint" binding:"omitempty,oneof=any messages count_tokens responses chat_completions embeddings images gemini"`
 	Priority       int    `json:"priority"`
@@ -627,22 +627,6 @@ func (h *GroupHandler) GetGroupModelAllowlistCandidates(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, gin.H{"models": models})
-}
-
-// GetAvailableModels returns the models exposed by this group's /v1/models endpoint.
-func (h *GroupHandler) GetAvailableModels(c *gin.Context) {
-	groupID, err := strconv.ParseInt(c.Param("id"), 10, 64)
-	if err != nil || groupID <= 0 {
-		response.BadRequest(c, "Invalid group ID")
-		return
-	}
-
-	models, err := h.adminService.GetGroupAvailableModels(c.Request.Context(), groupID)
-	if err != nil {
-		response.ErrorFrom(c, err)
-		return
-	}
 	response.Success(c, gin.H{"models": models})
 }
 
@@ -989,15 +973,7 @@ func (h *GroupHandler) GetGroupAPIKeys(c *gin.Context) {
 
 	page, pageSize := response.ParsePagination(c)
 
-	var keys []service.APIKey
-	var total int64
-	if searcher, ok := h.adminService.(interface {
-		GetGroupAPIKeysWithSearch(context.Context, int64, int, int, string) ([]service.APIKey, int64, error)
-	}); ok {
-		keys, total, err = searcher.GetGroupAPIKeysWithSearch(c.Request.Context(), groupID, page, pageSize, c.Query("search"))
-	} else {
-		keys, total, err = h.adminService.GetGroupAPIKeys(c.Request.Context(), groupID, page, pageSize)
-	}
+	keys, total, err := h.adminService.GetGroupAPIKeys(c.Request.Context(), groupID, page, pageSize)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

@@ -98,7 +98,6 @@ export interface User {
   last_active_at?: string | null
   created_at: string
   updated_at: string
-  concurrency_limit: number
   deleted_at?: string | null
 }
 
@@ -243,8 +242,6 @@ export interface PublicSettings {
   compact_home_enabled: boolean
   hide_ccs_import_button: boolean
   payment_enabled: boolean
-  usage_display_currency?: 'USD' | 'CNY' | string
-  usage_display_usd_to_cny_rate?: number
   risk_control_enabled: boolean
   table_default_page_size: number
   table_page_size_options: number[]
@@ -541,7 +538,11 @@ export interface PaginationConfig {
 
 // ==================== API Key & Group Types ====================
 
-export type GroupPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'volcengine' | 'qoder' | 'opencode_go' | 'typesafe' | 'composite'
+/**
+ * 分组平台：具体平台或 composite。具体平台以平台清单（constants/platformCatalog）
+ * 为准，后端新登记的平台是 KnownAccountPlatform 之外的字符串。
+ */
+export type GroupPlatform = AccountPlatform | 'composite'
 
 export type VideoModelPrices = Record<string, Record<string, number>>
 
@@ -745,7 +746,6 @@ export interface ApiKey {
   expires_at: string | null // Expiration time (null = never expires)
   created_at: string
   updated_at: string
-  concurrency_limit: number
   current_concurrency: number
   group?: Group
   rate_limit_5h: number
@@ -773,7 +773,6 @@ export interface CreateApiKeyRequest {
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
-  concurrency_limit?: number
 }
 
 export interface UpdateApiKeyRequest {
@@ -785,7 +784,6 @@ export interface UpdateApiKeyRequest {
   quota?: number // Quota limit in USD (null = no change, 0 = unlimited)
   expires_at?: string | null // Expiration time (null = no change)
   reset_quota?: boolean // Reset quota_used to 0
-  concurrency_limit?: number
   rate_limit_5h?: number
   rate_limit_1d?: number
   rate_limit_7d?: number
@@ -924,7 +922,13 @@ export interface UpdateGroupRequest {
 
 // ==================== Account & Proxy Types ====================
 
-export type AccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'volcengine' | 'qoder' | 'opencode_go' | 'typesafe'
+/** 前端内置专属界面（图标、配色、表单等）的平台。 */
+export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigravity' | 'grok' | 'kimi' | 'zhipu' | 'deepseek' | 'minimax' | 'opencode_go' | 'typesafe' | 'command_code' | 'cline'
+/**
+ * 账号平台：内置平台，或后端平台清单中新登记的平台（任意字符串）。
+ * `string & {}` 保留内置平台的字面量补全。
+ */
+export type AccountPlatform = KnownAccountPlatform | (string & {})
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
@@ -1162,16 +1166,19 @@ export interface OllamaCloudUsageSettings {
 }
 
 export type OpenCodeGoUsageStatus = 'ok' | 'unauthorized' | 'failed'
+
 export interface OpenCodeGoUsageWindow {
   status?: string
   percent: number
   resets_at?: string
 }
+
 export interface OpenCodeGoUsageData {
   rolling?: OpenCodeGoUsageWindow
   weekly?: OpenCodeGoUsageWindow
   monthly?: OpenCodeGoUsageWindow
 }
+
 export interface OpenCodeGoUsageSnapshot {
   status: OpenCodeGoUsageStatus
   data?: OpenCodeGoUsageData
@@ -1182,15 +1189,19 @@ export interface OpenCodeGoUsageSnapshot {
   http_status?: number
   last_error?: string
 }
+
 export interface OpenCodeGoUsageState {
   account_id: number
   eligible: boolean
   auto_refresh_enabled: boolean
   snapshot?: OpenCodeGoUsageSnapshot
 }
+
 export interface OpenCodeGoUsageSettings {
   enabled: boolean
+  /** Max wait while model requests keep arriving (minutes). */
   interval_minutes: number
+  /** Trailing quiet period after the latest model request (minutes). */
   debounce_minutes: number
 }
 
@@ -1208,14 +1219,6 @@ export interface Account {
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
   opencode_go_usage?: OpenCodeGoUsageState
-  codex_turn_tickets?: Array<{
-    model: string
-    length?: number
-    ready: boolean
-    remaining_seconds: number
-    blocked: boolean
-    expires_at?: string
-  }>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
@@ -1272,10 +1275,6 @@ export interface Account {
 
   // Rate limit & scheduling fields
   schedulable: boolean
-  currently_schedulable?: boolean
-  schedule_status?: string
-  next_schedule_start?: string | null
-  schedule_timezone?: string
   rate_limited_at: string | null
   rate_limit_reset_at: string | null
   overload_until: string | null
@@ -1463,14 +1462,11 @@ export interface AccountUsageInfo {
   grok_billing?: GrokBillingSummary | null
   subscription_tier?: string
   subscription_tier_raw?: string
-  subscription_plan?: string
-  subscription_expires_at?: string
   ai_credits?: Array<{
     credit_type?: string
     amount?: number
     minimum_balance?: number
   }> | null
-  balances?: Array<{ currency: string; total_balance: string }> | null
   // Antigravity 403 forbidden 状态
   is_forbidden?: boolean
   forbidden_reason?: string
@@ -2034,7 +2030,6 @@ export interface GroupStat {
 export interface UserBreakdownItem {
   user_id: number
   email: string
-  username?: string
   requests: number
   input_tokens: number
   output_tokens: number
@@ -2070,53 +2065,6 @@ export interface UserSpendingRankingResponse {
   total_actual_cost: number
   total_requests: number
   total_tokens: number
-  start_date: string
-  end_date: string
-}
-
-export interface UserTokenRankingItem {
-  user_id: number
-  email: string
-  username: string
-  actual_cost: number
-  requests: number
-  tokens: number
-  nonwork_tokens?: number
-  active_duration_ms?: number
-  nonwork_active_ms?: number
-  calendar_confirmed?: boolean
-}
-
-export interface NonworkMissingDateRange { start_date: string; end_date: string }
-export interface NonworkStatsCoverage {
-  start_date: string
-  end_date: string
-  timezone: string
-  last_computed_at?: string
-  total_days: number
-  aggregated_days: number
-  missing_days: number
-  missing_ranges: NonworkMissingDateRange[]
-  complete: boolean
-}
-export interface UserTokenRankingResponse {
-  ranking: UserTokenRankingItem[]
-  total_actual_cost: number
-  total_requests: number
-  total_tokens: number
-  zero_token_user_count: number
-  usd_to_cny_rate?: number
-  total_nonwork_tokens?: number
-  total_all_tokens?: number
-  nonwork_token_ratio?: number
-  total_active_duration_ms?: number
-  calendar_confirmed?: boolean
-  stats_coverage?: NonworkStatsCoverage
-  stats_complete?: boolean
-  scope?: string
-  rank_by?: string
-  sort_order?: string
-  timezone?: string
   start_date: string
   end_date: string
 }
@@ -2206,20 +2154,9 @@ export interface AssignSubscriptionRequest {
 }
 
 export interface BulkAssignSubscriptionRequest {
-  user_ids?: number[]
-  all?: boolean
+  user_ids: number[]
   group_id: number
   validity_days?: number
-}
-
-export interface BulkAssignSubscriptionResult {
-  success_count: number
-  created_count: number
-  reused_count: number
-  failed_count: number
-  subscriptions: UserSubscription[]
-  errors: string[]
-  statuses?: Record<string, string>
 }
 
 export interface ExtendSubscriptionRequest {
