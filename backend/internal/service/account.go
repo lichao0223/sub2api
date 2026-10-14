@@ -129,11 +129,17 @@ func isOpenAIPersonalAccessTokenAuthMode(value string) bool {
 	}
 }
 
+const (
+	TempUnschedScopeAccount = "account"
+	TempUnschedScopeModel   = "model"
+)
+
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
 	Keywords        []string `json:"keywords"`
 	DurationMinutes int      `json:"duration_minutes"`
 	Description     string   `json:"description"`
+	Scope           string   `json:"scope,omitempty"`
 }
 
 func (a *Account) IsActive() bool {
@@ -310,7 +316,13 @@ func (a *Account) IsCNProvider() bool {
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.Platform == PlatformQoder || a.IsCNProvider() || a.IsOpenCodeGo())
+	return a != nil && domain.UsesOpenAIGateway(a.Platform)
+}
+
+// IsGeminiThirdPartyAPIKey reports API keys using a non-Google Gemini endpoint.
+func (a *Account) IsGeminiThirdPartyAPIKey() bool {
+	return a != nil && a.Platform == PlatformGemini && a.Type == AccountTypeAPIKey &&
+		!isOfficialGeminiAPIBaseURL(a.GetCredential("base_url"))
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -467,6 +479,7 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
 			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
 			Description:     parseTempUnschedString(entry["description"]),
+			Scope:           normalizeTempUnschedScope(entry["scope"]),
 		}
 
 		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
@@ -477,6 +490,15 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 	}
 
 	return rules
+}
+
+func normalizeTempUnschedScope(value any) string {
+	switch strings.ToLower(parseTempUnschedString(value)) {
+	case TempUnschedScopeAccount, TempUnschedScopeModel:
+		return strings.ToLower(parseTempUnschedString(value))
+	default:
+		return ""
+	}
 }
 
 func parseTempUnschedString(value any) string {
@@ -1391,7 +1413,7 @@ func (a *Account) IsOpenAIApiKey() bool {
 // 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
 // grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() {
+	if !a.IsOpenAI() && !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
@@ -1427,6 +1449,9 @@ func (a *Account) GetOpenAIBaseURL() string {
 	case PlatformVolcengine:
 		return DefaultVolcengineBaseURL
 	default:
+		if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
+			return baseURL
+		}
 		return "https://api.openai.com"
 	}
 }
@@ -1482,7 +1507,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolChatCompletions:
 		return APIProtocolChatCompletions
 	}
-	if a.IsOpenCodeGo() {
+	if a.routesByModel() {
 		return APIProtocolAdaptive
 	}
 	return APIProtocolChatCompletions
@@ -1495,12 +1520,10 @@ func (a *Account) SupportsNativeCNResponses() bool {
 	if a == nil {
 		return false
 	}
-	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
+	if a.providerSupportsProtocol(APIProtocolResponses) {
 		return true
-	default:
-		return false
 	}
+	return a.Platform == PlatformDeepseek || a.Platform == PlatformKimi || a.Platform == PlatformMiniMax || a.Platform == PlatformOpenCodeGo
 }
 
 // UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
@@ -1586,6 +1609,9 @@ func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
 			return DefaultVolcengineBaseURL
 		}
 	}
+	if baseURL := a.defaultProviderBaseURL(protocol); baseURL != "" {
+		return baseURL
+	}
 	return ""
 }
 
@@ -1627,6 +1653,9 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 	case PlatformVolcengine:
 		return DefaultVolcengineBaseURL
 	default:
+		if baseURL := a.defaultProviderBaseURL(APIProtocolAnthropic); baseURL != "" {
+			return baseURL
+		}
 		return ""
 	}
 }
@@ -1660,6 +1689,9 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	case PlatformVolcengine:
 		return DefaultVolcengineBaseURL
 	default:
+		if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
+			return baseURL
+		}
 		return a.GetOpenAIBaseURL()
 	}
 }
@@ -1686,12 +1718,18 @@ func (a *Account) GetCodingPlanProvider() string {
 	if a.IsOpenCodeGoPlan() {
 		return PlatformOpenCodeGo
 	}
+	if a.IsCommandCode() && a.commandCodeUsageSupported() {
+		return PlatformCommandCode
+	}
+	if a.IsCline() && a.clineAccountAPISupported() {
+		return PlatformCline
+	}
 	if a.GetAccountMode() != AccountModeCoding {
 		return ""
 	}
 	baseURL := strings.ToLower(a.GetOpenAIBaseURL())
 	switch {
-	case strings.Contains(baseURL, "api.kimi.com/coding"):
+	case isKimiCodingBaseURL(a.GetOpenAIBaseURL()):
 		return PlatformKimi
 	case strings.Contains(baseURL, "bigmodel.cn"), strings.Contains(baseURL, "api.z.ai"):
 		return PlatformZhipu
@@ -1703,6 +1741,23 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformVolcengine
 	default:
 		return ""
+	}
+}
+
+func isKimiCodingBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme != "https" || u.User != nil || u.Opaque != "" || u.RawQuery != "" || u.ForceQuery || strings.Contains(raw, "#") {
+		return false
+	}
+	host := strings.ToLower(u.Host)
+	if host != "api.kimi.com" && host != "api.kimi.ai" && host != "api.kimi.com:443" && host != "api.kimi.ai:443" {
+		return false
+	}
+	switch u.EscapedPath() {
+	case "/coding", "/coding/", "/coding/v1", "/coding/v1/":
+		return true
+	default:
+		return false
 	}
 }
 

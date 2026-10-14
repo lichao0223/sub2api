@@ -623,7 +623,7 @@
     </template>
 
     <!-- CN providers (Kimi / Zhipu / DeepSeek): coding-plan quota or payg balance -->
-    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek' || account.platform === 'minimax' || account.platform === 'volcengine' || account.platform === 'opencode_go'">
+    <template v-else-if="account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'deepseek' || account.platform === 'minimax' || account.platform === 'volcengine' || account.platform === 'opencode_go' || account.platform === 'command_code' || account.platform === 'cline'">
       <!-- 挂在 CN 平台下的 Ollama Cloud 账号（资格由后端下发 eligible）：用量由
            Ollama 用量窗口负责。这类账号不是国产厂商订阅，CN 的额度/余额探测端点由
            base_url 衍生，对 ollama.com 会被后端出站 URL 白名单拒绝，渲染出来只会
@@ -674,6 +674,7 @@
         </span>
         <!-- Help icon -->
         <span
+          v-if="account.type !== 'service_account'"
           class="group relative cursor-help"
         >
           <svg
@@ -764,7 +765,7 @@
           </p>
         </div>
         <!-- AI Studio Client OAuth: show unlimited flow (no usage tracking) -->
-        <div v-else class="text-xs text-gray-400">
+        <div v-else-if="!showGeminiTodayStats" class="text-xs text-gray-400">
           {{ t('admin.accounts.gemini.rateLimit.unlimited') }}
         </div>
       </div>
@@ -779,7 +780,7 @@
   <!-- Non-OAuth/Setup-Token accounts -->
   <div ref="rootRef" v-else>
     <!-- Gemini API Key accounts: show quota info -->
-    <AccountQuotaInfo v-if="account.platform === 'gemini'" :account="account" />
+    <AccountQuotaInfo v-if="account.platform === 'gemini' && !isGeminiThirdPartyApiKey" :account="account" />
     <!-- Key/Bedrock accounts: show today stats + optional quota bars -->
     <div v-else class="space-y-1">
       <OllamaCloudUsageCell
@@ -875,7 +876,11 @@ import GrokQuotaProbeCell from './GrokQuotaProbeCell.vue'
 import CNProviderQuotaCell from './CNProviderQuotaCell.vue'
 import CNProviderBalanceCell from './CNProviderBalanceCell.vue'
 import OllamaCloudUsageCell from './OllamaCloudUsageCell.vue'
-import { cnQuotaCellVisible as cnQuotaCellVisibleFn, cnBalanceCellVisible as cnBalanceCellVisibleFn } from './credentialsBuilder'
+import {
+  cnQuotaCellVisible as cnQuotaCellVisibleFn,
+  cnBalanceCellVisible as cnBalanceCellVisibleFn,
+  isMultiProtocolApiKeyPlatform
+} from './credentialsBuilder'
 import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances
@@ -964,6 +969,12 @@ const isDeepSeekAPIKey = computed(() => {
     props.account.extra?.model_provider === 'deepseek'
 })
 
+const isGeminiThirdPartyApiKey = computed(() =>
+  props.account.platform === 'gemini' && props.account.type === 'apikey' &&
+  typeof props.account.credentials?.base_url === 'string' &&
+  !String(props.account.credentials.base_url).includes('generativelanguage.googleapis.com')
+)
+
 const deepSeekBalanceDisplay = computed(() => {
   return usageInfo.value?.balances
     ?.map(({ currency, total_balance }) => {
@@ -984,16 +995,11 @@ const showUsageWindows = computed(() => {
   if (isKimiUsageAccount.value) return true
   if (isDeepSeekAPIKey.value) return true
   // Gemini: we can always compute local usage windows from DB logs (simulated quotas).
-  if (props.account.platform === 'gemini') return true
+  if (props.account.platform === 'gemini') return !isGeminiThirdPartyApiKey.value
   // CN providers: apikey 账号也有滚动用量窗口（coding plan）或余额（payg），
   // 由 CNProviderQuotaCell / CNProviderBalanceCell 自行探测与展示。
   if (
-    props.account.platform === 'kimi' ||
-    props.account.platform === 'zhipu' ||
-    props.account.platform === 'deepseek' ||
-    props.account.platform === 'minimax' ||
-    props.account.platform === 'volcengine' ||
-    props.account.platform === 'opencode_go'
+    isMultiProtocolApiKeyPlatform(props.account.platform)
   ) {
     return true
   }
@@ -1007,9 +1013,7 @@ const shouldFetchUsage = computed(() => {
   if (props.account.platform === 'anthropic') {
     return props.account.type === 'oauth' || props.account.type === 'setup-token'
   }
-  if (props.account.platform === 'gemini') {
-    return true
-  }
+  if (props.account.platform === 'gemini') return props.account.type !== 'service_account' && !isGeminiThirdPartyApiKey.value
   if (props.account.platform === 'antigravity') {
     return props.account.type === 'oauth'
   }
@@ -1024,12 +1028,8 @@ const shouldFetchUsage = computed(() => {
 
 // CN 供应商子单元格可见性（与 CNProviderQuotaCell / CNProviderBalanceCell 共用
 // credentialsBuilder 的单一实现）：都不可见时显示 `-` 占位符。
-const cnAccountMode = computed(() => {
-  const mode = props.account.credentials?.account_mode
-  return typeof mode === 'string' ? mode : ''
-})
-const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account.platform, cnAccountMode.value))
-const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account.platform, cnAccountMode.value))
+const cnQuotaCellVisible = computed(() => cnQuotaCellVisibleFn(props.account))
+const cnBalanceCellVisible = computed(() => cnBalanceCellVisibleFn(props.account))
 
 const isBatchManaged = computed(() => typeof props.requestBatchedUsage === 'function')
 
@@ -1283,6 +1283,7 @@ const geminiUserLevel = computed((): string | null => {
 // Gemini 认证类型（按要求：授权方式简称 + 用户等级）
 const geminiAuthTypeLabel = computed(() => {
   if (props.account.platform !== 'gemini') return null
+  if (props.account.type === 'service_account') return geminiTier.value || geminiChannelShort.value
   if (!geminiChannelShort.value) return null
   return geminiUserLevel.value ? `${geminiChannelShort.value} ${geminiUserLevel.value}` : geminiChannelShort.value
 })

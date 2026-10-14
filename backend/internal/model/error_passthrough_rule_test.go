@@ -20,5 +20,7 @@ func TestAllPlatformsIncludesEveryConcretePlatform(t *testing.T) {
 		"volcengine",
 		"opencode_go",
 		"typesafe",
+		"command_code",
+		"cline",
 	}, AllPlatforms())
 }

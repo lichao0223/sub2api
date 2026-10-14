@@ -1,4 +1,5 @@
 import { openAIPlanTypeKey, openAIPlanTypeLabel, openAIPlanTypes } from '@/utils/planType'
+import { getProviderMode, getProviderProfile } from '@/constants/platformCatalog'
 
 export function applyInterceptWarmup(
   credentials: Record<string, unknown>,
@@ -290,6 +291,7 @@ export const OPENCODE_GO_PROTOCOL_RULES_KEY = 'protocol_rules'
 export interface OpenCodeGoProtocolRule {
   pattern: string
   protocol: CnNativeApiProtocol
+  extraProtocols?: CnNativeApiProtocol[]
 }
 
 export const DEFAULT_OPENCODE_GO_PROTOCOL_RULES: OpenCodeGoProtocolRule[] = [
@@ -320,7 +322,7 @@ export function defaultOpenCodeProtocolRules(mode: OpenCodeAccountMode = 'go'): 
 export function cloneOpenCodeGoProtocolRules(
   rules: OpenCodeGoProtocolRule[] = DEFAULT_OPENCODE_GO_PROTOCOL_RULES
 ): OpenCodeGoProtocolRule[] {
-  return rules.map(rule => ({ pattern: rule.pattern, protocol: rule.protocol }))
+  return rules.map(rule => ({ pattern: rule.pattern, protocol: rule.protocol, extraProtocols: rule.extraProtocols?.slice() }))
 }
 
 function isNativeOpenCodeGoProtocol(value: unknown): value is CnNativeApiProtocol {
@@ -336,11 +338,21 @@ export function parseOpenCodeGoProtocolRules(raw: unknown): OpenCodeGoProtocolRu
     const pattern = typeof (item as { pattern?: unknown }).pattern === 'string'
       ? (item as { pattern: string }).pattern.trim()
       : ''
-    const protocol = (item as { protocol?: unknown }).protocol
+    const protocols = (item as { protocols?: unknown }).protocols
+    let protocol = (item as { protocol?: unknown }).protocol
+    if ((protocol == null || protocol === '') && Array.isArray(protocols)) protocol = protocols[0]
     if (!pattern || !isNativeOpenCodeGoProtocol(protocol)) continue
-    rules.push({ pattern, protocol })
+    const extraProtocols = Array.isArray(protocols)
+      ? protocols.filter((value, index, all) => isNativeOpenCodeGoProtocol(value) && value !== protocol && all.indexOf(value) === index) as CnNativeApiProtocol[]
+      : []
+    rules.push(extraProtocols.length > 0 ? { pattern, protocol, extraProtocols } : { pattern, protocol })
   }
   return rules
+}
+
+export function protocolRuleSet(rule: OpenCodeGoProtocolRule): CnNativeApiProtocol[] {
+  return [rule.protocol, ...(rule.extraProtocols ?? [])]
+    .filter((value, index, all) => isNativeOpenCodeGoProtocol(value) && all.indexOf(value) === index)
 }
 
 export function applyOpenCodeGoProtocolRules(
@@ -349,10 +361,15 @@ export function applyOpenCodeGoProtocolRules(
   mode: 'create' | 'edit'
 ): void {
   const serialized = rules
-    .map(rule => ({
-      pattern: rule.pattern.trim().toLowerCase(),
-      protocol: rule.protocol
-    }))
+    .map(rule => {
+      const protocols = [rule.protocol, ...(rule.extraProtocols ?? [])]
+        .filter((value, index, all) => isNativeOpenCodeGoProtocol(value) && all.indexOf(value) === index)
+      return {
+        pattern: rule.pattern.trim().toLowerCase(),
+        protocol: rule.protocol,
+        ...(protocols.length > 1 ? { protocols } : {})
+      }
+    })
     .filter(rule => rule.pattern.length > 0 && isNativeOpenCodeGoProtocol(rule.protocol))
   if (serialized.length > 0 || mode === 'edit') {
     credentials[OPENCODE_GO_PROTOCOL_RULES_KEY] = serialized
@@ -360,7 +377,51 @@ export function applyOpenCodeGoProtocolRules(
 }
 
 export function isMultiProtocolApiKeyPlatform(platform: string): boolean {
-	return platform === 'kimi' || platform === 'zhipu' || platform === 'deepseek' || platform === 'minimax' || platform === 'volcengine' || platform === 'opencode_go'
+	return Boolean(getProviderProfile(platform)) || platform === 'volcengine' || platform === 'qoder'
+}
+
+export function providerNativeProtocols(platform: string, mode?: string): CnNativeApiProtocol[] {
+  return (['chat_completions', 'anthropic', 'responses'] as CnNativeApiProtocol[]).filter(protocol =>
+    Boolean(getProviderMode(platform, mode)?.base_urls?.[protocol])
+  )
+}
+
+export function providerHasModelCatalog(platform: string): boolean {
+  return getProviderProfile(platform)?.model_catalog === true
+}
+
+export function providerAccountModes(platform: string): string[] {
+  return getProviderProfile(platform)?.modes.map(item => item.mode) ?? []
+}
+
+export function resolveProviderAccountMode(platform: string, value: unknown): string {
+  const profile = getProviderProfile(platform)
+  if (!profile) return typeof value === 'string' ? value : ''
+  return typeof value === 'string' && profile.modes.some(item => item.mode === value)
+    ? value
+    : profile.default_mode
+}
+
+export function providerModeLabel(mode: string, t: (key: string) => string): string {
+  switch (mode) {
+    case 'payg': return t('admin.accounts.cnProviders.accountMode.payg')
+    case 'coding': return t('admin.accounts.cnProviders.accountMode.coding')
+    case 'zen': return t('admin.accounts.opencodeGo.accountMode.zen')
+    case 'go': return t('admin.accounts.opencodeGo.accountMode.go')
+    default: return mode
+  }
+}
+
+export function providerRoutesByModel(platform: string): boolean {
+  return getProviderProfile(platform)?.routing === 'by_model'
+}
+
+export function defaultProviderProtocolRules(platform: string, mode?: string): OpenCodeGoProtocolRule[] {
+  return (getProviderMode(platform, mode)?.protocol_rules ?? []).map(rule => ({
+    pattern: rule.pattern,
+    protocol: rule.protocol as CnNativeApiProtocol,
+    ...(rule.protocols?.length ? { extraProtocols: rule.protocols.filter(p => isNativeOpenCodeGoProtocol(p) && p !== rule.protocol) as CnNativeApiProtocol[] } : {})
+  }))
 }
 
 export interface CnBaseUrlPreset {
@@ -412,9 +473,14 @@ export const CN_BASE_URL_PRESETS: Record<CnProviderPlatform, CnBaseUrlPreset[]> 
 /** 返回指定供应商 + 账号类型 + API 协议的默认 base url。 */
 export function defaultCNBaseUrl(
   platform: string,
-  mode: CnAccountMode | OpenCodeAccountMode,
+  mode: string,
   protocol: CnApiProtocol = 'chat_completions'
 ): string {
+  const profileBaseUrls = getProviderMode(platform, mode)?.base_urls
+  if (profileBaseUrls) {
+    if (protocol === 'anthropic') return profileBaseUrls.anthropic ?? ''
+    return profileBaseUrls[protocol] || profileBaseUrls.chat_completions || ''
+  }
   if (protocol === 'anthropic') {
     switch (platform) {
       case 'kimi':
@@ -456,8 +522,8 @@ export function defaultCNBaseUrl(
 
 /** 返回自适应模式下需要配置的原生协议及其默认端点。 */
 export function defaultCNAdaptiveBaseUrls(
-  platform: CnProviderPlatform | 'opencode_go',
-  mode: CnAccountMode | OpenCodeAccountMode
+  platform: string,
+  mode: string
 ): Record<CnNativeApiProtocol, string> {
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
@@ -470,13 +536,59 @@ export function defaultCNAdaptiveBaseUrls(
 // CNProviderQuotaCell / CNProviderBalanceCell 与 AccountUsageCell 的占位符判定
 // 共用，避免多处复制条件后一处改另一处漏改。
 
-export function cnQuotaCellVisible(platform: string, accountMode: string): boolean {
-  if (platform === 'opencode_go') return accountMode !== 'zen'
-  return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax' || platform === 'volcengine') && accountMode === 'coding'
+export interface CNUsageCellAccount {
+  platform: string
+  type: string
+  credentials?: Record<string, unknown>
 }
 
-export function cnBalanceCellVisible(platform: string, accountMode: string): boolean {
-  return (platform === 'kimi' || platform === 'deepseek') && accountMode !== 'coding'
+const OFFICIAL_ACCOUNT_API_PLATFORMS = ['command_code', 'cline']
+
+function accountMode(account: CNUsageCellAccount): string {
+  const value = account.credentials?.account_mode
+  return typeof value === 'string' ? value : ''
+}
+
+function accountChatBaseUrl(account: CNUsageCellAccount, mode: string): string {
+  const credentials = account.credentials
+  const protocol = credentials?.api_protocol
+  const baseUrls = credentials?.api_base_urls
+  if (baseUrls && typeof baseUrls === 'object' && (protocol === 'adaptive' || providerRoutesByModel(account.platform))) {
+    const value = (baseUrls as Record<string, unknown>).chat_completions
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  const baseUrl = credentials?.base_url
+  return typeof baseUrl === 'string' && baseUrl.trim() ? baseUrl.trim() : defaultCNBaseUrl(account.platform, mode)
+}
+
+function officialAccountAPISupported(account: CNUsageCellAccount, mode: string): boolean {
+  if (account.type !== 'apikey') return false
+  try {
+    const target = new URL(accountChatBaseUrl(account, mode))
+    const official = new URL(defaultCNBaseUrl(account.platform, mode))
+    return target.protocol === 'https:' && official.hostname !== '' && target.hostname === official.hostname
+  } catch {
+    return false
+  }
+}
+
+export function cnQuotaCellVisible(accountOrPlatform: CNUsageCellAccount | string, legacyMode = ''): boolean {
+  const account = typeof accountOrPlatform === 'string'
+    ? { platform: accountOrPlatform, type: 'apikey', credentials: { account_mode: legacyMode } }
+    : accountOrPlatform
+  const mode = accountMode(account)
+  if (account.platform === 'opencode_go') return mode !== 'zen'
+  if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(account.platform)) return officialAccountAPISupported(account, mode)
+  return (account.platform === 'kimi' || account.platform === 'zhipu' || account.platform === 'minimax' || account.platform === 'volcengine') && mode === 'coding'
+}
+
+export function cnBalanceCellVisible(accountOrPlatform: CNUsageCellAccount | string, legacyMode = ''): boolean {
+  const account = typeof accountOrPlatform === 'string'
+    ? { platform: accountOrPlatform, type: 'apikey', credentials: { account_mode: legacyMode } }
+    : accountOrPlatform
+  const mode = accountMode(account)
+  if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(account.platform)) return officialAccountAPISupported(account, mode)
+  return (account.platform === 'kimi' || account.platform === 'deepseek') && mode !== 'coding'
 }
 
 /**

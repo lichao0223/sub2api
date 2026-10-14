@@ -297,6 +297,8 @@ func (s *APIKeyService) AdminBatchCreate(ctx context.Context, req AdminBatchCrea
 
 // APIKeyRateLimitData holds rate limit usage and window state for an API key.
 type APIKeyRateLimitData struct {
+	// QuotaUsed 是总额度已用量（quota_used）。
+	QuotaUsed     float64
 	Usage5h       float64
 	Usage1d       float64
 	Usage7d       float64
