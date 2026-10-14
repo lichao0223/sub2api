@@ -20,7 +20,7 @@ import (
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
 	if account.Platform == PlatformQoder && !account.IsQoderDirect() {
-		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, time.Now())
 	}
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
@@ -194,7 +194,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// 账号映射未命中时以去除首尾空白的请求模型兜底，计费名与上游模型名一致。
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	case APIProtocolChatCompletions:
-		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body)
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
 	if account.IsOpenAI() && (account.IsOpenAIApiKey() || account.IsOpenAIOAuthLike()) {
