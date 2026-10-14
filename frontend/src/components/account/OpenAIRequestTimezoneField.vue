@@ -26,7 +26,9 @@ const value = computed({
 onMounted(async () => {
   loading.value = true
   try {
-    const result = await adminAPI.accounts.getOpenAIRequestTimezones()
+    const getTimezones = adminAPI.accounts.getOpenAIRequestTimezones
+    if (typeof getTimezones !== 'function') return
+    const result = await getTimezones()
     timezones.value = result.timezones
     if (!props.modelValue) emit('update:modelValue', result.default)
   } finally {

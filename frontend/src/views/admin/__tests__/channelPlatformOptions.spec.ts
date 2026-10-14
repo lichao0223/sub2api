@@ -7,7 +7,7 @@ describe('Composite channel platform options', () => {
   it('includes the CN concrete providers for pricing and model mapping', () => {
     const source = readFileSync(resolve('src/views/admin/ChannelsView.vue'), 'utf8')
     // 平台列表来自平台清单（后端 domain/platforms.go），组合分组覆盖全部具体平台。
-    expect(source).toMatch(/const platformOrder = computed<GroupPlatform\[\]>\(\(\) => listPlatformIds\(\)\)/)
+    expect(source).toMatch(/const platformOrder = computed<GroupPlatform\[\]>\(\(\) => listPlatformIds\(\) as GroupPlatform\[\]\)/)
     expect(source).toContain('const compositePlatforms = platformOrder')
 
     expect(listPlatformIds()).toEqual(

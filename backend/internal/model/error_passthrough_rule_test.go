@@ -18,6 +18,7 @@ func TestAllPlatformsIncludesEveryConcretePlatform(t *testing.T) {
 		"deepseek",
 		"minimax",
 		"volcengine",
+		"qoder",
 		"opencode_go",
 		"typesafe",
 		"command_code",

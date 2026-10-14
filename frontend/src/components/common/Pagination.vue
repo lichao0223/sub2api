@@ -61,7 +61,7 @@
             :max="totalPages"
             class="input w-20 text-sm"
             :placeholder="t('pagination.jumpPlaceholder')"
-            @keydown.enter.prevent="submitJump"
+            @keyup.enter="submitJump"
           />
           <button type="button" class="btn btn-ghost btn-sm" @click="submitJump">
             {{ t('pagination.jumpAction') }}

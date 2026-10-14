@@ -40,6 +40,7 @@ export interface HeaderOverrideRow {
 
 /** 请求头覆写资格（与后端 IsHeaderOverrideEligible 保持一致） */
 export function isHeaderOverrideCapable(platform: string, type: string): boolean {
+  if (getProviderProfile(platform)) return type === 'apikey' && !['volcengine', 'qoder'].includes(platform)
   if (
     platform === 'anthropic' ||
     platform === 'openai' ||
@@ -47,7 +48,6 @@ export function isHeaderOverrideCapable(platform: string, type: string): boolean
     platform === 'zhipu' ||
     platform === 'deepseek' ||
     platform === 'minimax' ||
-    platform === 'volcengine' ||
     platform === 'opencode_go'
   ) {
     return type === 'apikey'
@@ -274,7 +274,7 @@ export function isCNProviderPlatform(platform: string): platform is CnProviderPl
 
 /** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点。 */
 export function cnSupportsNativeResponses(platform: string): boolean {
-  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go'
+  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go' || Boolean(getProviderMode(platform)?.base_urls?.responses)
 }
 
 export const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'
@@ -417,7 +417,7 @@ export function providerRoutesByModel(platform: string): boolean {
 }
 
 export function defaultProviderProtocolRules(platform: string, mode?: string): OpenCodeGoProtocolRule[] {
-  return (getProviderMode(platform, mode)?.protocol_rules ?? []).map(rule => ({
+  return (getProviderMode(platform, mode)?.protocol_rules ?? []).filter(rule => isNativeOpenCodeGoProtocol(rule.protocol)).map(rule => ({
     pattern: rule.pattern,
     protocol: rule.protocol as CnNativeApiProtocol,
     ...(rule.protocols?.length ? { extraProtocols: rule.protocols.filter(p => isNativeOpenCodeGoProtocol(p) && p !== rule.protocol) as CnNativeApiProtocol[] } : {})

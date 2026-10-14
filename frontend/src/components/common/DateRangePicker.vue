@@ -21,8 +21,7 @@
       </span>
     </button>
 
-    <Teleport to="body">
-      <Transition name="date-picker-dropdown">
+    <Transition name="date-picker-dropdown">
         <div v-if="isOpen" ref="dropdownRef" class="date-picker-dropdown" :style="dropdownStyle">
         <!-- Quick presets -->
         <div class="date-picker-presets" :class="periodMode && 'date-picker-presets-period'">
@@ -89,8 +88,7 @@
           </button>
         </div>
         </div>
-      </Transition>
-    </Teleport>
+    </Transition>
   </div>
 </template>
 
@@ -144,8 +142,6 @@ const tomorrow = () => {
   d.setDate(d.getDate() + 1)
   return formatDateToString(d)
 }
-const maximumDate = computed(() => props.maxDate || tomorrow())
-
 // Helper function to format date to YYYY-MM-DD using local timezone
 const formatDateToString = (date: Date): string => {
   const year = date.getFullYear()
@@ -153,6 +149,7 @@ const formatDateToString = (date: Date): string => {
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+const maximumDate = ref(props.maxDate || tomorrow())
 
 const dayPresets: DatePreset[] = [
   {
@@ -379,6 +376,7 @@ const updateDropdownPosition = () => {
 const toggle = async () => {
   isOpen.value = !isOpen.value
   if (isOpen.value) {
+    maximumDate.value = props.maxDate || tomorrow()
     await nextTick()
     updateDropdownPosition()
   }

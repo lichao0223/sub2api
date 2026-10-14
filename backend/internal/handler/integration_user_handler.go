@@ -71,7 +71,8 @@ func (h *IntegrationUserHandler) ListSubscriptions(c *gin.Context) {
 		}
 		out := make([]integrationSubscriptionDetail, 0, len(details))
 		for i := range details {
-			item := integrationSubscriptionDetail{AdminUserSubscription: *dto.UserSubscriptionFromServiceAdmin(&details[i].Subscription)}
+			subscription := dto.UserSubscriptionFromServiceAdmin(&details[i].Subscription); subscription.UserSubscription.Localized(c.GetHeader("Accept-Language"))
+			item := integrationSubscriptionDetail{AdminUserSubscription: *subscription}
 			if details[i].Progress != nil {
 				item.Daily = details[i].Progress.Daily
 				item.Weekly = details[i].Progress.Weekly
@@ -89,7 +90,7 @@ func (h *IntegrationUserHandler) ListSubscriptions(c *gin.Context) {
 	}
 	out := make([]dto.AdminUserSubscription, 0, len(subs))
 	for i := range subs {
-		out = append(out, *dto.UserSubscriptionFromServiceAdmin(&subs[i]))
+		mapped := dto.UserSubscriptionFromServiceAdmin(&subs[i]); mapped.UserSubscription.Localized(c.GetHeader("Accept-Language")); out = append(out, *mapped)
 	}
 	response.Success(c, out)
 }
