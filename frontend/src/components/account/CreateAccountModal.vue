@@ -1098,7 +1098,7 @@
             <select
               v-if="accountCategory !== 'apikey' && geminiOAuthType === 'google_one'"
               v-model="geminiTierGoogleOne"
-              :data-testid="accountCategory === 'apikey' ? 'gemini-apikey-tier' : 'gemini-oauth-tier'"
+              data-testid="gemini-oauth-tier"
               class="input"
             >
               <option value="google_one_free">{{ t('admin.accounts.gemini.tier.googleOne.free') }}</option>

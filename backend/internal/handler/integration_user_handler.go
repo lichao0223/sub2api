@@ -71,7 +71,8 @@ func (h *IntegrationUserHandler) ListSubscriptions(c *gin.Context) {
 		}
 		out := make([]integrationSubscriptionDetail, 0, len(details))
 		for i := range details {
-			subscription := dto.UserSubscriptionFromServiceAdmin(&details[i].Subscription); subscription.UserSubscription.Localized(c.GetHeader("Accept-Language"))
+			subscription := dto.UserSubscriptionFromServiceAdmin(&details[i].Subscription)
+			subscription.UserSubscription.Localized(c.GetHeader("Accept-Language"))
 			item := integrationSubscriptionDetail{AdminUserSubscription: *subscription}
 			if details[i].Progress != nil {
 				item.Daily = details[i].Progress.Daily

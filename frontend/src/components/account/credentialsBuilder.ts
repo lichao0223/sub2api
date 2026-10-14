@@ -273,8 +273,8 @@ export function isCNProviderPlatform(platform: string): platform is CnProviderPl
 }
 
 /** DeepSeek、Kimi 与 MiniMax 提供原生 Responses 端点。 */
-export function cnSupportsNativeResponses(platform: string): boolean {
-  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go' || Boolean(getProviderMode(platform)?.base_urls?.responses)
+export function cnSupportsNativeResponses(platform: string, mode?: string): boolean {
+  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax' || platform === 'opencode_go' || Boolean(getProviderMode(platform, mode)?.base_urls?.responses)
 }
 
 export const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go/v1'

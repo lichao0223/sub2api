@@ -3206,6 +3206,12 @@
         </div>
       </div>
 
+      <AccountMultimodalSettings
+        v-if="!isSparkShadow && (account?.platform === 'openai' || account?.platform === 'anthropic')"
+        v-model="multimodalConfig"
+        :models="multimodalModelOptions"
+      />
+
       <!-- Group Selection - 仅标准模式显示 -->
       <GroupSelector
         v-model="form.group_ids"
@@ -6137,6 +6143,17 @@ const handleSubmit = async () => {
         delete newExtra.upstream_request_id_header
       }
       updatePayload.extra = newExtra
+    }
+
+    if (
+      !isSparkShadow.value &&
+      (props.account.platform === 'openai' || props.account.platform === 'anthropic')
+    ) {
+      const credentials =
+        (updatePayload.credentials as Record<string, unknown>) ||
+        { ...((props.account.credentials as Record<string, unknown>) || {}) }
+      applyMultimodalConfig(credentials, multimodalConfig.value)
+      updatePayload.credentials = credentials
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
