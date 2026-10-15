@@ -10,11 +10,6 @@
 
       <!-- Settings Form -->
       <form v-else @submit.prevent="saveSettings" class="space-y-6" novalidate>
-        <textarea
-          v-model="tokenRankingExcludedModelsText"
-          data-testid="token-ranking-excluded-models"
-          class="sr-only"
-        />
         <!-- Tab Navigation -->
         <div class="settings-tabs-shell">
           <nav
@@ -7050,6 +7045,34 @@
               </button>
             </div>
           </div>
+
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Token 使用排名</h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">金额展示与模型排除规则，独立于支付功能。</p>
+            </div>
+            <div class="grid grid-cols-1 gap-5 p-6 lg:grid-cols-2">
+              <div>
+                <label class="input-label">用量金额展示币种</label>
+                <Select v-model="form.usage_display_currency" :options="[{ value: 'CNY', label: '人民币（CNY）' }, { value: 'USD', label: '美元（USD）' }]" />
+                <p class="mt-1 text-xs text-gray-400">统一控制用量、预警、洞察和 Token 排名中的费用展示；计费数据仍以 USD 保存。</p>
+              </div>
+              <div>
+                <label class="input-label">USD → CNY 汇率</label>
+                <input v-model.number="form.token_ranking_usd_to_cny_rate" type="number" min="0.0001" step="0.0001" class="input" placeholder="7.2" />
+                <p class="mt-1 text-xs text-gray-400">默认 7.2，仅用于 Token 使用排名的金额展示。</p>
+              </div>
+              <div>
+                <label class="input-label">金额排除模型</label>
+                <textarea v-model="tokenRankingExcludedModelsText" data-testid="token-ranking-excluded-models" class="input min-h-24 resize-y" placeholder="每行一个，例如：gpt-* 或 openai/o" />
+                <p class="mt-1 text-xs text-gray-400">支持名称包含匹配和 * 通配符；只排除金额，Token 数和请求数仍会统计。</p>
+              </div>
+              <div>
+                <GroupSelector v-model="form.token_ranking_excluded_group_ids" :groups="tokenRankingGroups" label="金额排除分组" />
+                <p class="mt-1 text-xs text-gray-400">模型排除规则仅对选中的分组生效；未选择时不排除任何金额，其他分组的金额仍会统计。</p>
+              </div>
+            </div>
+          </div>
 	        </div>
 	        <!-- /Tab: General -->
 
@@ -9112,6 +9135,7 @@ import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
+import GroupSelector from "@/components/common/GroupSelector.vue";
 import Pagination from "@/components/common/Pagination.vue";
 import {
   SITE_BILLING_MODES,
@@ -9298,6 +9322,7 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+const tokenRankingGroups = ref<AdminGroup[]>([]);
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -9877,6 +9902,11 @@ type SettingsForm = Omit<
   // 系统全局平台限额 map；form 内始终归一化为全部平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
   account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
+  token_ranking_excluded_group_ids: number[];
+  token_ranking_excluded_models: string[];
+  token_ranking_usd_to_cny_rate: number;
+  usage_display_currency: "CNY" | "USD";
+  usage_display_usd_to_cny_rate: number;
 };
 
 const schedulingThresholdPlatforms = SCHEDULING_THRESHOLD_PLATFORMS;
@@ -9946,6 +9976,11 @@ const form = reactive<SettingsForm>({
   payment_balance_disabled: false,
   payment_balance_recharge_multiplier: 1,
   payment_subscription_usd_to_cny_rate: 0,
+  token_ranking_usd_to_cny_rate: 7.2,
+  token_ranking_excluded_models: [],
+  token_ranking_excluded_group_ids: [],
+  usage_display_currency: "CNY",
+  usage_display_usd_to_cny_rate: 7.2,
   payment_recharge_fee_rate: 0,
   payment_recharge_bonus_tiers: [],
   payment_recharge_bonus_mode: "bonus",
@@ -10150,7 +10185,6 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_enabled: false,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
-  token_ranking_excluded_models: [],
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
@@ -11402,11 +11436,13 @@ function formatLoginIPBlockRemaining(item: LoginIPBlockRecord): string {
 async function loadSubscriptionGroups() {
   try {
     const groups = await adminAPI.groups.getAll();
+    tokenRankingGroups.value = groups;
     subscriptionGroups.value = groups.filter(
       (group) =>
         group.subscription_type === "subscription" && group.status === "active",
     );
   } catch (_error: unknown) {
+    tokenRankingGroups.value = [];
     subscriptionGroups.value = [];
   }
 }
@@ -11858,6 +11894,10 @@ async function saveSettings() {
         .split(/\r?\n/)
         .map((item) => item.trim())
         .filter(Boolean),
+      token_ranking_excluded_group_ids: form.token_ranking_excluded_group_ids,
+      token_ranking_usd_to_cny_rate:
+        Number(form.token_ranking_usd_to_cny_rate) || 7.2,
+      usage_display_currency: form.usage_display_currency,
       login_ip_block_enabled: form.login_ip_block_enabled,
       login_ip_block_threshold: form.login_ip_block_threshold,
       login_ip_block_duration_seconds: form.login_ip_block_duration_seconds,
