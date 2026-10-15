@@ -899,9 +899,9 @@ export default {
       headerOverride: {
         title: 'Header Override',
         hint: 'Override same-named request headers on forwarding (case-insensitive)',
-        info: 'Applies to outbound requests of this account only: configured headers override client/gateway-generated headers of the same name before forwarding. Auth headers (authorization, x-api-key) and connection-control headers cannot be overridden.',
+        info: 'Applies to outbound requests of this account only: configured headers override client/gateway-generated headers of the same name before forwarding. Use $client_ip in a value to insert the current client IP. Auth headers (authorization, x-api-key) and connection-control headers cannot be overridden.',
         namePlaceholder: 'Header name (e.g. user-agent)',
-        valuePlaceholder: 'Override value (leave empty to skip)',
+        valuePlaceholder: 'Override value (use $client_ip for client IP)',
         addRow: 'Add Header',
         importJson: 'Import JSON',
         importJsonApply: 'Parse & Fill',

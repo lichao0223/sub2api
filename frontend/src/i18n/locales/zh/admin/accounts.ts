@@ -1001,9 +1001,9 @@ export default {
       headerOverride: {
         title: '请求头覆写',
         hint: '转发时用配置值覆盖同名请求头（不区分大小写）',
-        info: '仅对本账号的出站请求生效：配置的请求头会在转发前覆盖客户端/网关生成的同名头。认证头（authorization、x-api-key）与连接控制头不允许覆写。',
+        info: '仅对本账号的出站请求生效：配置的请求头会在转发前覆盖客户端/网关生成的同名头。值支持动态变量 $client_ip（当前客户端 IP）；认证头（authorization、x-api-key）与连接控制头不允许覆写。',
         namePlaceholder: '请求头名称（如 user-agent）',
-        valuePlaceholder: '覆写值（留空表示不覆写）',
+        valuePlaceholder: '覆写值（留空表示不覆写，可用 $client_ip）',
         addRow: '添加请求头',
         importJson: 'JSON 导入',
         importJsonApply: '解析并填入',

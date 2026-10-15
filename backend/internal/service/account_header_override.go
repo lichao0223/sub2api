@@ -1,10 +1,14 @@
 package service
 
 import (
+	"net"
 	"net/http"
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
+
+	"github.com/gin-gonic/gin"
 
 	"golang.org/x/net/http/httpguts"
 )
@@ -20,6 +24,8 @@ const (
 	maxHeaderOverrideEntries     = 64
 	maxHeaderOverrideNameLength  = 200
 	maxHeaderOverrideValueLength = 8192
+
+	headerOverrideClientIPVariable = "$client_ip"
 )
 
 // headerOverrideBlockedNames 禁止覆写的请求头（小写）。
@@ -174,6 +180,21 @@ func (a *Account) HeaderOverrideValue(lowerName string) (string, bool) {
 // 可能存在非 canonical key），再按已知 wire casing 写入，避免产生重复头。
 // 账号未启用或不符合条件时为 no-op，可安全地在 OAuth/api_key 共用的构建器中调用。
 func (a *Account) ApplyHeaderOverrides(h http.Header) {
+	a.applyHeaderOverrides(h, "")
+}
+
+// ApplyHeaderOverridesForContext applies account overrides and resolves the
+// $client_ip variable from the incoming request. Background probes should
+// use ApplyHeaderOverrides, so they never receive a fabricated client IP.
+func (a *Account) ApplyHeaderOverridesForContext(h http.Header, c *gin.Context) {
+	clientIP := ""
+	if c != nil {
+		clientIP = ip.GetClientIP(c)
+	}
+	a.applyHeaderOverrides(h, clientIP)
+}
+
+func (a *Account) applyHeaderOverrides(h http.Header, clientIP string) {
 	if h == nil {
 		return
 	}
@@ -181,10 +202,22 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 	if len(overrides) == 0 {
 		return
 	}
+	clientIP = normalizeHeaderOverrideClientIP(clientIP)
 	// 覆写名两两不同（大小写不敏感）且各自只操作同名键，应用顺序不影响结果。
 	// 全量 EqualFold 扫描兜底删除任意 casing 的既有键：透传链路可能保留客户端
 	// 原始 casing，非 canonical/wire casing 的键 deleteHeaderAllForms 覆盖不到。
 	for name, value := range overrides {
+		if strings.Contains(value, headerOverrideClientIPVariable) {
+			if clientIP == "" {
+				for existing := range h {
+					if strings.EqualFold(existing, name) {
+						delete(h, existing)
+					}
+				}
+				continue
+			}
+			value = strings.ReplaceAll(value, headerOverrideClientIPVariable, clientIP)
+		}
 		for existing := range h {
 			if strings.EqualFold(existing, name) {
 				delete(h, existing)
@@ -192,6 +225,14 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 		}
 		h[resolveWireCasing(name)] = []string{value}
 	}
+}
+
+func normalizeHeaderOverrideClientIP(value string) string {
+	parsed := net.ParseIP(strings.TrimSpace(value))
+	if parsed == nil {
+		return ""
+	}
+	return parsed.String()
 }
 
 // NormalizeHeaderOverrideCredentials 校验并原地规范化 credentials 中的请求头覆写字段。

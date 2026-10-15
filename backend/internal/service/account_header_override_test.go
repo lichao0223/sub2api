@@ -4,9 +4,11 @@ package service
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -164,6 +166,43 @@ func TestApplyHeaderOverrides(t *testing.T) {
 		}
 	}
 	require.Equal(t, 1, count)
+}
+
+func TestApplyHeaderOverridesForContextResolvesClientIP(t *testing.T) {
+	acc := headerOverrideTestAccount(PlatformOpenAI, AccountTypeAPIKey, map[string]any{
+		credKeyHeaderOverrideEnabled: true,
+		credKeyHeaderOverrides: map[string]any{
+			"X-Forwarded-For": "$client_ip",
+			"X-Client-Trace":  "relay/$client_ip",
+		},
+	})
+
+	h := http.Header{}
+	require.Equal(t, map[string]string{
+		"x-forwarded-for": "$client_ip",
+		"x-client-trace":  "relay/$client_ip",
+	}, acc.GetHeaderOverrides())
+	r := gin.New()
+	r.POST("/v1/responses", func(c *gin.Context) {
+		acc.ApplyHeaderOverridesForContext(h, c)
+	})
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	req.Header.Set("X-Forwarded-For", "203.0.113.42")
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.Equal(t, "203.0.113.42", getHeaderRaw(h, "x-forwarded-for"))
+	require.Equal(t, "relay/203.0.113.42", getHeaderRaw(h, "x-client-trace"))
+}
+
+func TestApplyHeaderOverridesSkipsClientIPVariableWithoutClientContext(t *testing.T) {
+	acc := headerOverrideTestAccount(PlatformOpenAI, AccountTypeAPIKey, map[string]any{
+		credKeyHeaderOverrideEnabled: true,
+		credKeyHeaderOverrides:       map[string]any{"X-Forwarded-For": "$client_ip"},
+	})
+	h := http.Header{}
+	h.Set("X-Forwarded-For", "stale")
+	acc.ApplyHeaderOverrides(h)
+	require.Empty(t, h.Get("X-Forwarded-For"))
 }
 
 func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {
