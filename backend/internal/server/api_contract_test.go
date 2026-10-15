@@ -236,6 +236,7 @@ func TestAPIContracts(t *testing.T) {
 					"last_used_at": null,
 					"last_used_ip": null,
 					"current_concurrency": 0,
+					"concurrency_limit": 0,
 					"quota": 0,
 					"quota_used": 0,
 					"rate_limit_5h": 0,
@@ -287,6 +288,7 @@ func TestAPIContracts(t *testing.T) {
 							"last_used_at": null,
 							"last_used_ip": null,
 							"current_concurrency": 0,
+							"concurrency_limit": 0,
 							"quota": 0,
 							"quota_used": 0,
 							"rate_limit_5h": 0,
@@ -733,6 +735,9 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
+						"login_ip_block_duration_seconds": 1800,
+						"login_ip_block_enabled": false,
+						"login_ip_block_threshold": 5,
 						"login_agreement_documents": [
 							{"id": "terms", "title": "服务条款", "content_md": ""},
 							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
@@ -748,6 +753,8 @@ func TestAPIContracts(t *testing.T) {
 					"smtp_use_tls": true,
 					"turnstile_enabled": true,
 					"turnstile_site_key": "site-key",
+					"usage_display_currency": "CNY",
+					"usage_display_usd_to_cny_rate": 7.2,
 					"turnstile_secret_key_configured": true,
 					"tencent_captcha_enabled": false,
 					"tencent_captcha_app_id": "",
@@ -755,6 +762,9 @@ func TestAPIContracts(t *testing.T) {
 					"tencent_captcha_cloud_secret_id_configured": false,
 					"tencent_captcha_cloud_secret_key_configured": false,
 					"tencent_captcha_region": "cn",
+					"token_ranking_excluded_group_ids": [],
+					"token_ranking_excluded_models": [],
+					"token_ranking_usd_to_cny_rate": 7.2,
 					"aliyun_captcha_enabled": false,
 					"aliyun_captcha_access_key_id": "",
 					"aliyun_captcha_access_key_secret_configured": false,
@@ -863,7 +873,7 @@ func TestAPIContracts(t *testing.T) {
 					"force_email_on_third_party_signup": false,
 					"default_concurrency": 5,
 					"default_balance": 1.25,
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"qoder":{"daily":null,"weekly":null,"monthly":null},"volcengine":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -952,6 +962,9 @@ func TestAPIContracts(t *testing.T) {
 					"openai_codex_user_agent":           "",
 					"openai_codex_client_version":       "",
 					"openai_codex_client_version_synced": "",
+					"openai_codex_ticket_enabled": false,
+					"openai_codex_ticket_harvest_proxy_configured": false,
+					"openai_codex_ticket_harvest_proxy_url": "",
 					"openai_codex_version_auto_sync_enabled": true,
 					"claude_code_client_version": "",
 					"claude_code_client_version_synced": "",
@@ -992,6 +1005,7 @@ func TestAPIContracts(t *testing.T) {
 					"account_scheduling_thresholds": {"anthropic":100,"grok":100,"openai":100},
 					"subscription_expiry_notify_enabled": true,
 					"balance_low_notify_threshold": 0,
+					"channel_monitor_allow_private_endpoints": false,
 					"balance_low_notify_recharge_url": "",
 					"account_quota_notify_emails": [],
 					"channel_monitor_enabled": true,
@@ -1092,6 +1106,9 @@ func TestAPIContracts(t *testing.T) {
 						"login_agreement_enabled": false,
 						"login_agreement_mode": "modal",
 						"login_agreement_updated_at": "2026-03-31",
+						"login_ip_block_duration_seconds": 1800,
+						"login_ip_block_enabled": false,
+						"login_ip_block_threshold": 5,
 						"login_agreement_documents": [
 							{"id": "terms", "title": "服务条款", "content_md": ""},
 							{"id": "usage-policy", "title": "使用政策", "content_md": ""},
@@ -1107,6 +1124,8 @@ func TestAPIContracts(t *testing.T) {
 					"smtp_use_tls": false,
 					"turnstile_enabled": false,
 					"turnstile_site_key": "",
+					"usage_display_currency": "CNY",
+					"usage_display_usd_to_cny_rate": 7.2,
 					"turnstile_secret_key_configured": false,
 					"tencent_captcha_enabled": false,
 					"tencent_captcha_app_id": "",
@@ -1114,6 +1133,9 @@ func TestAPIContracts(t *testing.T) {
 					"tencent_captcha_cloud_secret_id_configured": false,
 					"tencent_captcha_cloud_secret_key_configured": false,
 					"tencent_captcha_region": "cn",
+					"token_ranking_excluded_group_ids": [],
+					"token_ranking_excluded_models": [],
+					"token_ranking_usd_to_cny_rate": 7.2,
 					"aliyun_captcha_enabled": false,
 					"aliyun_captcha_access_key_id": "",
 					"aliyun_captcha_access_key_secret_configured": false,
@@ -1189,7 +1211,7 @@ func TestAPIContracts(t *testing.T) {
 					"purchase_subscription_url": "",
 					"table_default_page_size": 20,
 					"table_page_size_options": [10, 20, 50],
-					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
+					"default_platform_quotas": {"anthropic":{"daily":null,"weekly":null,"monthly":null},"antigravity":{"daily":null,"weekly":null,"monthly":null},"cline":{"daily":null,"weekly":null,"monthly":null},"command_code":{"daily":null,"weekly":null,"monthly":null},"deepseek":{"daily":null,"weekly":null,"monthly":null},"gemini":{"daily":null,"weekly":null,"monthly":null},"grok":{"daily":null,"weekly":null,"monthly":null},"kimi":{"daily":null,"weekly":null,"monthly":null},"minimax":{"daily":null,"weekly":null,"monthly":null},"openai":{"daily":null,"weekly":null,"monthly":null},"opencode_go":{"daily":null,"weekly":null,"monthly":null},"typesafe":{"daily":null,"weekly":null,"monthly":null},"qoder":{"daily":null,"weekly":null,"monthly":null},"volcengine":{"daily":null,"weekly":null,"monthly":null},"zhipu":{"daily":null,"weekly":null,"monthly":null}},
 					"auth_source_default_email_platform_quotas": null,
 					"auth_source_default_github_platform_quotas": null,
 					"auth_source_default_google_platform_quotas": null,
@@ -1276,6 +1298,9 @@ func TestAPIContracts(t *testing.T) {
 					"openai_codex_user_agent":           "",
 					"openai_codex_client_version":       "",
 					"openai_codex_client_version_synced": "",
+					"openai_codex_ticket_enabled": false,
+					"openai_codex_ticket_harvest_proxy_configured": false,
+					"openai_codex_ticket_harvest_proxy_url": "",
 					"openai_codex_version_auto_sync_enabled": true,
 					"claude_code_client_version": "",
 					"claude_code_client_version_synced": "",
@@ -1314,6 +1339,7 @@ func TestAPIContracts(t *testing.T) {
 					"account_scheduling_thresholds": {"anthropic":100,"grok":100,"openai":100},
 					"subscription_expiry_notify_enabled": true,
 					"balance_low_notify_threshold": 0,
+					"channel_monitor_allow_private_endpoints": false,
 					"balance_low_notify_recharge_url": "",
 					"account_quota_notify_emails": [],
 					"channel_monitor_enabled": true,
@@ -1494,7 +1520,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	settingRepo := newStubSettingRepo()
 	settingService := service.NewSettingService(settingRepo, cfg)
 
-	adminService := service.NewAdminService(nil, userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	adminService := service.NewAdminService(nil, userRepo, groupRepo, &accountRepo, proxyRepo, apiKeyRepo, redeemRepo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	authHandler := handler.NewAuthHandler(cfg, nil, userService, settingService, nil, redeemService, nil, nil)
 	apiKeyHandler := handler.NewAPIKeyHandler(apiKeyService)
 	usageHandler := handler.NewUsageHandler(usageService, apiKeyService, nil, nil)
@@ -1529,7 +1555,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	v1Keys := v1.Group("")
 	v1Keys.Use(jwtAuth)
 	v1Keys.GET("/keys", apiKeyHandler.List)
-	v1Keys.POST("/keys", apiKeyHandler.Create)
+	v1Keys.POST("/keys", adminAuth, apiKeyHandler.Create)
 	v1Keys.GET("/groups/available", apiKeyHandler.GetAvailableGroups)
 
 	v1Usage := v1.Group("")
@@ -2666,6 +2692,38 @@ func (r *stubUsageLogRepo) GetUserUsageTrend(ctx context.Context, startTime, end
 
 func (r *stubUsageLogRepo) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error) {
 	return nil, errors.New("not implemented")
+}
+
+func (r *stubUsageLogRepo) ExportExternalUsageRows(ctx context.Context, startDate, endDate time.Time, includeNonwork bool) ([]usagestats.ExternalUsageImportRow, error) {
+	return nil, nil
+}
+
+func (r *stubUsageLogRepo) GetUserTokenRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserTokenRankingResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (r *stubUsageLogRepo) GetUserNonworkTokenRanking(ctx context.Context, startDate, endDate time.Time, scope, rankBy, sortOrder, timezone string, externalOrganizationIDs []string, username string, limit int) (*usagestats.UserNonworkTokenRankingResponse, error) {
+	return &usagestats.UserNonworkTokenRankingResponse{}, nil
+}
+
+func (r *stubUsageLogRepo) GetNonworkStatsCoverage(ctx context.Context, startDate, endDate time.Time, timezone string) (usagestats.NonworkStatsCoverage, error) {
+	return usagestats.NonworkStatsCoverage{Complete: true}, nil
+}
+
+func (r *stubUsageLogRepo) PreviewExternalUsageImport(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportPreview, error) {
+	return &usagestats.ExternalUsageImportPreview{}, nil
+}
+
+func (r *stubUsageLogRepo) ImportExternalUsage(ctx context.Context, input usagestats.ExternalUsageImportInput) (*usagestats.ExternalUsageImportResult, error) {
+	return &usagestats.ExternalUsageImportResult{}, nil
+}
+
+func (r *stubUsageLogRepo) ListExternalUsageImportBatches(ctx context.Context, params pagination.PaginationParams) ([]usagestats.ExternalUsageImportBatch, *pagination.PaginationResult, error) {
+	return nil, &pagination.PaginationResult{}, nil
+}
+
+func (r *stubUsageLogRepo) VoidExternalUsageImportBatch(ctx context.Context, batchID, voidedBy int64) error {
+	return nil
 }
 
 func (r *stubUsageLogRepo) GetUserStatsAggregated(ctx context.Context, userID int64, startTime, endTime time.Time) (*usagestats.UsageStats, error) {

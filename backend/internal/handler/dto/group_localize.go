@@ -47,3 +47,11 @@ func (s *UserSubscription) Localized(acceptLanguage string) *UserSubscription {
 	}
 	return s
 }
+
+// Localized 本地化管理端订阅包装内嵌的订阅分组并返回自身。
+func (s *AdminUserSubscription) Localized(acceptLanguage string) *AdminUserSubscription {
+	if s != nil {
+		s.UserSubscription.Localized(acceptLanguage)
+	}
+	return s
+}

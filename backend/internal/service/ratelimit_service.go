@@ -336,10 +336,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
+	kimiUsageLimit := isKimiUsageLimitError(account, statusCode, responseBody)
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 只在非凭据级且命中显式模型级规则时由规则处理，其余保留池模式现有的认证处理。
-	if account.IsPoolMode() && !customErrorCodesEnabled {
+	if account.IsPoolMode() && !customErrorCodesEnabled && !kimiUsageLimit {
 		if tempUnschedRulesApply(account, statusCode, responseBody, tempUnschedulableModel(ctx, nil)) &&
 			s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
 			return true
@@ -365,6 +366,17 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	if len(requestedModel) > 0 && s.HandleUpstreamModelNotFound(ctx, account, requestedModel[0], statusCode, responseBody) {
+		return true
+	}
+
+	// Kimi 用 403 permission/access_terminated error 表示套餐窗口已用尽，语义是限流而非鉴权失败。
+	if kimiUsageLimit {
+		resetAt, err := persistKimiUsageLimit(ctx, s.accountRepo, account, headers)
+		if err != nil {
+			slog.Warn("kimi_usage_limit_persist_failed", "account_id", account.ID, "error", err)
+		} else {
+			s.notifyAccountSchedulingBlocked(account, resetAt, "kimi_usage_limit")
+		}
 		return true
 	}
 
@@ -597,6 +609,35 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	}
 
 	return shouldDisable
+}
+
+func isKimiUsageLimitError(account *Account, statusCode int, body []byte) bool {
+	if statusCode != http.StatusForbidden || !isKimiUsageAccount(account) {
+		return false
+	}
+	message := strings.ToLower(gjson.GetBytes(body, "error.message").String())
+	return strings.Contains(message, "usage limit") && strings.Contains(message, "billing cycle")
+}
+
+func persistKimiUsageLimit(ctx context.Context, repo AccountRepository, account *Account, headers http.Header) (time.Time, error) {
+	now := time.Now()
+	resetAt := now.Add(5 * time.Hour)
+	if retryAt := parseRetryAfterResetTime(headers, now); retryAt != nil && retryAt.After(now) {
+		resetAt = *retryAt
+	}
+	if err := repo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+		return time.Time{}, err
+	}
+	if account.Status == StatusError {
+		if err := repo.ClearError(ctx, account.ID); err != nil {
+			return time.Time{}, err
+		}
+		account.Status = StatusActive
+		account.ErrorMessage = ""
+	}
+	account.RateLimitedAt = &now
+	account.RateLimitResetAt = &resetAt
+	return resetAt, nil
 }
 
 // PreCheckUsage proactively checks local quota before dispatching a request.
@@ -2181,9 +2222,15 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 		}
 	}
 
+	clearCodexSnapshot := hasRecoverableCodexQuotaSnapshot(account)
 	if hasRecoverableRuntimeState(account) {
 		if err := s.ClearRateLimit(ctx, accountID); err != nil {
 			return nil, err
+		}
+		if clearCodexSnapshot {
+			if err := s.accountRepo.UpdateExtra(ctx, accountID, codexUsageSnapshotClearUpdates()); err != nil {
+				return nil, err
+			}
 		}
 		result.ClearedRateLimit = true
 	}
@@ -2231,7 +2278,49 @@ func hasRecoverableRuntimeState(account *Account) bool {
 		return false
 	}
 	return hasNonEmptyMapValue(account.Extra, "model_rate_limits") ||
-		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes")
+		hasNonEmptyMapValue(account.Extra, "antigravity_quota_scopes") ||
+		hasRecoverableCodexQuotaSnapshot(account)
+}
+
+func hasRecoverableCodexQuotaSnapshot(account *Account) bool {
+	if !isGLMAPIKeyAccount(account) || len(account.Extra) == 0 {
+		return false
+	}
+	for _, key := range codexUsageSnapshotKeys() {
+		if value, ok := account.Extra[key]; ok && value != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func codexUsageSnapshotClearUpdates() map[string]any {
+	updates := make(map[string]any, len(codexUsageSnapshotKeys()))
+	for _, key := range codexUsageSnapshotKeys() {
+		updates[key] = nil
+	}
+	return updates
+}
+
+func codexUsageSnapshotKeys() []string {
+	return []string{
+		"codex_5h_used_percent",
+		"codex_5h_reset_after_seconds",
+		"codex_5h_reset_at",
+		"codex_5h_window_minutes",
+		"codex_7d_used_percent",
+		"codex_7d_reset_after_seconds",
+		"codex_7d_reset_at",
+		"codex_7d_window_minutes",
+		"codex_primary_used_percent",
+		"codex_primary_reset_after_seconds",
+		"codex_primary_window_minutes",
+		"codex_secondary_used_percent",
+		"codex_secondary_reset_after_seconds",
+		"codex_secondary_window_minutes",
+		"codex_primary_over_secondary_percent",
+		"codex_usage_updated_at",
+	}
 }
 
 func hasNonEmptyMapValue(extra map[string]any, key string) bool {

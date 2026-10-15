@@ -354,6 +354,12 @@ func isGLMAPIKeyAccount(account *Account) bool {
 		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "glm")
 }
 
+func isKimiUsageAccount(account *Account) bool {
+	return account != nil && account.Type == AccountTypeAPIKey &&
+		(account.Platform == PlatformAnthropic || account.Platform == PlatformOpenAI) &&
+		strings.EqualFold(strings.TrimSpace(account.GetExtraString("model_provider")), "kimi")
+}
+
 func batchUsageErrorMessage(err error) string {
 	if err == nil {
 		return ""

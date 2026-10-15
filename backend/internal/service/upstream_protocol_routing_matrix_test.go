@@ -310,6 +310,23 @@ func matchesKnownZhipuNonAPIKeyDifference(tc routingMatrixCase, want, got routin
 		reflect.DeepEqual(got, routingObservation{Error: "account 801 missing api_key", Status: http.StatusOK})
 }
 
+// Kimi has no native /v1/messages endpoint. This fork rejects every Kimi
+// Messages-ingress request up front with a 400 client error, before the account
+// type / api_protocol / address routing that main performed. The guard fires
+// unconditionally, so main's observation for these cases is irrelevant; only the
+// exact guard observation is permitted.
+func matchesKnownKimiMessagesDifference(tc routingMatrixCase, got routingObservation) bool {
+	if tc.platform != PlatformKimi || tc.ingress.name != "messages" {
+		return false
+	}
+	return reflect.DeepEqual(got, routingObservation{
+		Error:              "kimi platform does not support /v1/messages",
+		Status:             http.StatusBadRequest,
+		ClientErrorType:    "invalid_request_error",
+		ClientErrorMessage: "Kimi accounts only support /v1/chat/completions",
+	})
+}
+
 func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	data, err := os.ReadFile(routingMatrixGoldenPath)
@@ -325,6 +342,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	var differences []string
 	mismatched := 0
 	knownDifferences := 0
+	knownKimiDifferences := 0
 	for i, tc := range cases {
 		index := golden.Results[i]
 		require.GreaterOrEqual(t, index, 0)
@@ -338,6 +356,10 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 			knownDifferences++
 			continue
 		}
+		if matchesKnownKimiMessagesDifference(tc, got) {
+			knownKimiDifferences++
+			continue
+		}
 		mismatched++
 		if len(differences) < 12 {
 			differences = append(differences, fmt.Sprintf("%s\nmain: %s\ncurrent: %s", tc.key(), want, got))
@@ -347,4 +369,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	// 2 account types × 4 modes × 3 probe states × 4 address configurations ×
 	// 2 model spellings. A disappeared or expanded exception requires review.
 	require.Equal(t, 192, knownDifferences, "unexpected change to the declared Zhipu non-API-Key difference")
+	// Kimi Messages-ingress cases rejected up front by the /v1/messages guard.
+	// The exact count pins the guard's scope; any change requires review.
+	require.Equal(t, 864, knownKimiDifferences, "unexpected change to the declared Kimi /v1/messages guard difference")
 }
