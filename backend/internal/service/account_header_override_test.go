@@ -205,6 +205,16 @@ func TestApplyHeaderOverridesSkipsClientIPVariableWithoutClientContext(t *testin
 	require.Empty(t, h.Get("X-Forwarded-For"))
 }
 
+func TestApplyHeaderOverridesForContextHandlesMissingRequest(t *testing.T) {
+	acc := headerOverrideTestAccount(PlatformOpenAI, AccountTypeAPIKey, map[string]any{
+		credKeyHeaderOverrideEnabled: true,
+		credKeyHeaderOverrides:       map[string]any{"X-Forwarded-For": "$client_ip"},
+	})
+	h := http.Header{}
+	acc.ApplyHeaderOverridesForContext(h, &gin.Context{})
+	require.Empty(t, h.Get("X-Forwarded-For"))
+}
+
 func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {
 	baseline := func() http.Header {
 		h := http.Header{}

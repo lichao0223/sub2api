@@ -188,7 +188,7 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 // use ApplyHeaderOverrides, so they never receive a fabricated client IP.
 func (a *Account) ApplyHeaderOverridesForContext(h http.Header, c *gin.Context) {
 	clientIP := ""
-	if c != nil {
+	if c != nil && c.Request != nil {
 		clientIP = ip.GetClientIP(c)
 	}
 	a.applyHeaderOverrides(h, clientIP)
