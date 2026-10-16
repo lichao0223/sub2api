@@ -18,7 +18,7 @@ type chatMessageContent struct {
 // true. store is always false and reasoning.encrypted_content is always
 // included so that the response translator has full context.
 func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
-	return ChatCompletionsToResponsesWithOptions(req, nil)
+	return ChatCompletionsToResponsesWithOptionsAndMinOutputTokens(req, nil, DefaultMinMaxOutputTokens)
 }
 
 // ChatCompletionsToResponsesOptions controls provider-specific input details.
@@ -31,6 +31,18 @@ type ChatCompletionsToResponsesOptions struct {
 // ChatCompletionsToResponsesWithOptions converts Chat Completions with optional
 // provider-specific compatibility behavior.
 func ChatCompletionsToResponsesWithOptions(req *ChatCompletionsRequest, opts *ChatCompletionsToResponsesOptions) (*ResponsesRequest, error) {
+	return ChatCompletionsToResponsesWithOptionsAndMinOutputTokens(req, opts, DefaultMinMaxOutputTokens)
+}
+
+// ChatCompletionsToResponsesWithMinOutputTokens converts a Chat Completions
+// request using the supplied max_output_tokens floor.
+func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, minOutputTokens int) (*ResponsesRequest, error) {
+	return ChatCompletionsToResponsesWithOptionsAndMinOutputTokens(req, nil, minOutputTokens)
+}
+
+// ChatCompletionsToResponsesWithOptionsAndMinOutputTokens converts a Chat
+// Completions request with provider-specific options and an output-token floor.
+func ChatCompletionsToResponsesWithOptionsAndMinOutputTokens(req *ChatCompletionsRequest, opts *ChatCompletionsToResponsesOptions, minOutputTokens int) (*ResponsesRequest, error) {
 	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
@@ -75,8 +87,8 @@ func ChatCompletionsToResponsesWithOptions(req *ChatCompletionsRequest, opts *Ch
 	}
 	if maxTokens > 0 {
 		v := maxTokens
-		if v < minMaxOutputTokens {
-			v = minMaxOutputTokens
+		if v < minOutputTokens {
+			v = minOutputTokens
 		}
 		out.MaxOutputTokens = &v
 	}

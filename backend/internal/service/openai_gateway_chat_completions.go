@@ -240,7 +240,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 				ReasoningContentAsInputItem: true,
 			}
 		}
-		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptions(&chatReq, conversionOptions)
+		responsesReq, err = apicompat.ChatCompletionsToResponsesWithOptionsAndMinOutputTokens(
+			&chatReq, conversionOptions, configuredMinOutputTokens(s.cfg),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
