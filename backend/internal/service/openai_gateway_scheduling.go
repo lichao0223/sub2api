@@ -438,7 +438,7 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 			return "quota_auto_pause"
 		}
 	}
-	if requestedModel != "" && !account.IsModelSupported(requestedModel) {
+	if requestedModel != "" && !supportsOpenAIRequestModel(account, requestedModel, requireCompact) {
 		return "model_not_supported"
 	}
 	if isMultimodalRequest(ctx) && !account.acceptsMultimodalRequest(requestedModel) {
