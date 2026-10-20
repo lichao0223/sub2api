@@ -127,7 +127,7 @@
             </template>
           </div>
 
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalTokens') }}</div>
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatTokens(totals.totalTokens) }}</div>
@@ -143,6 +143,12 @@
             <div class="card p-4">
               <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.nonworkTokenRatio') }}</div>
               <div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ formatPercent(totals.nonworkTokenRatio) }}</div>
+            </div>
+            <div class="card p-4">
+              <div class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('tokenRanking.totalActualCost') }}</div>
+              <div class="mt-2 text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {{ usageCurrencySymbol() }}{{ formatCostCNY(totals.totalActualCost) }}
+              </div>
             </div>
           </div>
 
@@ -394,7 +400,7 @@ const rankBy = ref<'tokens' | 'nonwork_tokens' | 'requests' | 'active_duration' 
 const sortOrder = ref<'asc' | 'desc'>('asc')
 const rankingItems = ref<UserTokenRankingItem[]>([])
 const usdToCnyRate = ref(7.2)
-const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0 })
+const totals = ref({ totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0, totalActualCost: 0 })
 const pagination = ref({
   page: 1,
   page_size: getPersistedPageSize(),
@@ -867,7 +873,8 @@ async function loadRanking() {
       totalTokens: response.total_tokens || 0,
       nonworkTokens: response.total_nonwork_tokens || 0,
       requests: response.total_requests || 0,
-      nonworkTokenRatio: response.nonwork_token_ratio || 0
+      nonworkTokenRatio: response.nonwork_token_ratio || 0,
+      totalActualCost: response.total_actual_cost || 0
     }
     calendarConfirmed.value = response.calendar_confirmed ?? null
     statsCoverage.value = response.stats_coverage || null
@@ -876,7 +883,7 @@ async function loadRanking() {
   } catch (err) {
     console.error('Failed to load token ranking:', err)
     rankingItems.value = []
-    totals.value = { totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0 }
+    totals.value = { totalTokens: 0, nonworkTokens: 0, requests: 0, nonworkTokenRatio: 0, totalActualCost: 0 }
     calendarConfirmed.value = null
     statsCoverage.value = null
     error.value = true

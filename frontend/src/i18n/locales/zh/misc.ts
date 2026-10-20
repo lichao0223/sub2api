@@ -33,6 +33,7 @@ export default {
     totalNonworkTokens: '非工作时间 Token',
     totalRequests: '总请求数',
     nonworkTokenRatio: '非工作时间 Token 占比',
+    totalActualCost: '今日消费金额',
     export: '导出',
     exportRanking: '导出排名',
     importExternalData: '导入外部数据',

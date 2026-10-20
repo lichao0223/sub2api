@@ -33,6 +33,7 @@ export default {
     totalNonworkTokens: 'Non-work Time Tokens',
     totalRequests: 'Total Requests',
     nonworkTokenRatio: 'Non-work Token Share',
+    totalActualCost: "Today's Spend",
     export: 'Export',
     exportRanking: 'Export Ranking',
     importExternalData: 'Import External Data',
