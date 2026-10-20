@@ -1,5 +1,6 @@
 .PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
 
+# MERGE KEEP: account modal specs protect local timezone/scheduling/provider/ticket/multimodal features.
 FRONTEND_CRITICAL_VITEST := \
 	src/i18n/__tests__/localeKeyCompleteness.spec.ts \
 	src/api/__tests__/client.spec.ts \

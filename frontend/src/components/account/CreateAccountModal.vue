@@ -478,6 +478,7 @@
 
         </div>
       </div>
+      <!-- MERGE KEEP: local request timezone; keep creation/editing and extra serialization in sync. -->
       <OpenAIRequestTimezoneField v-if="form.platform === 'openai'" v-model="openAIRequestTimezone" />
 
       <!-- Account Type Selection (Grok) -->
@@ -2667,6 +2668,7 @@
         </template>
       </div>
 
+      <!-- MERGE KEEP: local scheduling windows; the edit form must retain the same editor and extra key. -->
       <AccountSchedulingEditor v-model="schedulingSchedule" />
 
       <!-- Temp Unschedulable Rules -->
@@ -6178,13 +6180,16 @@ const handleSubmit = async () => {
       if (zhipuOrganization.value.trim()) credentials.zhipu_organization = zhipuOrganization.value.trim()
       if (zhipuProject.value.trim()) credentials.zhipu_project = zhipuProject.value.trim()
     }
-    if (form.platform === 'volcengine' || modelProvider.value === 'volcengine') {
-      if (volcengineAccessKeyID.value.trim()) credentials.volcengine_access_key_id = volcengineAccessKeyID.value.trim()
-      if (volcengineSecretAccessKey.value.trim()) credentials.volcengine_secret_access_key = volcengineSecretAccessKey.value.trim()
-    }
     if (form.platform === 'opencode_go' || routesByModel.value) {
       applyOpenCodeGoProtocolRules(credentials, openCodeGoProtocolRules.value, 'create')
     }
+  }
+
+  // MERGE KEEP: legacy OpenAI/Anthropic model_provider accounts do not enter the multi-protocol block above.
+  if (form.platform === 'volcengine' ||
+    ((form.platform === 'openai' || form.platform === 'anthropic') && modelProvider.value === 'volcengine')) {
+    if (volcengineAccessKeyID.value.trim()) credentials.volcengine_access_key_id = volcengineAccessKeyID.value.trim()
+    if (volcengineSecretAccessKey.value.trim()) credentials.volcengine_secret_access_key = volcengineSecretAccessKey.value.trim()
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）

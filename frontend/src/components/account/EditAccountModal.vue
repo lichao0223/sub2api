@@ -25,9 +25,32 @@
         ></textarea>
         <p class="input-hint">{{ t('admin.accounts.notesHint') }}</p>
       </div>
+      <!-- MERGE KEEP: local request timezone; preserve UI, hydration and save together (localFeatures regression tests). -->
+      <OpenAIRequestTimezoneField v-if="account.platform === 'openai'" v-model="openAIRequestTimezone" />
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+        <!-- MERGE KEEP: legacy provider monitoring is independent of the account's forwarding platform. -->
+        <div v-if="account.platform === 'anthropic' || account.platform === 'openai'">
+          <label class="input-label">模型提供商</label>
+          <select v-model="editModelProvider" class="input" data-testid="edit-model-provider-select">
+            <option value="none">无</option>
+            <option value="glm">GLM</option>
+            <option value="deepseek">DeepSeek</option>
+            <option value="volcengine">火山方舟 Agent Plan</option>
+            <option v-if="!['none', 'glm', 'deepseek', 'volcengine'].includes(editModelProvider)" :value="editModelProvider">{{ editModelProvider }}</option>
+          </select>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
+        </div>
+        <!-- MERGE KEEP: both native Volcengine and legacy model_provider accounts need editable AK/SK. -->
+        <div v-if="(account.platform === 'volcengine' && editAccountMode === 'coding') || ((account.platform === 'anthropic' || account.platform === 'openai') && editModelProvider === 'volcengine')" class="rounded-lg border border-orange-200 bg-orange-50/50 p-4 dark:border-orange-900/40 dark:bg-orange-900/10">
+          <label class="input-label">火山方舟用量查询凭据</label>
+          <div class="mt-2 grid gap-4 sm:grid-cols-2">
+            <input v-model="editVolcengineAccessKeyID" type="text" class="input" aria-label="AccessKey ID" placeholder="AccessKey ID" />
+            <input v-model="editVolcengineSecretAccessKey" type="password" class="input" aria-label="Secret AccessKey" placeholder="Secret AccessKey（留空保持不变）" />
+          </div>
+          <p class="input-hint mt-2">用于查询 Agent Plan 5 小时、周限和月限；与 ark- 推理 API Key 不同。</p>
+        </div>
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -496,48 +519,6 @@
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
-            </p>
-          </div>
-        </div>
-
-        <!-- Gemini 显式缓存上游开关：仅自定义地址的 Gemini API Key 账号 -->
-        <div
-          v-if="account.platform === 'gemini' && !isOfficialGeminiBaseUrl(editBaseUrl)"
-          class="border-t border-gray-200 pt-4 dark:border-dark-600"
-          data-testid="explicit-cache-upstream-section"
-        >
-          <div class="flex items-center justify-between gap-4">
-            <div>
-              <label class="input-label mb-0">{{ t('admin.accounts.explicitCacheUpstream') }}</label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {{ t('admin.accounts.explicitCacheUpstreamHint') }}
-              </p>
-            </div>
-            <Toggle
-              v-model="explicitCacheUpstreamEnabled"
-              data-testid="explicit-cache-upstream-toggle"
-              :aria-label="t('admin.accounts.explicitCacheUpstream')"
-            />
-          </div>
-          <div v-if="explicitCacheUpstreamEnabled" class="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
-            <p class="text-xs text-blue-700 dark:text-blue-400">
-              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
-              {{ t('admin.accounts.explicitCacheUpstreamInfo') }}
-            </p>
-          </div>
-          <div v-if="explicitCacheUpstreamEnabled" class="mt-3">
-            <label class="input-label">{{ t('admin.accounts.explicitCacheUpstreamMaxTTL') }}</label>
-            <input
-              v-model="explicitCacheUpstreamMaxTTL"
-              data-testid="explicit-cache-upstream-max-ttl"
-              type="number"
-              min="1"
-              step="1"
-              class="input"
-              placeholder="86400"
-            />
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t('admin.accounts.explicitCacheUpstreamMaxTTLHint') }}
             </p>
           </div>
         </div>
@@ -1556,6 +1537,9 @@
         </div>
       </div>
 
+      <!-- MERGE KEEP: local scheduling windows also require hydration and the final extra merge below. -->
+      <AccountSchedulingEditor v-model="schedulingSchedule" />
+
       <!-- Temp Unschedulable Rules -->
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4">
         <div class="mb-3 flex items-center justify-between">
@@ -2501,6 +2485,26 @@
         </div>
       </div>
 
+      <!-- MERGE KEEP: local Codex ticket diagnostics, not replaced by upstream fingerprint settings. -->
+      <div
+        v-if="account.platform === 'openai' && (account.type === 'oauth' || account.type === 'setup-token') && codexTurnTickets.length"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="codex-turn-tickets"
+      >
+        <label class="input-label mb-0">{{ t('admin.accounts.openai.codexTurnTicket') }}</label>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.openai.codexTurnTicketDesc') }}</p>
+        <div class="mt-3 space-y-1.5">
+          <div v-for="ticket in codexTurnTickets" :key="ticket.model" class="flex items-center justify-between text-sm">
+            <span class="font-medium">{{ ticket.model }}</span>
+            <span v-if="ticket.ready" class="text-emerald-600 dark:text-emerald-400">
+              {{ t('admin.accounts.openai.codexTurnTicketReady', { time: formatCodexTicketRemaining(ticket.remaining_seconds) }) }}
+            </span>
+            <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexTurnTicketPaused') }}</span>
+            <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'oauth'"
@@ -3206,6 +3210,7 @@
         </div>
       </div>
 
+      <!-- MERGE KEEP: local multimodal rules must retain UI, hydration and credential serialization together. -->
       <AccountMultimodalSettings
         v-if="!isSparkShadow && (account?.platform === 'openai' || account?.platform === 'anthropic')"
         v-model="multimodalConfig"
@@ -3302,6 +3307,8 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
+import OpenAIRequestTimezoneField from '@/components/account/OpenAIRequestTimezoneField.vue'
+import AccountSchedulingEditor from '@/components/account/AccountSchedulingEditor.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -3422,6 +3429,13 @@ const selectableGroups = computed(() => {
 // Spark 影子账号(parent_account_id 非空):代理恒继承母账号,不可独立编辑(外审 B/P1),
 // 故隐藏代理选择器。
 const isSparkShadow = computed(() => props.account?.parent_account_id != null)
+
+const codexTurnTickets = computed(() => props.account?.codex_turn_tickets ?? [])
+
+function formatCodexTicketRemaining(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds || 0))
+  return `${Math.floor(total / 60)}m${String(total % 60).padStart(2, '0')}s`
+}
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -3544,6 +3558,9 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editModelProvider = ref('none')
+const editVolcengineAccessKeyID = ref('')
+const editVolcengineSecretAccessKey = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -3905,6 +3922,8 @@ const customBaseUrl = ref('')
 
 // OpenAI 自动透传开关（OAuth/API Key）
 const openaiPassthroughEnabled = ref(false)
+const openAIRequestTimezone = ref('Asia/Singapore')
+const schedulingSchedule = ref<{ enabled: boolean; timezone: string; weekly_windows: Record<string, string[][]> } | null>(null)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
@@ -4388,6 +4407,12 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   mixedScheduling.value = false
   allowOverages.value = false
 	const extra = newAccount.extra as Record<string, unknown> | undefined
+  // MERGE KEEP: these local fields are not covered by upstream's platform-specific form hydration.
+  openAIRequestTimezone.value = typeof extra?.openai_request_timezone === 'string' ? extra.openai_request_timezone : 'Asia/Singapore'
+  schedulingSchedule.value = (extra?.scheduling_schedule as typeof schedulingSchedule.value) ?? null
+  editModelProvider.value = typeof extra?.model_provider === 'string' ? extra.model_provider : 'none'
+  editVolcengineAccessKeyID.value = typeof credentials?.volcengine_access_key_id === 'string' ? credentials.volcengine_access_key_id : ''
+  editVolcengineSecretAccessKey.value = ''
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
@@ -5470,6 +5495,13 @@ const handleSubmit = async () => {
         }
       }
 
+      // MERGE KEEP: AK/SK monitoring credentials are separate from the inference API key; omitted secrets stay unchanged.
+      if (props.account.platform === 'volcengine' ||
+        ((props.account.platform === 'openai' || props.account.platform === 'anthropic') && editModelProvider.value === 'volcengine')) {
+        if (editVolcengineAccessKeyID.value.trim()) newCredentials.volcengine_access_key_id = editVolcengineAccessKeyID.value.trim()
+        if (editVolcengineSecretAccessKey.value.trim()) newCredentials.volcengine_secret_access_key = editVolcengineSecretAccessKey.value.trim()
+      }
+
       // Handle API key
       // 后端响应已脱敏：currentCredentials 不会再包含 api_key 原文。
       // 用户填入新值则覆盖；留空时优先看 credentials_status.has_api_key；
@@ -5955,6 +5987,7 @@ const handleSubmit = async () => {
     if (props.account.platform === 'openai' && (props.account.type === 'oauth' || props.account.type === 'setup-token' || props.account.type === 'apikey')) {
       const currentExtra = (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }
+      newExtra.openai_request_timezone = openAIRequestTimezone.value
       const hadCodexCLIOnlyEnabled = currentExtra.codex_cli_only === true
       if (props.account.type === 'oauth' || props.account.type === 'setup-token') {
         newExtra.openai_oauth_responses_websockets_v2_mode = openaiOAuthResponsesWebSocketV2Mode.value
@@ -6139,6 +6172,13 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
+    if (props.account.type === 'apikey' && (props.account.platform === 'openai' || props.account.platform === 'anthropic')) {
+      const newExtra = { ...((updatePayload.extra as Record<string, unknown>) || props.account.extra || {}) }
+      if (editModelProvider.value === 'none') delete newExtra.model_provider
+      else newExtra.model_provider = editModelProvider.value
+      updatePayload.extra = newExtra
+    }
+
     // 上游ID头名只在改动时写回 extra，避免用弹窗打开时的快照覆盖运行态键。
     const nextUpstreamRequestIdHeader = upstreamRequestIdHeader.value.trim()
     if (nextUpstreamRequestIdHeader !== readUpstreamRequestIdHeader(props.account.extra)) {
@@ -6161,6 +6201,14 @@ const handleSubmit = async () => {
         { ...((props.account.credentials as Record<string, unknown>) || {}) }
       applyMultimodalConfig(credentials, multimodalConfig.value)
       updatePayload.credentials = credentials
+    }
+
+    // MERGE KEEP: apply scheduling LAST, or platform extra builders silently discard edits; preserve sanitized runtime fields.
+    if (updatePayload.extra || JSON.stringify(schedulingSchedule.value) !== JSON.stringify(props.account.extra?.scheduling_schedule ?? null)) {
+      const finalExtra = { ...((updatePayload.extra as Record<string, unknown>) || props.account.extra || {}) }
+      if (schedulingSchedule.value) finalExtra.scheduling_schedule = schedulingSchedule.value
+      else delete finalExtra.scheduling_schedule
+      updatePayload.extra = finalExtra
     }
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

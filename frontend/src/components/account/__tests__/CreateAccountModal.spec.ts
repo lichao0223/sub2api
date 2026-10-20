@@ -50,7 +50,7 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
-      getOpenAIRequestTimezones: vi.fn().mockResolvedValue({ default: 'Asia/Shanghai', timezones: ['Asia/Shanghai'] }),
+      getOpenAIRequestTimezones: vi.fn().mockResolvedValue({ default: 'Asia/Singapore', timezones: ['Asia/Singapore', 'Asia/Tokyo'] }),
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -75,6 +75,8 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import OpenAIRequestTimezoneField from '../OpenAIRequestTimezoneField.vue'
+import AccountSchedulingEditor from '../AccountSchedulingEditor.vue'
 import { defaultCNBaseUrl } from '../credentialsBuilder'
 
 const BaseDialogStub = defineComponent({
@@ -262,6 +264,31 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
 
     expect(createAccountMock.mock.calls[0]?.[0]?.extra?.model_provider).toBe('glm')
+  })
+
+  // MERGE KEEP: creation and editing must both serialize these local account settings after upstream merges.
+  it.each(['openai', 'anthropic'] as const)('creates %s with scheduling and legacy Volcengine monitoring credentials', async (platform) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, platform === 'openai' ? 'OpenAI' : 'admin.accounts.claudeConsole')
+    if (platform === 'openai') await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('legacy volcengine')
+    await wrapper.get('[data-testid="model-provider-select"]').setValue('volcengine')
+    await wrapper.get('input[placeholder="AccessKey ID"]').setValue(' new-ak ')
+    await wrapper.get('input[placeholder="Secret AccessKey"]').setValue(' new-sk ')
+    await wrapper.get('input[type="password"][required]').setValue('sk-inference')
+    const schedule = { enabled: true, timezone: 'UTC', weekly_windows: { '1': [['09:00', '18:00']] } }
+    wrapper.getComponent(AccountSchedulingEditor).vm.$emit('update:modelValue', schedule)
+    if (platform === 'openai') wrapper.getComponent(OpenAIRequestTimezoneField).vm.$emit('update:modelValue', 'Asia/Tokyo')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledTimes(1)
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform,
+      extra: { model_provider: 'volcengine', scheduling_schedule: schedule },
+      credentials: { api_key: 'sk-inference', volcengine_access_key_id: 'new-ak', volcengine_secret_access_key: 'new-sk' }
+    })
+    if (platform === 'openai') expect(createAccountMock.mock.calls[0]?.[0]?.extra?.openai_request_timezone).toBe('Asia/Tokyo')
+    wrapper.unmount()
   })
 
   afterEach(() => vi.useRealTimers())

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -33,7 +33,11 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
-      checkMixedChannelRisk: checkMixedChannelRiskMock
+      checkMixedChannelRisk: checkMixedChannelRiskMock,
+      getOpenAIRequestTimezones: vi.fn().mockResolvedValue({
+        default: 'Asia/Singapore',
+        timezones: ['Asia/Singapore', 'Asia/Tokyo', 'America/New_York']
+      })
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -49,6 +53,13 @@ vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
+vi.mock('@/api/admin/groups', () => ({
+  groupsAPI: {
+    getAll: vi.fn().mockResolvedValue([]),
+    getAvailableModels: vi.fn().mockResolvedValue([])
+  }
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
@@ -60,6 +71,9 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import OpenAIRequestTimezoneField from '../OpenAIRequestTimezoneField.vue'
+import AccountSchedulingEditor from '../AccountSchedulingEditor.vue'
+import AccountMultimodalSettings from '../AccountMultimodalSettings.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -335,6 +349,160 @@ describe('EditAccountModal', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  // MERGE KEEP: these local features were removed together in 5975ac7ec; never drop these tests to resolve a merge.
+  describe('localFeatures merge regressions', () => {
+    beforeEach(() => {
+      updateAccountMock.mockReset().mockResolvedValue(buildAccount())
+      checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    })
+
+    it.each(['apikey', 'oauth', 'setup-token'])('round-trips request timezone for OpenAI %s and reloads on reopen', async (type) => {
+      const account = { ...buildAccount(), type, extra: { openai_request_timezone: 'Asia/Tokyo' } }
+      const wrapper = mountModal(account)
+      await flushPromises()
+      const timezone = wrapper.getComponent(OpenAIRequestTimezoneField)
+      expect(timezone.props('modelValue')).toBe('Asia/Tokyo')
+      await timezone.get('select').setValue('America/New_York')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_request_timezone).toBe('America/New_York')
+      await wrapper.setProps({ show: false })
+      await wrapper.setProps({ show: true, account: { ...account, extra: {} } })
+      expect(wrapper.getComponent(OpenAIRequestTimezoneField).props('modelValue')).toBe('Asia/Singapore')
+      wrapper.unmount()
+    })
+
+    it.each(['openai', 'anthropic', 'gemini', 'grok', 'antigravity'])('keeps scheduling edits after %s extra builders and supports disabling', async (platform) => {
+      const schedule = { enabled: true, timezone: 'UTC', weekly_windows: { '1': [['09:00', '18:00']] } }
+      const account = {
+        ...buildAccount(), platform,
+        type: platform === 'antigravity' ? 'oauth' : 'apikey',
+        extra: { scheduling_schedule: schedule, local_marker: 'keep', quota_daily_limit: 25 }
+      }
+      const wrapper = mountModal(account)
+      const editor = wrapper.getComponent(AccountSchedulingEditor)
+      expect(editor.props('modelValue')).toEqual(schedule)
+      expect(editor.text()).toContain('09:00-18:00')
+      const changed = { ...schedule, timezone: 'Asia/Shanghai', weekly_windows: { '2': [['10:00', '20:00']] } }
+      editor.vm.$emit('update:modelValue', changed)
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ scheduling_schedule: changed, local_marker: 'keep' })
+      editor.vm.$emit('update:modelValue', null)
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      const extra = updateAccountMock.mock.calls[1]?.[1]?.extra
+      expect(extra).toBeDefined()
+      expect(extra).not.toHaveProperty('scheduling_schedule')
+      expect(extra.local_marker).toBe('keep')
+      wrapper.unmount()
+    })
+
+    it('reloads scheduling from a different account without mutating the original', async () => {
+      const account = buildAccount()
+      account.extra = { scheduling_schedule: { enabled: true, timezone: 'UTC', weekly_windows: { '1': [['09:00', '18:00']] } } }
+      const original = JSON.parse(JSON.stringify(account.extra))
+      const wrapper = mountModal(account)
+      const editor = wrapper.getComponent(AccountSchedulingEditor)
+      await editor.get('input[type="time"]').setValue('11:00')
+      const apply = editor.findAll('button').find(button => button.text() === '应用到已选日期')!
+      await apply.trigger('click')
+      expect(account.extra).toEqual(original)
+      await wrapper.setProps({ account: { ...buildAccount(), id: 99 } })
+      expect(editor.props('modelValue')).toBeNull()
+      wrapper.unmount()
+    })
+
+    it.each(['openai', 'anthropic'])('edits and clears legacy provider monitoring on %s without losing other extra', async (platform) => {
+      const account = { ...buildAccount(), platform, extra: { model_provider: 'glm', local_marker: 'keep' } }
+      const wrapper = mountModal(account)
+      const provider = wrapper.get('[data-testid="edit-model-provider-select"]')
+      expect((provider.element as HTMLSelectElement).value).toBe('glm')
+      await provider.setValue('deepseek')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ model_provider: 'deepseek', local_marker: 'keep' })
+      await provider.setValue('none')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[1]?.[1]?.extra).not.toHaveProperty('model_provider')
+      expect(updateAccountMock.mock.calls[1]?.[1]?.extra?.local_marker).toBe('keep')
+      wrapper.unmount()
+    })
+
+    it('preserves an existing legacy Kimi provider instead of silently clearing it', async () => {
+      const account = { ...buildAccount(), extra: { model_provider: 'kimi' } }
+      const wrapper = mountModal(account)
+      expect((wrapper.get('[data-testid="edit-model-provider-select"]').element as HTMLSelectElement).value).toBe('kimi')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.model_provider).toBe('kimi')
+      wrapper.unmount()
+    })
+
+    it.each(['openai', 'anthropic', 'volcengine'])('saves Volcengine AK/SK for %s and preserves redacted secrets when blank', async (platform) => {
+      const account = {
+        ...buildAccount(), platform,
+        credentials: { base_url: 'https://ark.cn-beijing.volces.com/api/v3', account_mode: 'coding', volcengine_access_key_id: 'old-ak' },
+        credentials_status: { has_api_key: true },
+        extra: platform === 'volcengine' ? {} : { model_provider: 'volcengine' }
+      }
+      const wrapper = mountModal(account)
+      expect((wrapper.get('input[aria-label="AccessKey ID"]').element as HTMLInputElement).value).toBe('old-ak')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('volcengine_secret_access_key')
+      await wrapper.get('input[aria-label="AccessKey ID"]').setValue(' new-ak ')
+      await wrapper.get('input[aria-label="Secret AccessKey"]').setValue(' new-sk ')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[1]?.[1]?.credentials).toMatchObject({
+        volcengine_access_key_id: 'new-ak', volcengine_secret_access_key: 'new-sk'
+      })
+      wrapper.unmount()
+    })
+
+    it.each(['oauth', 'setup-token'])('displays all Codex ticket states for %s without writing diagnostics to the API', async (type) => {
+      const account = {
+        ...buildAccount(), type,
+        codex_turn_tickets: [
+          { model: 'ready-model', ready: true, remaining_seconds: 125 },
+          { model: 'blocked-model', blocked: true, remaining_seconds: 0 },
+          { model: 'missing-model', ready: false, blocked: false, remaining_seconds: 0 }
+        ]
+      }
+      const wrapper = mountModal(account)
+      const tickets = wrapper.get('[data-testid="codex-turn-tickets"]')
+      expect(tickets.text()).toContain('ready-model')
+      expect(tickets.text()).toContain('admin.accounts.openai.codexTurnTicketReady')
+      expect(tickets.text()).toContain('admin.accounts.openai.codexTurnTicketPaused')
+      expect(tickets.text()).toContain('admin.accounts.openai.codexTurnTicketMissing')
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]).not.toHaveProperty('codex_turn_tickets')
+      await wrapper.setProps({ account: { ...account, codex_turn_tickets: [] } })
+      expect(wrapper.find('[data-testid="codex-turn-tickets"]').exists()).toBe(false)
+      wrapper.unmount()
+    })
+
+    it('keeps local settings platform-scoped and multimodal controls off credential shadows', () => {
+      const wrapper = mountModal(buildVertexAccount())
+      expect(wrapper.findComponent(OpenAIRequestTimezoneField).exists()).toBe(false)
+      expect(wrapper.find('[data-testid="edit-model-provider-select"]').exists()).toBe(false)
+      expect(wrapper.find('[data-testid="codex-turn-tickets"]').exists()).toBe(false)
+      wrapper.unmount()
+      const shadow = mountModal(buildOpenAISparkShadowAccount())
+      expect(shadow.findComponent(AccountMultimodalSettings).exists()).toBe(false)
+      shadow.unmount()
+    })
+
+    it.each(['openai', 'anthropic'])('round-trips existing multimodal rules for %s', async (platform) => {
+      const account = { ...buildAccount(), platform }
+      account.credentials.multimodal_model_modes = { 'vision-*': 'reject' }
+      const wrapper = mountModal(account)
+      const settings = wrapper.getComponent(AccountMultimodalSettings)
+      expect(settings.props('modelValue').rules).toEqual([{ model: 'vision-*', mode: 'reject', visionGroupId: 0, visionModel: '' }])
+      const config = { ...settings.props('modelValue'), defaultMode: 'reject' }
+      settings.vm.$emit('update:modelValue', config)
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+        multimodal_default_mode: 'reject', multimodal_model_modes: { 'vision-*': 'reject' }
+      })
+      wrapper.unmount()
+    })
+  })
 
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
@@ -1933,7 +2101,7 @@ describe('EditAccountModal gemini explicit cache upstream switch', () => {
     updateAccountMock.mockResolvedValue(account)
     const wrapper = mountModal(account)
 
-    expect(wrapper.find('[data-testid="explicit-cache-upstream-section"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="explicit-cache-upstream-section"]')).toHaveLength(1)
     expect(wrapper.get('[data-testid="explicit-cache-upstream-toggle"]').attributes('aria-checked')).toBe('true')
     const ttlInput = wrapper.get('[data-testid="explicit-cache-upstream-max-ttl"]')
     expect((ttlInput.element as HTMLInputElement).value).toBe('1800')
