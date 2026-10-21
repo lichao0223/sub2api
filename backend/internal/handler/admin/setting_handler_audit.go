@@ -627,6 +627,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
 		changed = append(changed, "cyber_session_block_enabled")
 	}
+	if before.GatewayMaxInputTokens != after.GatewayMaxInputTokens {
+		changed = append(changed, "gateway_max_input_tokens")
+	}
 	if before.CyberSessionBlockTTLSeconds != after.CyberSessionBlockTTLSeconds {
 		changed = append(changed, "cyber_session_block_ttl_seconds")
 	}

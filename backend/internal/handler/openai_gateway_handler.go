@@ -50,6 +50,7 @@ type OpenAIGatewayHandler struct {
 	imageLimiter               *imageConcurrencyLimiter
 	maxAccountSwitches         int
 	cfg                        *config.Config
+	settingService             *service.SettingService
 }
 
 type openAIWSTurnChannelMappingSnapshot struct {
@@ -361,6 +362,7 @@ func NewOpenAIGatewayHandler(
 	contentModerationService *service.ContentModerationService,
 	opsService *service.OpsService,
 	cfg *config.Config,
+	settingService ...*service.SettingService,
 ) *OpenAIGatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 3
@@ -369,6 +371,10 @@ func NewOpenAIGatewayHandler(
 		if cfg.Gateway.MaxAccountSwitches > 0 {
 			maxAccountSwitches = cfg.Gateway.MaxAccountSwitches
 		}
+	}
+	var settings *service.SettingService
+	if len(settingService) > 0 {
+		settings = settingService[0]
 	}
 	return &OpenAIGatewayHandler{
 		gatewayService:           gatewayService,
@@ -382,6 +388,7 @@ func NewOpenAIGatewayHandler(
 		imageLimiter:             &imageConcurrencyLimiter{},
 		maxAccountSwitches:       maxAccountSwitches,
 		cfg:                      cfg,
+		settingService:           settings,
 	}
 }
 

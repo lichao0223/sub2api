@@ -15,6 +15,16 @@ terminate healthy long generations and streams.
   image, video, and batch-image endpoints.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
+- `gateway.max_input_tokens: 300000` rejects estimated text input above 300,000
+  tokens at the shared admission gate, before moderation or generation calls.
+  ASCII characters count as roughly 1/4 token and other Unicode characters as
+  one token, including history, tool definitions and tool results. HTTP returns
+  400 with `input_token_limit_exceeded`; WebSocket turns send the same error and
+  close with 1008. Rejections enter the existing Ops error log as local request
+  errors and do not create generation usage charges. Counting stops as soon as
+  the limit is exceeded, so logged estimates are lower bounds. Inline media,
+  opaque encrypted content, and server-side history/cache references are not
+  estimated; this is a text safety limit, not an exact model context check.
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6

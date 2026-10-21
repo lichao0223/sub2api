@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -48,26 +49,29 @@ func (h *GatewayHandler) checkSecurityAudit(c *gin.Context, reqLog *zap.Logger, 
 	if h == nil {
 		return nil
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, "http")
+	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, h.cfg, apiKey, subject, protocol, model, body, "http", h.settingService)
 }
 
 func (h *OpenAIGatewayHandler) checkSecurityAudit(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte) *securityaudit.Decision {
 	if h == nil {
 		return nil
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, "http")
+	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, h.cfg, apiKey, subject, protocol, model, body, "http", h.settingService)
 }
 
 func (h *OpenAIGatewayHandler) checkSecurityAuditStage(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
 	if h == nil {
 		return nil
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, stage)
+	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, h.cfg, apiKey, subject, protocol, model, body, stage, h.settingService)
 }
 
-func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
+func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, cfg *config.Config, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string, settings ...*service.SettingService) *securityaudit.Decision {
 	if c == nil || c.Request == nil {
 		return nil
+	}
+	if decision := checkInputTokenLimit(c, reqLog, cfg, model, body, stage, settings...); decision != nil {
+		return decision
 	}
 	cacheCompletion := cachesSecurityAuditCompletion(stage)
 	if cacheCompletion {

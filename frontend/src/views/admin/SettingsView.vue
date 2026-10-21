@@ -7604,6 +7604,12 @@
               <Toggle v-model="form.cyber_session_block_enabled" />
             </div>
 
+            <div>
+              <label class="input-label">{{ t('admin.settings.features.riskControl.gatewayMaxInputTokens') }}</label>
+              <input v-model.number="form.gateway_max_input_tokens" type="number" min="1" class="input" />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.riskControl.gatewayMaxInputTokensHint') }}</p>
+            </div>
+
             <div v-if="form.cyber_session_block_enabled">
               <label class="input-label">
                 {{ t('admin.settings.features.riskControl.cyberSessionBlockTTL') }}
@@ -9968,6 +9974,7 @@ const form = reactive<SettingsForm>({
   cyber_policy_user_allowlist: "",
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
+  gateway_max_input_tokens: 300000,
   payment_min_amount: 1,
   payment_max_amount: 10000,
   payment_daily_limit: 50000,
@@ -11924,6 +11931,7 @@ async function saveSettings() {
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds:
         Number(form.cyber_session_block_ttl_seconds) || 3600,
+      gateway_max_input_tokens: Number(form.gateway_max_input_tokens) || 300000,
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,
       payment_daily_limit: Number(form.payment_daily_limit) || 0,

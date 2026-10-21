@@ -353,6 +353,7 @@ type SystemSettings struct {
 	// cyber 会话屏蔽开关 + TTL
 	CyberSessionBlockEnabled    bool   `json:"cyber_session_block_enabled"`
 	CyberPolicyUserAllowlist    string `json:"cyber_policy_user_allowlist"`
+	GatewayMaxInputTokens       int    `json:"gateway_max_input_tokens"`
 	CyberSessionBlockTTLSeconds int    `json:"cyber_session_block_ttl_seconds"`
 
 	// Affiliate (邀请返利) feature switch

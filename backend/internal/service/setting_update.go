@@ -447,6 +447,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
+	if settings.GatewayMaxInputTokens > 0 {
+		updates[SettingKeyGatewayMaxInputTokens] = strconv.Itoa(settings.GatewayMaxInputTokens)
+	}
+
 	// cyber 会话屏蔽开关 + TTL
 	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
 	if _, err := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist); err != nil {
@@ -808,6 +812,13 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
 	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	s.inputTokenLimitMu.Lock()
+	if settings.GatewayMaxInputTokens > 0 {
+		s.inputTokenLimitCache.Store(&cachedInputTokenLimit{limit: settings.GatewayMaxInputTokens, expiresAt: time.Now().Add(time.Minute).UnixNano()})
+	} else {
+		s.inputTokenLimitCache.Store(&cachedInputTokenLimit{})
+	}
+	s.inputTokenLimitMu.Unlock()
 	// Retain the successfully saved allowlist if the next DB refresh fails.
 	s.cyberSessionBlockRuntimeMu.Lock()
 	allowlistedUsers, _ := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist)

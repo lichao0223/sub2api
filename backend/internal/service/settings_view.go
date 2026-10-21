@@ -173,6 +173,7 @@ type SystemSettings struct {
 	RiskControlEnabled           bool
 	CyberSessionBlockEnabled     bool
 	CyberPolicyUserAllowlist     string
+	GatewayMaxInputTokens        int
 	CyberSessionBlockTTLSeconds  int
 	AffiliateEnabled             bool
 	AffiliateRebateRate          float64

@@ -679,6 +679,7 @@ export interface SystemSettings {
   cyber_policy_user_allowlist: string;
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
+  gateway_max_input_tokens: number;
 
   payment_min_amount: number;
   payment_max_amount: number;
@@ -1013,6 +1014,7 @@ export interface UpdateSettingsRequest {
   cyber_policy_user_allowlist?: string;
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;
+  gateway_max_input_tokens?: number;
 
   payment_min_amount?: number;
   payment_max_amount?: number;

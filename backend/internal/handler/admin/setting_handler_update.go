@@ -376,6 +376,7 @@ type UpdateSettingsRequest struct {
 	// cyber 会话屏蔽开关 + TTL
 	CyberSessionBlockEnabled    *bool   `json:"cyber_session_block_enabled"`
 	CyberPolicyUserAllowlist    *string `json:"cyber_policy_user_allowlist"`
+	GatewayMaxInputTokens       *int    `json:"gateway_max_input_tokens"`
 	CyberSessionBlockTTLSeconds *int    `json:"cyber_session_block_ttl_seconds"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
@@ -1535,6 +1536,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
+	if req.GatewayMaxInputTokens != nil && *req.GatewayMaxInputTokens <= 0 {
+		response.BadRequest(c, "gateway_max_input_tokens must be > 0")
+		return
+	}
 	if req.CyberSessionBlockTTLSeconds != nil && *req.CyberSessionBlockTTLSeconds <= 0 {
 		response.BadRequest(c, "cyber_session_block_ttl_seconds must be > 0")
 		return
@@ -2063,6 +2068,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CyberSessionBlockEnabled
 		}(),
+		GatewayMaxInputTokens: intValueOrDefault(req.GatewayMaxInputTokens, previousSettings.GatewayMaxInputTokens),
 		CyberSessionBlockTTLSeconds: func() int {
 			if req.CyberSessionBlockTTLSeconds != nil {
 				return *req.CyberSessionBlockTTLSeconds
@@ -2507,6 +2513,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
 		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
 		CyberPolicyUserAllowlist:    updatedSettings.CyberPolicyUserAllowlist,
+		GatewayMaxInputTokens:       updatedSettings.GatewayMaxInputTokens,
 		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
 		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
 		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,

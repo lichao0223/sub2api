@@ -143,10 +143,11 @@ func ProvideOpenAIGatewayHandler(
 	cfg *config.Config,
 	coordinator *securityaudit.Coordinator,
 	compositeResolver *service.CompositeRouteResolver,
+	settingService *service.SettingService,
 ) *OpenAIGatewayHandler {
 	gatewayService.SetPluginManager(pluginManager)
 	h := NewOpenAIGatewayHandler(gatewayService, concurrencyService, billingCacheService, apiKeyService,
-		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg)
+		usageRecordWorkerPool, errorPassthroughService, contentModerationService, opsService, cfg, settingService)
 	h.multimodalGatewayService = multimodalGatewayService
 	h.compositeResolver = compositeResolver
 	h.securityAuditCoordinator = coordinator

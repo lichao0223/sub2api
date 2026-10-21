@@ -22,10 +22,7 @@ func (h *OpenAIGatewayHandler) openAISecurityAuditError(c *gin.Context, decision
 		h.errorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
 		return
 	}
-	errType := "api_error"
-	if decision.Kind == securityaudit.DecisionBlock {
-		errType = "permission_error"
-	}
+	errType := securityAuditErrorType(decision)
 	c.JSON(securityAuditStatus(decision), gin.H{"error": gin.H{
 		"type": errType, "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision),
 	}})
@@ -39,10 +36,7 @@ func (h *GatewayHandler) openAISecurityAuditError(c *gin.Context, decision *secu
 		h.chatCompletionsErrorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
 		return
 	}
-	errType := "api_error"
-	if decision.Kind == securityaudit.DecisionBlock {
-		errType = "permission_error"
-	}
+	errType := securityAuditErrorType(decision)
 	c.JSON(securityAuditStatus(decision), gin.H{"error": gin.H{
 		"type": errType, "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision),
 	}})
@@ -56,8 +50,12 @@ func (h *GatewayHandler) responsesSecurityAuditError(c *gin.Context, decision *s
 		h.responsesErrorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
 		return
 	}
+	errType := "api_error"
+	if decision.ErrorCode == inputTokenLimitErrorCode {
+		errType = "invalid_request_error"
+	}
 	c.JSON(securityAuditStatus(decision), gin.H{"error": gin.H{
-		"type": "api_error", "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision),
+		"type": errType, "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision),
 	}})
 }
 
@@ -69,10 +67,7 @@ func (h *GatewayHandler) anthropicSecurityAuditError(c *gin.Context, decision *s
 		h.errorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
 		return
 	}
-	errType := "api_error"
-	if decision.Kind == securityaudit.DecisionBlock {
-		errType = "permission_error"
-	}
+	errType := securityAuditErrorType(decision)
 	c.JSON(securityAuditStatus(decision), gin.H{"type": "error", "error": gin.H{
 		"type": errType, "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision),
 	}})
@@ -86,10 +81,7 @@ func (h *OpenAIGatewayHandler) anthropicSecurityAuditError(c *gin.Context, decis
 		h.anthropicErrorResponse(c, securityAuditStatus(decision), securityAuditErrorCode(decision), securityAuditMessage(decision))
 		return
 	}
-	errType := "api_error"
-	if decision.Kind == securityaudit.DecisionBlock {
-		errType = "permission_error"
-	}
+	errType := securityAuditErrorType(decision)
 	c.JSON(securityAuditStatus(decision), gin.H{"type": "error", "error": gin.H{
 		"type": errType, "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision),
 	}})
@@ -103,10 +95,7 @@ func googleSecurityAuditError(c *gin.Context, decision *securityaudit.Decision) 
 		googleErrorWithType(c, securityAuditStatus(decision), securityAuditErrorCode(decision), "", securityAuditMessage(decision))
 		return
 	}
-	errType := "api_error"
-	if decision.Kind == securityaudit.DecisionBlock {
-		errType = "permission_error"
-	}
+	errType := securityAuditErrorType(decision)
 	service.SetOpsLocalErrorType(c, errType, securityAuditErrorCode(decision))
 	status := securityAuditStatus(decision)
 	googleStatus := googleapi.HTTPStatusToGoogleStatus(status)
@@ -117,14 +106,28 @@ func googleSecurityAuditError(c *gin.Context, decision *securityaudit.Decision) 
 	if c != nil && c.Request != nil {
 		requestID = contentModerationRequestID(c.Request.Context())
 	}
+	domain := "sub2api.securityaudit"
+	if decision.ErrorCode == inputTokenLimitErrorCode {
+		domain = "sub2api.gateway"
+	}
 	c.JSON(status, gin.H{"error": gin.H{
 		"code": status, "message": securityAuditMessage(decision), "status": googleStatus,
 		"details": []gin.H{{
 			"@type":  "type.googleapis.com/google.rpc.ErrorInfo",
-			"reason": securityAuditErrorCode(decision), "domain": "sub2api.securityaudit",
+			"reason": securityAuditErrorCode(decision), "domain": domain,
 			"metadata": gin.H{"request_id": requestID},
 		}},
 	}})
+}
+
+func securityAuditErrorType(decision *securityaudit.Decision) string {
+	if decision.ErrorCode == inputTokenLimitErrorCode {
+		return "invalid_request_error"
+	}
+	if decision.Kind == securityaudit.DecisionBlock {
+		return "permission_error"
+	}
+	return "api_error"
 }
 
 func writeSecurityAuditWSError(ctx context.Context, conn *coderws.Conn, decision *securityaudit.Decision) {
@@ -139,8 +142,12 @@ func writeSecurityAuditWSError(ctx context.Context, conn *coderws.Conn, decision
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	eventID := "evt_prompt_guard_rejected"
+	if decision.ErrorCode == inputTokenLimitErrorCode {
+		eventID = "evt_input_token_limit_exceeded"
+	}
 	payload, err := json.Marshal(gin.H{
-		"event_id": "evt_prompt_guard_rejected", "type": "error",
+		"event_id": eventID, "type": "error",
 		"error": gin.H{"type": "invalid_request_error", "code": securityAuditErrorCode(decision), "message": securityAuditMessage(decision)},
 	})
 	if err != nil {
@@ -163,6 +170,9 @@ func (d legacyContentModerationDecision) toService() *service.ContentModerationD
 func securityAuditWSCloseStatus(decision *securityaudit.Decision) coderws.StatusCode {
 	if decision == nil {
 		return coderws.StatusInternalError
+	}
+	if decision.ErrorCode == inputTokenLimitErrorCode {
+		return coderws.StatusPolicyViolation
 	}
 	if decision.Legacy != nil && decision.Legacy.Blocked {
 		return coderws.StatusPolicyViolation

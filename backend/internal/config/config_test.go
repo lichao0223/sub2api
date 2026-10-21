@@ -131,9 +131,18 @@ func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	require.False(t, cfg.Server.TrustedProxiesConfigured)
 	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
 	require.Equal(t, int64(32*1024*1024), cfg.Gateway.TextMaxBodySize)
+	require.Equal(t, 300000, cfg.Gateway.MaxInputTokens)
 	require.True(t, cfg.APIKeyAuth.InvalidAbuse.Enabled)
 	require.Equal(t, 120, cfg.APIKeyAuth.InvalidAbuse.Threshold)
 	require.Equal(t, 16384, cfg.APIKeyAuth.InvalidAbuse.Capacity)
+}
+
+func TestLoadGatewayMaxInputTokensFromEnvironment(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_MAX_INPUT_TOKENS", "250000")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 250000, cfg.Gateway.MaxInputTokens)
 }
 
 func TestNormalizeForwardedClientIPHeaders(t *testing.T) {
@@ -1871,6 +1880,11 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway text body exceeds media body",
 			mutate:  func(c *Config) { c.Gateway.TextMaxBodySize = c.Gateway.MaxBodySize + 1 },
 			wantErr: "gateway.text_max_body_size",
+		},
+		{
+			name:    "gateway max input tokens",
+			mutate:  func(c *Config) { c.Gateway.MaxInputTokens = 0 },
+			wantErr: "gateway.max_input_tokens",
 		},
 		{
 			name:    "gateway models list read limit",

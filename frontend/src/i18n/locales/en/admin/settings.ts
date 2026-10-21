@@ -88,6 +88,8 @@ export default {
           cyberSessionBlockHint: 'When enabled, sessions hit by upstream cyber_policy are blocked locally for the TTL and no longer forwarded. Only the offending session is blocked; other sessions on the same key are unaffected.',
           riskControlUserAllowlist: 'Risk control allowlist',
           riskControlUserAllowlistHint: 'Enter any email keyword to search for matching users. Allowlisted users will not trigger account bans or local blocking, but upstream restrictions still apply. This feature is typically used for trusted downstream relays.',
+          gatewayMaxInputTokens: 'Estimated input token limit',
+          gatewayMaxInputTokensHint: 'Requests above this approximate limit are rejected locally before upstream forwarding.',
           cyberSessionBlockTTL: 'Block TTL (seconds)',
         },
         affiliate: {

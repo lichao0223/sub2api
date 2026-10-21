@@ -1570,6 +1570,11 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	if streamErr.Turn > 0 && !streamErr.RequestScoped {
 		applyOpsStreamErrorSnapshot(entry, streamErr)
 	}
+	if streamErr.RequestScoped && streamErr.Code == inputTokenLimitErrorCode {
+		entry.AccountID = nil
+		entry.UpstreamModel = ""
+		entry.UpstreamEndpoint = ""
+	}
 
 	if apiKey != nil {
 		entry.APIKeyID = &apiKey.ID
@@ -2311,7 +2316,8 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		opsCodeSubscriptionNotFound,
 		opsCodeSubscriptionInvalid,
 		opsCodeAPIKeyQuotaExhausted,
-		opsCodeAPIKeyQueryDeprecated:
+		opsCodeAPIKeyQueryDeprecated,
+		inputTokenLimitErrorCode:
 		return true
 	}
 	return strings.Contains(msg, "api key in query parameter is deprecated") ||
