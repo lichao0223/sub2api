@@ -2,6 +2,7 @@
 package tokenestimate
 
 import (
+	"math"
 	"strings"
 	"unicode"
 
@@ -11,7 +12,8 @@ import (
 // Count stops at limit+1. Its result is a lower bound when the limit is exceeded.
 // ASCII characters count as roughly 0.3 token and Han characters as roughly 0.6 token,
 // following DeepSeek public estimation guidance. Other Unicode uses one token.
-// Media uses conservative vision estimates; this is not a provider billing tokenizer.
+// Images use approximate vision estimates; this is not a provider billing tokenizer.
+// shortcut: audio, video and server-side history are excluded; use provider counting for full-context enforcement.
 func Count(body []byte, limit int) int {
 	var tenths int64
 	tokens := func() int { return int((tenths + 9) / 10) }
@@ -19,12 +21,10 @@ func Count(body []byte, limit int) int {
 		for _, r := range text {
 			if r <= 0x7f {
 				tenths += 3
+			} else if unicode.Is(unicode.Han, r) {
+				tenths += 6
 			} else {
-				if unicode.Is(unicode.Han, r) {
-					tenths += 6
-				} else {
-					tenths += 10
-				}
+				tenths += 10
 			}
 			if tokens() > limit {
 				return false
@@ -33,7 +33,11 @@ func Count(body []byte, limit int) int {
 		return true
 	}
 	addTokens := func(n int) bool {
-		tenths += int64(n * 10)
+		if n > limit-tokens() {
+			tenths = int64(limit)*10 + 1
+			return false
+		}
+		tenths += int64(n) * 10
 		return tokens() <= limit
 	}
 	var walk func(gjson.Result, bool, int) bool
@@ -48,13 +52,17 @@ func Count(body []byte, limit int) int {
 			if !schema {
 				switch value.Get("type").Str {
 				case "image", "image_url", "input_image":
-					if strings.EqualFold(value.Get("detail").Str, "low") {
+					if strings.EqualFold(value.Get("detail").Str, "low") || strings.EqualFold(value.Get("image_url.detail").Str, "low") {
 						return addTokens(85)
 					}
-					width, height := value.Get("width").Int(), value.Get("height").Int()
+					width, height := imageDimensions(value)
 					if width > 0 && height > 0 {
-						x, y := (width+511)/512, (height+511)/512
-						return addTokens(85 + 170*int(x*y))
+						// Bound before converting: client-supplied dimensions can overflow integer arithmetic.
+						n := 85 + 170*math.Ceil(float64(width)/512)*math.Ceil(float64(height)/512)
+						if n > float64(limit) {
+							return addTokens(limit + 1)
+						}
+						return addTokens(int(n))
 					}
 					return addTokens(765)
 				case "input_audio", "audio", "video", "input_video", "input_file", "file":
@@ -69,13 +77,13 @@ func Count(body []byte, limit int) int {
 			value.ForEach(func(key, child gjson.Result) bool {
 				if !schema {
 					switch key.Str {
-					case "inlineData", "inline_data":
+					case "inlineData", "inline_data", "fileData", "file_data":
 						mime := strings.ToLower(child.Get("mimeType").Str + child.Get("mime_type").Str)
-						if strings.Contains(mime, "image/") {
+						if strings.HasPrefix(mime, "image/") {
 							keepGoing = addTokens(258)
 						}
 						return keepGoing
-					case "fileData", "file_data", "encrypted_content", "signature":
+					case "encrypted_content", "signature":
 						return true
 					}
 				}

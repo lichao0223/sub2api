@@ -46,10 +46,27 @@ func TestInputTokenLimitRunsBeforeAuditAndCachedCompletion(t *testing.T) {
 
 func TestInputTokenLimitBoundaryAndConfig(t *testing.T) {
 	c, _ := securityAuditErrorTestContext(t)
-	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 900000)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1000000)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1000001)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 500000)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 500001)), "http"))
 	cfg := &config.Config{Gateway: config.GatewayConfig{MaxInputTokens: 10}}
-	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 30)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 41)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 33)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 34)), "http"))
+}
+
+func TestInputTokenLimitRejectsImageHeavyInputBeforeAudit(t *testing.T) {
+	c, _ := securityAuditErrorTestContext(t)
+	image := `{"type":"input_image","image_url":"https://example.test/image.png"}`
+	body := []byte(`{"input":[` + strings.TrimSuffix(strings.Repeat(image+",", 393), ",") + `]}`)
+	engine := &turnCountingEngine{mode: securityaudit.ModeBlocking}
+	decision := runSecurityAudit(c, nil, securityaudit.NewCoordinator(nil, engine), nil, nil, nil,
+		middleware2.AuthSubject{UserID: 7}, "openai_responses", "test-model", body, "http")
+	require.NotNil(t, decision)
+	require.Equal(t, inputTokenLimitErrorCode, decision.ErrorCode)
+	require.False(t, decision.AllowNextStage)
+	require.Zero(t, engine.evaluates.Load())
+	require.Zero(t, engine.enqueues.Load())
 }
 
 func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing.T) {

@@ -17,14 +17,23 @@ terminate healthy long generations and streams.
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
 - `gateway.max_input_tokens: 300000` rejects estimated text input above 300,000
   tokens at the shared admission gate, before moderation or generation calls.
-  ASCII characters count as roughly 1/4 token and other Unicode characters as
-  one token, including history, tool definitions and tool results. HTTP returns
+  Text uses DeepSeek's approximate ratios: ASCII characters count as 0.3 token,
+  Han characters as 0.6 token, and other Unicode characters as one token,
+  including history, tool definitions and tool results. HTTP returns
   400 with `input_token_limit_exceeded`; WebSocket turns send the same error and
   close with 1008. Rejections enter the existing Ops error log as local request
   errors and do not create generation usage charges. Counting stops as soon as
-  the limit is exceeded, so logged estimates are lower bounds. Inline media,
-  opaque encrypted content, and server-side history/cache references are not
-  estimated; this is a text safety limit, not an exact model context check.
+  the limit is exceeded, so logged estimates are lower bounds of the estimate,
+  not the provider's actual token count. Images are included: typed image blocks
+  use 85 tokens for low detail, otherwise 85 + 170 per 512x512 tile if dimensions
+  are known, or 765 tokens if unknown. Embedded PNG/JPEG/GIF/WebP dimensions are
+  read from bounded headers without decoding pixels or fetching remote URLs.
+  Gemini inline/file image parts use a fixed 258 tokens each. These are rough
+  heuristics, not universal model billing formulas; unknown-size and Gemini
+  images can be underestimated. Audio/video, opaque encrypted content and
+  server-side history/cache references are excluded. Change the threshold in
+  System Settings > Feature Toggles > Risk Control > Estimated input token limit;
+  the persisted setting overrides this configuration default.
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6

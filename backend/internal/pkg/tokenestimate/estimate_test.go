@@ -1,7 +1,11 @@
 package tokenestimate
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image"
+	"image/png"
 	"strings"
 	"testing"
 
@@ -15,6 +19,8 @@ func TestCount(t *testing.T) {
 		want int
 	}{
 		{"ASCII", `{"input":"abcdefgh"}`, 3},
+		{"ten English characters", `{"input":"abcdefghij"}`, 3},
+		{"five Chinese characters", `{"input":"一二三四五"}`, 3},
 		{"round up", `{"input":"abcde"}`, 2},
 		{"Unicode", `{"input":"中文🙂"}`, 3},
 		{"escaped Unicode", `{"input":"\u4e2d\u6587\ud83d\ude42"}`, 3},
@@ -35,9 +41,11 @@ func TestCountLimitBoundaryAndEarlyStop(t *testing.T) {
 		want := min((length*3+9)/10, 300001)
 		require.Equal(t, want, Count(raw, 300000))
 	}
-	raw, err := json.Marshal(map[string]string{"input": strings.Repeat("中", 500001)})
-	require.NoError(t, err)
-	require.Equal(t, 300001, Count(raw, 300000))
+	for _, length := range []int{499999, 500000, 500001} {
+		raw, err := json.Marshal(map[string]string{"input": strings.Repeat("中", length)})
+		require.NoError(t, err)
+		require.Equal(t, min((length*6+9)/10, 300001), Count(raw, 300000))
+	}
 }
 
 func TestCountIncludesApproximateImageTokens(t *testing.T) {
@@ -47,6 +55,29 @@ func TestCountIncludesApproximateImageTokens(t *testing.T) {
 	require.Equal(t, 85, Count(low, 300000))
 	require.Equal(t, 765, Count(high, 300000))
 	require.Equal(t, 260, Count(gemini, 300000))
+	for _, body := range []string{
+		`{"input":[{"type":"image_url","image_url":{"url":"https://example.test/a.png","detail":"low"}}]}`,
+		`{"input":[{"type":"image","source":{"type":"base64","data":"invalid"}}]}`,
+		`{"input":[{"type":"input_image","width":9223372036854775807,"height":9223372036854775807}]}`,
+		`{"input":{"fileData":{"mimeType":"image/png","fileUri":"https://example.test/a.png"}}}`,
+	} {
+		require.Equal(t, 81, Count([]byte(body), 80), body)
+	}
+}
+
+func TestCountImageReadsBoundedHeaders(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 513, 1))))
+	data := base64.StdEncoding.EncodeToString(buf.Bytes())
+	for _, part := range []any{
+		map[string]any{"type": "input_image", "image_url": "data:image/png;base64," + data, "width": 1, "height": 1},
+		map[string]any{"type": "image_url", "image_url": map[string]string{"url": "data:image/png;base64," + data}},
+		map[string]any{"type": "image", "source": map[string]string{"type": "base64", "data": data}},
+	} {
+		raw, err := json.Marshal(map[string]any{"input": []any{part}})
+		require.NoError(t, err)
+		require.Equal(t, 425, Count(raw, 300000), "two image tiles; embedded dimensions override client hints")
+	}
 }
 
 func TestCountIncludesHistoryToolsAndResultsAcrossProtocols(t *testing.T) {
@@ -74,33 +105,34 @@ func TestCountIncludesHistoryToolsAndResultsAcrossProtocols(t *testing.T) {
 	}
 }
 
-func TestCountSkipsMediaButCountsAdjacentText(t *testing.T) {
+func TestCountDoesNotTreatMediaBytesAsText(t *testing.T) {
 	large := strings.Repeat("A", 2000)
-	for _, part := range []any{
-		map[string]string{"type": "input_image", "image_url": "data:image/png;base64," + large},
-		map[string]any{"type": "image", "source": map[string]string{"data": large}},
-		map[string]any{"type": "input_file", "file_data": large},
-		map[string]any{"type": "input_audio", "input_audio": map[string]string{"data": large}},
-		map[string]any{"inlineData": map[string]string{"mimeType": "image/png", "data": large}},
-		map[string]any{"file_data": map[string]string{"file_uri": large}},
-		map[string]string{"type": "reasoning", "encrypted_content": large, "signature": large},
+	for _, tt := range []struct {
+		part        any
+		imageTokens int
+	}{
+		{map[string]string{"type": "input_image", "image_url": "data:image/png;base64," + large}, 765},
+		{map[string]any{"type": "image", "source": map[string]string{"data": large}}, 765},
+		{map[string]any{"type": "input_file", "file_data": large}, 0},
+		{map[string]any{"type": "input_audio", "input_audio": map[string]string{"data": large}}, 0},
+		{map[string]any{"inlineData": map[string]string{"mimeType": "image/png", "data": large}}, 258},
+		{map[string]any{"file_data": map[string]string{"file_uri": large}}, 0},
+		{map[string]string{"type": "reasoning", "encrypted_content": large, "signature": large}, 0},
 	} {
-		body := map[string]any{"input": []any{map[string]any{"content": []any{part, map[string]string{"type": "input_text", "text": "hello"}}}}}
+		body := map[string]any{"input": []any{tt.part}}
 		raw, err := json.Marshal(body)
 		require.NoError(t, err)
-		if strings.Contains(string(raw), `"input_image"`) || strings.Contains(string(raw), `"type":"image"`) || strings.Contains(string(raw), "image/png") {
-			require.GreaterOrEqual(t, Count(raw, 100), 85)
-		} else {
-			require.Less(t, Count(raw, 100), 100)
-		}
+		before := Count(raw, 300000)
+		require.GreaterOrEqual(t, before, tt.imageTokens)
+		require.Less(t, before, tt.imageTokens+20, "media bytes must not contribute to text count")
+		body["instructions"] = "hello"
+		raw, err = json.Marshal(body)
+		require.NoError(t, err)
+		require.Greater(t, Count(raw, 300000), before, "text adjacent to media must count")
 		body["instructions"] = strings.Repeat("x", 401)
 		raw, err = json.Marshal(body)
 		require.NoError(t, err)
-		if strings.Contains(string(raw), "image/png") || strings.Contains(string(raw), `"input_image"`) || strings.Contains(string(raw), `"type":"image"`) {
-			require.GreaterOrEqual(t, Count(raw, 100), 100)
-		} else {
-			require.Equal(t, 101, Count(raw, 100))
-		}
+		require.Equal(t, 101, Count(raw, 100))
 	}
 }
 
