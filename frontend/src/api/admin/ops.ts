@@ -951,6 +951,8 @@ export interface OpsErrorLog {
 
 export interface OpsErrorDetail extends OpsErrorLog {
   error_body: string
+  has_request_snapshot?: boolean
+  request_snapshot_bytes?: number
 
   // Upstream context (optional; enriched by gateway services)
   upstream_status_code?: number | null
@@ -1132,6 +1134,11 @@ export async function listErrorLogs(params: OpsErrorListQueryParams): Promise<Op
 
 export async function getErrorLogDetail(id: number): Promise<OpsErrorDetail> {
   const { data } = await apiClient.get<OpsErrorDetail>(`/admin/ops/errors/${id}`)
+  return data
+}
+
+export async function getErrorRequestSnapshot(id: number): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/admin/ops/errors/${id}/request-body`, { responseType: 'blob' })
   return data
 }
 
@@ -1334,6 +1341,7 @@ export const opsAPI = {
   // Legacy unified endpoints
   listErrorLogs,
   getErrorLogDetail,
+  getErrorRequestSnapshot,
   updateErrorResolved,
 
   // New split endpoints

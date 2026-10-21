@@ -108,6 +108,7 @@ func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing
 	require.Contains(t, entry.ErrorBody, inputTokenLimitErrorCode)
 	require.Contains(t, entry.ErrorMessage, "300000")
 	require.NotContains(t, entry.ErrorBody, strings.Repeat("x", 100))
+	require.Equal(t, string(inputLimitBody(t, strings.Repeat("x", 1000001))), decodeRequestSnapshot(t, entry.RequestSnapshotGzip))
 }
 
 func TestInputTokenLimitWebSocketErrorIsRecordedAfterUpgrade(t *testing.T) {

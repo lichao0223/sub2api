@@ -130,6 +130,21 @@
         <div class="mt-3 break-words text-sm font-medium text-amber-900 dark:text-amber-100">{{ rootCauseMessage }}</div>
       </div>
 
+      <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900" data-testid="error-request-snapshot">
+        <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.requestSnapshot.title') }}</h3>
+        <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.errorDetail.requestSnapshot.hint') }}</p>
+        <div v-if="detail.has_request_snapshot" class="mt-4 flex flex-wrap gap-2">
+          <button type="button" class="btn btn-secondary" :disabled="snapshotLoading" data-testid="view-request-snapshot" @click="loadRequestSnapshot(false)">{{ t('admin.ops.errorDetail.requestSnapshot.view') }}</button>
+          <button type="button" class="btn btn-secondary" :disabled="snapshotLoading" data-testid="download-request-snapshot" @click="loadRequestSnapshot(true)">{{ t('admin.ops.errorDetail.requestSnapshot.download') }}</button>
+          <span v-if="snapshotLoading" role="status" class="text-sm text-gray-500">{{ t('common.loading') }}</span>
+        </div>
+        <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t(detail.request_snapshot_bytes ? 'admin.ops.errorDetail.requestSnapshot.omitted' : 'admin.ops.errorDetail.requestSnapshot.unavailable') }}</p>
+        <template v-if="snapshotPreview">
+          <p v-if="snapshotPreviewTruncated" class="mt-3 text-xs text-amber-700 dark:text-amber-300">{{ t('admin.ops.errorDetail.requestSnapshot.previewLimited') }}</p>
+          <pre class="mt-3 max-h-[520px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ snapshotPreview }}</code></pre>
+        </template>
+      </div>
+
       <div class="rounded-xl bg-gray-50 p-6 dark:bg-dark-900">
         <h3 class="text-sm font-black uppercase tracking-wider text-gray-900 dark:text-white">{{ t('admin.ops.errorDetail.diagnosticPayloads') }}</h3>
         <div v-if="!diagnosticPayloadSections.length" class="mt-4 text-sm text-gray-500 dark:text-gray-400">{{ t('common.noData') }}</div>
@@ -226,6 +241,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { saveAs } from 'file-saver'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -254,6 +270,33 @@ const appStore = useAppStore()
 
 const loading = ref(false)
 const detail = ref<OpsErrorDetail | null>(null)
+const snapshotLoading = ref(false)
+const snapshotPreview = ref('')
+const snapshotPreviewTruncated = ref(false)
+let snapshotBlob: Blob | null = null
+
+async function loadRequestSnapshot(download: boolean) {
+  const id = props.errorId
+  if (!id || snapshotLoading.value) return
+  snapshotLoading.value = true
+  try {
+    const blob = snapshotBlob || await opsAPI.getErrorRequestSnapshot(id)
+    if (!props.show || props.errorId !== id) return
+    snapshotBlob = blob
+    if (download) {
+      saveAs(blob, `error-${id}-request.json`)
+    } else {
+      const preview = await blob.slice(0, 64 * 1024).text()
+      if (!props.show || props.errorId !== id) return
+      snapshotPreviewTruncated.value = blob.size > 64 * 1024
+      snapshotPreview.value = snapshotPreviewTruncated.value ? preview : prettyJSON(preview)
+    }
+  } catch {
+    if (props.show && props.errorId === id) appStore.showError(t('admin.ops.errorDetail.requestSnapshot.loadFailed'))
+  } finally {
+    if (props.errorId === id) snapshotLoading.value = false
+  }
+}
 
 const showUpstreamList = computed(() => props.errorType === 'request')
 
@@ -406,6 +449,10 @@ async function fetchDetail(id: number) {
 watch(
   () => [props.show, props.errorId] as const,
   ([show, id]) => {
+    snapshotBlob = null
+    snapshotLoading.value = false
+    snapshotPreview.value = ''
+    snapshotPreviewTruncated.value = false
     if (!show) {
       detail.value = null
       return

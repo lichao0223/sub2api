@@ -465,6 +465,11 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	if !s.IsMonitoringEnabled(ctx) {
 		return nil, false, nil
 	}
+	// A recovered upstream attempt is not a failed client request.
+	if entry.StatusCode < 400 && entry.ErrorPhase == "upstream" {
+		entry.RequestSnapshotGzip = nil
+		entry.RequestSnapshotBytes = 0
+	}
 	if s.opsRepo == nil {
 		return nil, false, nil
 	}

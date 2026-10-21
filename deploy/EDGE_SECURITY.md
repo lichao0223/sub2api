@@ -46,6 +46,33 @@ legitimately occupy it for many minutes. Apply connection and unauthenticated
 request controls at the edge; authenticated user/API-key concurrency remains
 the application's responsibility.
 
+## Failed request snapshots
+
+With Ops monitoring enabled, the admin error detail dialog offers **View request**
+and **Download full JSON** for new failed gateway requests, including local
+`input_token_limit_exceeded` rejections. Successful requests (including recovered
+upstream attempts) do not persist request snapshots. Existing error filters and
+`skip_monitoring` rules still apply.
+
+Snapshots contain the complete inbound body read by the gateway, including
+conversation history, tool definitions and tool results supplied in that body.
+They are not a reconstruction of provider-side history/cache references or the
+provider-specific transformed outbound request. HTTP authentication headers are
+not captured; secrets and personal data within prompts or tool results are **not
+redacted**. Access is admin-only via
+`GET /api/v1/admin/ops/errors/:id/request-body`; lists and ordinary error details
+return metadata only. Restrict admin access and protect database backups.
+
+Snapshots are gzip-compressed in the error row and deleted with it under the
+existing error-log retention policy. Old errors cannot be recovered. Each snapshot
+is capped at 256 MiB uncompressed and 8 MiB compressed; oversized payloads are
+omitted, never silently truncated. Queue memory pressure can also omit the payload
+while retaining the error. WebSocket connections retain at most 8 MiB of compressed
+snapshots across their last 64 failed turns, preferring newer payloads. The dialog
+indicates unavailable payloads; its preview is limited to 64 KiB, while downloads
+contain the complete saved body. Requests rejected before their bodies are read
+cannot have complete snapshots.
+
 ## Trusted client IPs
 
 `security.trust_forwarded_ip_for_api_key_acl` is enabled by default for upgrade

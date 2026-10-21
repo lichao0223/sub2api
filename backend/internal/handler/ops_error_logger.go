@@ -248,9 +248,14 @@ func enqueueOpsErrorLog(ops *service.OpsService, entry *service.OpsInsertErrorLo
 	}
 	queuedBytes := estimateOpsErrorLogJobBytes(entry)
 	if !reserveOpsErrorLogQueueBytes(queuedBytes) {
-		opsErrorLogDropped.Add(1)
-		maybeLogOpsErrorLogDrop()
-		return
+		// Prefer retaining the error itself when diagnostic bodies exhaust the queue budget.
+		entry.RequestSnapshotGzip = nil
+		queuedBytes = estimateOpsErrorLogJobBytes(entry)
+		if !reserveOpsErrorLogQueueBytes(queuedBytes) {
+			opsErrorLogDropped.Add(1)
+			maybeLogOpsErrorLogDrop()
+			return
+		}
 	}
 
 	select {
@@ -406,7 +411,7 @@ func estimateOpsErrorLogJobBytes(entry *service.OpsInsertErrorLogInput) int64 {
 		len(entry.RequestedModel) + len(entry.UpstreamModel) + len(entry.UserAgent) +
 		len(entry.ErrorPhase) + len(entry.ErrorType) + len(entry.Severity) +
 		len(entry.ErrorMessage) + len(entry.ErrorBody) + len(entry.ErrorSource) +
-		len(entry.ErrorOwner) + len(entry.APIKeyPrefix)
+		len(entry.ErrorOwner) + len(entry.APIKeyPrefix) + len(entry.RequestSnapshotGzip)
 	if entry.UpstreamErrorMessage != nil {
 		size += len(*entry.UpstreamErrorMessage)
 	}
@@ -1076,6 +1081,9 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 // - Streaming errors after the response has started (SSE) may still need explicit logging.
 func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if ops != nil && ops.IsMonitoringEnabled(c.Request.Context()) {
+			c.Set(service.OpsCaptureRequestSnapshotKey, true)
+		}
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
 		w.setContext(c)
@@ -1284,6 +1292,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			entry.ClientIP = &clientIP
 		}
 
+		attachOpsRequestSnapshot(c, entry)
 		enqueueOpsErrorLog(ops, entry)
 	}
 }
@@ -1594,6 +1603,12 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 		entry.ClientIP = &clientIP
 	}
 
+	if len(streamErr.RequestSnapshotGzip) > 0 || streamErr.RequestSnapshotBytes > 0 {
+		entry.RequestSnapshotGzip = streamErr.RequestSnapshotGzip
+		entry.RequestSnapshotBytes = streamErr.RequestSnapshotBytes
+	} else if streamErr.Turn == 0 {
+		attachOpsRequestSnapshot(c, entry)
+	}
 	enqueueOpsErrorLog(ops, entry)
 }
 

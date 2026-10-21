@@ -3,6 +3,7 @@ package handler
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -30,7 +31,20 @@ func buildBodyTooLargeMessage(limit int64) string {
 }
 
 func readLenientJSONRequestBodyWithPrealloc(req *http.Request, cfg *config.Config) ([]byte, error) {
-	return pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(req, gatewayMaxBodySize(cfg))
+	body, err := readGatewayRequestBody(req)
+	if err != nil {
+		return nil, err
+	}
+	return pkghttputil.NormalizeLenientJSONRequestBody(body, gatewayMaxBodySize(cfg))
+}
+
+func readGatewayRequestBody(req *http.Request) ([]byte, error) {
+	body, err := pkghttputil.ReadRequestBodyWithPrealloc(req)
+	if err == nil && req != nil {
+		// Reuse the existing immutable body buffer; successful requests never persist it.
+		req.GetBody = func() (io.ReadCloser, error) { return pkghttputil.NewPrereadBody(body), nil }
+	}
+	return body, err
 }
 
 func gatewayMaxBodySize(cfg *config.Config) int64 {

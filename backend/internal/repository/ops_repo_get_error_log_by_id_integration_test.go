@@ -29,20 +29,31 @@ func TestGetErrorLogByID_APIKeyPrefixAndUpstreamStatus(t *testing.T) {
 	plain, err := repo.GetErrorLogByID(ctx, plainID)
 	require.NoError(t, err)
 	require.Empty(t, plain.APIKeyPrefix)
+	require.False(t, plain.HasRequestSnapshot)
 
+	body := []byte(`{"messages":[],"tools":[]}`)
+	snapshot, err := service.CompressOpsRequestSnapshot(body)
+	require.NoError(t, err)
 	validID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{
-		ErrorPhase:   "request",
-		ErrorType:    "api_error",
-		Severity:     "error",
-		StatusCode:   402,
-		CreatedAt:    time.Now(),
-		APIKeyPrefix: "sk-valid",
+		ErrorPhase:           "request",
+		ErrorType:            "api_error",
+		Severity:             "error",
+		StatusCode:           402,
+		CreatedAt:            time.Now(),
+		APIKeyPrefix:         "sk-valid",
+		RequestSnapshotGzip:  snapshot,
+		RequestSnapshotBytes: int64(len(body)),
 	})
 	require.NoError(t, err)
 
 	valid, err := repo.GetErrorLogByID(ctx, validID)
 	require.NoError(t, err)
 	require.Equal(t, "sk-valid", valid.APIKeyPrefix)
+	require.True(t, valid.HasRequestSnapshot)
+	require.EqualValues(t, len(body), valid.RequestSnapshotBytes)
+	storedSnapshot, err := repo.GetErrorRequestSnapshot(ctx, validID)
+	require.NoError(t, err)
+	require.Equal(t, snapshot, storedSnapshot)
 
 	zero := 0
 	credentialFailureID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{

@@ -316,6 +316,16 @@ export default {
       },
       // Error Detail Modal
       errorDetail: {
+        requestSnapshot: {
+          title: 'Full request / tool calls',
+          hint: 'Failed inbound request bodies only, including history, tool definitions and results; authentication headers are excluded. Content may be sensitive. Admin-only access; removed with the error log.',
+          view: 'View request',
+          download: 'Download full JSON',
+          unavailable: 'No request body available (older record or body not fully read).',
+          omitted: 'Request body not saved: storage limit exceeded or log queue busy.',
+          previewLimited: 'Preview limited to 64 KiB; download includes the full body.',
+          loadFailed: 'Failed to load request body. The record may have been cleaned up.',
+        },
         title: 'Error Detail',
         titleWithId: 'Error #{id}',
         noErrorSelected: 'No error selected.',

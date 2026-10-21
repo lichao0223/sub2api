@@ -17,6 +17,28 @@ type OpsHandler struct {
 	opsService *service.OpsService
 }
 
+// DownloadErrorRequestSnapshot is admin-only; request content is never part of list responses.
+func (h *OpsHandler) DownloadErrorRequestSnapshot(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "Invalid error id")
+		return
+	}
+	body, err := h.opsService.GetErrorRequestSnapshot(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="error-%d-request.json"`, id))
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, "application/json; charset=utf-8", body)
+}
+
 // GetErrorLogByID returns ops error log detail.
 // GET /api/v1/admin/ops/errors/:id
 func (h *OpsHandler) GetErrorLogByID(c *gin.Context) {

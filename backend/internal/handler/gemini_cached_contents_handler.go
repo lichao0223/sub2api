@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -63,7 +62,7 @@ func (h *GatewayHandler) geminiCachedContentsPreamble(c *gin.Context, component 
 }
 
 func readGeminiCachedContentBody(c *gin.Context) ([]byte, bool) {
-	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+	body, err := readGatewayRequestBody(c.Request)
 	if err != nil {
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			googleError(c, http.StatusRequestEntityTooLarge, buildBodyTooLargeMessage(maxErr.Limit))

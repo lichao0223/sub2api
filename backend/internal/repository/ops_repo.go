@@ -55,13 +55,24 @@ INSERT INTO ops_error_logs (
   response_latency_ms,
   time_to_first_token_ms,
   created_at,
-  api_key_prefix
+  api_key_prefix,
+  request_snapshot_gzip,
+  request_snapshot_bytes
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
 	return &opsRepository{db: db}
+}
+
+func (r *opsRepository) GetErrorRequestSnapshot(ctx context.Context, id int64) ([]byte, error) {
+	if r == nil || r.db == nil {
+		return nil, fmt.Errorf("nil ops repository")
+	}
+	var body []byte
+	err := r.db.QueryRowContext(ctx, `SELECT request_snapshot_gzip FROM ops_error_logs WHERE id = $1`, id).Scan(&body)
+	return body, err
 }
 
 func (r *opsRepository) InsertErrorLog(ctx context.Context, input *service.OpsInsertErrorLogInput) (int64, error) {
@@ -167,6 +178,8 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullInt64(input.TimeToFirstTokenMs),
 		input.CreatedAt,
 		opsNullString(input.APIKeyPrefix),
+		input.RequestSnapshotGzip,
+		input.RequestSnapshotBytes,
 	}
 }
 
@@ -454,7 +467,9 @@ SELECT
   e.time_to_first_token_ms,
   COALESCE(e.api_key_prefix, ''),
   COALESCE(ak.name, ''),
-  ak.deleted_at
+  ak.deleted_at,
+  e.request_snapshot_gzip IS NOT NULL,
+  e.request_snapshot_bytes
 FROM ops_error_logs e
 LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN accounts a ON e.account_id = a.id
@@ -531,6 +546,8 @@ LIMIT 1`
 		&out.APIKeyPrefix,
 		&detailAPIKeyName,
 		&detailAPIKeyDeletedAt,
+		&out.HasRequestSnapshot,
+		&out.RequestSnapshotBytes,
 	)
 	if err != nil {
 		return nil, err

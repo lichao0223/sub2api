@@ -316,6 +316,16 @@ export default {
       },
       // Error Detail Modal
       errorDetail: {
+        requestSnapshot: {
+          title: '完整请求 / 工具调用',
+          hint: '仅保存失败请求的入站正文，包含历史消息、工具定义及工具结果；不包含鉴权请求头。内容可能包含敏感信息，仅限管理员查看，并随错误日志清理。',
+          view: '查看请求',
+          download: '下载完整 JSON',
+          unavailable: '暂无请求正文（旧记录或请求体未完整读取）。',
+          omitted: '请求正文未保存：超出存储限制或日志队列繁忙。',
+          previewLimited: '页面仅预览前 64 KiB；下载文件包含完整正文。',
+          loadFailed: '加载请求正文失败，记录可能已被清理。',
+        },
         title: '错误详情',
         titleWithId: '错误 #{id}',
         noErrorSelected: '未选择错误。',

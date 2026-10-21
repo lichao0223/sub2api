@@ -212,7 +212,9 @@ type OpsStreamError struct {
 	// skip_monitoring，按业务限制计，落库状态取 IntendedStatus 以便进入错误列表。
 	RequestScoped bool
 	// NonStream 表示带内信号来自非流式 2xx 响应体，落库 stream=false。
-	NonStream bool
+	NonStream            bool
+	RequestSnapshotGzip  []byte
+	RequestSnapshotBytes int64
 }
 
 const maxOpsStreamErrorsPerRequest = 64
@@ -223,6 +225,7 @@ func BeginOpsStreamTurn(c *gin.Context, turn int) {
 		return
 	}
 	c.Set(OpsStreamTurnKey, turn)
+	c.Set(OpsRequestSnapshotBodyKey, []byte(nil))
 	// Rule and attempt state is turn-scoped on a long-lived WS connection.
 	c.Set(OpsSkipPassthroughKey, false)
 	c.Set(OpsUpstreamErrorsKey, []*OpsUpstreamErrorEvent{})
@@ -287,9 +290,25 @@ func markOpsStreamError(c *gin.Context, streamErr OpsStreamError) {
 		if len(errorsForRequest) > 0 && errorsForRequest[len(errorsForRequest)-1].Turn == streamErr.Turn {
 			return
 		}
+		if c.GetBool(OpsCaptureRequestSnapshotKey) && !streamErr.SkipMonitoring {
+			if value, ok := c.Get(OpsRequestSnapshotBodyKey); ok {
+				body, _ := value.([]byte)
+				streamErr.RequestSnapshotBytes = int64(len(body))
+				streamErr.RequestSnapshotGzip, _ = CompressOpsRequestSnapshot(body)
+			}
+		}
 		errorsForRequest = append(errorsForRequest, streamErr)
 		if len(errorsForRequest) > maxOpsStreamErrorsPerRequest {
 			errorsForRequest = append([]OpsStreamError(nil), errorsForRequest[len(errorsForRequest)-maxOpsStreamErrorsPerRequest:]...)
+		}
+		// Bound retained WS payloads across turns, keeping the newest snapshots first.
+		remaining := OpsRequestSnapshotMaxCompressedBytes
+		for i := len(errorsForRequest) - 1; i >= 0; i-- {
+			if len(errorsForRequest[i].RequestSnapshotGzip) > remaining {
+				errorsForRequest[i].RequestSnapshotGzip = nil
+			} else {
+				remaining -= len(errorsForRequest[i].RequestSnapshotGzip)
+			}
 		}
 		c.Set(OpsStreamErrorsKey, errorsForRequest)
 		c.Set(OpsStreamErrorKey, streamErr)
