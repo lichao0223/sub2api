@@ -18,7 +18,7 @@ func decodeRequestSnapshot(t *testing.T, compressed []byte) string {
 	t.Helper()
 	r, err := gzip.NewReader(bytes.NewReader(compressed))
 	require.NoError(t, err)
-	defer r.Close()
+	defer func() { require.NoError(t, r.Close()) }()
 	body, err := io.ReadAll(r)
 	require.NoError(t, err)
 	return string(body)

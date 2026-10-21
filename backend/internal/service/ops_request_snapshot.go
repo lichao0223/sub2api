@@ -79,7 +79,7 @@ func (s *OpsService) GetErrorRequestSnapshot(ctx context.Context, id int64) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("open error request snapshot: %w", err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	body, err := io.ReadAll(io.LimitReader(r, OpsRequestSnapshotMaxBytes+1))
 	if err != nil {
 		return nil, err
