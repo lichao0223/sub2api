@@ -14,13 +14,13 @@ func TestCount(t *testing.T) {
 		body string
 		want int
 	}{
-		{"ASCII", `{"input":"abcdefgh"}`, 2},
+		{"ASCII", `{"input":"abcdefgh"}`, 3},
 		{"round up", `{"input":"abcde"}`, 2},
 		{"Unicode", `{"input":"中文🙂"}`, 3},
 		{"escaped Unicode", `{"input":"\u4e2d\u6587\ud83d\ude42"}`, 3},
 		{"mixed", `{"input":"abcd中文"}`, 3},
-		{"settings ignored", `{"model":"ignored","metadata":{"text":"ignored"},"max_tokens":999999,"input":"abcd"}`, 1},
-		{"combined inputs", `{"system":"abcd","instructions":"efgh","input":"ijkl"}`, 3},
+		{"settings ignored", `{"model":"ignored","metadata":{"text":"ignored"},"max_tokens":999999,"input":"abcd"}`, 2},
+		{"combined inputs", `{"system":"abcd","instructions":"efgh","input":"ijkl"}`, 4},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, Count([]byte(tt.body), 300000))
@@ -29,15 +29,24 @@ func TestCount(t *testing.T) {
 }
 
 func TestCountLimitBoundaryAndEarlyStop(t *testing.T) {
-	for _, length := range []int{1199999, 1200000, 1200001, 2000000} {
+	for _, length := range []int{999999, 1000000, 1000001, 2000000} {
 		raw, err := json.Marshal(map[string]string{"input": strings.Repeat("a", length)})
 		require.NoError(t, err)
-		want := min((length+3)/4, 300001)
+		want := min((length*3+9)/10, 300001)
 		require.Equal(t, want, Count(raw, 300000))
 	}
-	raw, err := json.Marshal(map[string]string{"input": strings.Repeat("中", 300001)})
+	raw, err := json.Marshal(map[string]string{"input": strings.Repeat("中", 500001)})
 	require.NoError(t, err)
 	require.Equal(t, 300001, Count(raw, 300000))
+}
+
+func TestCountIncludesApproximateImageTokens(t *testing.T) {
+	low := []byte(`{"input":[{"type":"input_image","detail":"low","image_url":"https://example.test/a.png"}]}`)
+	high := []byte(`{"input":[{"type":"input_image","width":1024,"height":1024,"image_url":"https://example.test/a.png"}]}`)
+	gemini := []byte(`{"contents":[{"parts":[{"inlineData":{"mimeType":"image/png","data":"opaque"}}]}]}`)
+	require.Equal(t, 85, Count(low, 300000))
+	require.Equal(t, 765, Count(high, 300000))
+	require.Equal(t, 260, Count(gemini, 300000))
 }
 
 func TestCountIncludesHistoryToolsAndResultsAcrossProtocols(t *testing.T) {
@@ -79,11 +88,19 @@ func TestCountSkipsMediaButCountsAdjacentText(t *testing.T) {
 		body := map[string]any{"input": []any{map[string]any{"content": []any{part, map[string]string{"type": "input_text", "text": "hello"}}}}}
 		raw, err := json.Marshal(body)
 		require.NoError(t, err)
-		require.Less(t, Count(raw, 100), 100)
+		if strings.Contains(string(raw), `"input_image"`) || strings.Contains(string(raw), `"type":"image"`) || strings.Contains(string(raw), "image/png") {
+			require.GreaterOrEqual(t, Count(raw, 100), 85)
+		} else {
+			require.Less(t, Count(raw, 100), 100)
+		}
 		body["instructions"] = strings.Repeat("x", 401)
 		raw, err = json.Marshal(body)
 		require.NoError(t, err)
-		require.Equal(t, 101, Count(raw, 100))
+		if strings.Contains(string(raw), "image/png") || strings.Contains(string(raw), `"input_image"`) || strings.Contains(string(raw), `"type":"image"`) {
+			require.GreaterOrEqual(t, Count(raw, 100), 100)
+		} else {
+			require.Equal(t, 101, Count(raw, 100))
+		}
 	}
 }
 

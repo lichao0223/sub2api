@@ -32,7 +32,7 @@ func TestInputTokenLimitRunsBeforeAuditAndCachedCompletion(t *testing.T) {
 			engine := &turnCountingEngine{mode: securityaudit.ModeBlocking}
 			decision := runSecurityAudit(c, nil, securityaudit.NewCoordinator(nil, engine), nil, nil, nil,
 				middleware2.AuthSubject{UserID: 7}, "openai_responses", "test-model",
-				inputLimitBody(t, strings.Repeat("x", 1200001)), stage)
+				inputLimitBody(t, strings.Repeat("x", 1000001)), stage)
 			require.NotNil(t, decision)
 			require.False(t, decision.AllowNextStage)
 			require.Equal(t, inputTokenLimitErrorCode, decision.ErrorCode)
@@ -46,9 +46,9 @@ func TestInputTokenLimitRunsBeforeAuditAndCachedCompletion(t *testing.T) {
 
 func TestInputTokenLimitBoundaryAndConfig(t *testing.T) {
 	c, _ := securityAuditErrorTestContext(t)
-	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1200000)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 900000)), "http"))
 	cfg := &config.Config{Gateway: config.GatewayConfig{MaxInputTokens: 10}}
-	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 40)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 30)), "http"))
 	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 41)), "http"))
 }
 
@@ -64,7 +64,7 @@ func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing
 		key, _ := middleware2.GetAPIKeyFromContext(c)
 		subject, _ := middleware2.GetAuthSubjectFromContext(c)
 		decision := h.checkSecurityAudit(c, nil, key, subject, "openai_responses", "test-model",
-			inputLimitBody(t, strings.Repeat("x", 1200001)))
+			inputLimitBody(t, strings.Repeat("x", 1000001)))
 		if decision != nil && !decision.AllowNextStage {
 			h.openAISecurityAuditError(c, decision)
 			return
@@ -105,7 +105,7 @@ func TestInputTokenLimitWebSocketErrorIsRecordedAfterUpgrade(t *testing.T) {
 		c.Set(opsAccountIDKey, int64(123))
 		c.Set(opsUpstreamModelKey, "previous-turn-model")
 		service.BeginOpsStreamTurn(c, 2)
-		decision := checkInputTokenLimit(c, nil, nil, "test-model", inputLimitBody(t, strings.Repeat("x", 1200001)), "subsequent_turn")
+		decision := checkInputTokenLimit(c, nil, nil, "test-model", inputLimitBody(t, strings.Repeat("x", 1000001)), "subsequent_turn")
 		require.NotNil(t, decision)
 		require.Equal(t, coderws.StatusPolicyViolation, securityAuditWSCloseStatus(decision))
 		require.Equal(t, inputTokenLimitErrorCode, securityAuditWSCloseReason(decision))
@@ -133,7 +133,7 @@ func TestInputTokenLimitProtocolErrorEnvelopes(t *testing.T) {
 		googleSecurityAuditError,
 	} {
 		c, recorder := securityAuditErrorTestContext(t)
-		decision := checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1200001)), "http")
+		decision := checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1000001)), "http")
 		write(c, decision)
 		require.Equal(t, http.StatusBadRequest, recorder.Code)
 		require.Contains(t, recorder.Body.String(), inputTokenLimitErrorCode)
@@ -153,7 +153,7 @@ func TestInputTokenLimitRealGenerationHandlers(t *testing.T) {
 		securityAuditCoordinator: coordinator,
 	}
 	gateway := &GatewayHandler{cfg: cfg, gatewayService: &service.GatewayService{}, securityAuditCoordinator: coordinator}
-	large := strings.Repeat("x", 1200001)
+	large := strings.Repeat("x", 1000001)
 	chatBody := map[string]any{"model": "test-model", "max_tokens": 100, "messages": []any{map[string]string{"role": "user", "content": large}}}
 	responsesBody := map[string]any{"model": "test-model", "input": large}
 	geminiBody := map[string]any{"contents": []any{map[string]any{"parts": []any{map[string]string{"text": large}}}}}

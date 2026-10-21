@@ -1,26 +1,40 @@
-// Package tokenestimate provides a cheap text-only input estimate for admission.
+// Package tokenestimate provides a cheap input estimate for admission.
 package tokenestimate
 
-import "github.com/tidwall/gjson"
+import (
+	"strings"
+	"unicode"
+
+	"github.com/tidwall/gjson"
+)
 
 // Count stops at limit+1. Its result is a lower bound when the limit is exceeded.
-// ASCII characters count as a quarter token; other Unicode characters count as one.
-// shortcut: media and server-side history are excluded; use provider counting for full-context enforcement.
+// ASCII characters count as roughly 0.3 token and Han characters as roughly 0.6 token,
+// following DeepSeek public estimation guidance. Other Unicode uses one token.
+// Media uses conservative vision estimates; this is not a provider billing tokenizer.
 func Count(body []byte, limit int) int {
-	var quarters int64
-	tokens := func() int { return int((quarters + 3) / 4) }
+	var tenths int64
+	tokens := func() int { return int((tenths + 9) / 10) }
 	add := func(text string) bool {
 		for _, r := range text {
 			if r <= 0x7f {
-				quarters++
+				tenths += 3
 			} else {
-				quarters += 4
+				if unicode.Is(unicode.Han, r) {
+					tenths += 6
+				} else {
+					tenths += 10
+				}
 			}
 			if tokens() > limit {
 				return false
 			}
 		}
 		return true
+	}
+	addTokens := func(n int) bool {
+		tenths += int64(n * 10)
+		return tokens() <= limit
 	}
 	var walk func(gjson.Result, bool, int) bool
 	walk = func(value gjson.Result, schema bool, depth int) bool {
@@ -33,7 +47,17 @@ func Count(body []byte, limit int) int {
 			}
 			if !schema {
 				switch value.Get("type").Str {
-				case "image", "image_url", "input_image", "input_audio", "audio", "video", "input_video", "input_file", "file":
+				case "image", "image_url", "input_image":
+					if strings.EqualFold(value.Get("detail").Str, "low") {
+						return addTokens(85)
+					}
+					width, height := value.Get("width").Int(), value.Get("height").Int()
+					if width > 0 && height > 0 {
+						x, y := (width+511)/512, (height+511)/512
+						return addTokens(85 + 170*int(x*y))
+					}
+					return addTokens(765)
+				case "input_audio", "audio", "video", "input_video", "input_file", "file":
 					return true
 				case "document":
 					if value.Get("source.type").Str != "text" {
@@ -45,7 +69,13 @@ func Count(body []byte, limit int) int {
 			value.ForEach(func(key, child gjson.Result) bool {
 				if !schema {
 					switch key.Str {
-					case "inlineData", "inline_data", "fileData", "file_data", "encrypted_content", "signature":
+					case "inlineData", "inline_data":
+						mime := strings.ToLower(child.Get("mimeType").Str + child.Get("mime_type").Str)
+						if strings.Contains(mime, "image/") {
+							keepGoing = addTokens(258)
+						}
+						return keepGoing
+					case "fileData", "file_data", "encrypted_content", "signature":
 						return true
 					}
 				}
