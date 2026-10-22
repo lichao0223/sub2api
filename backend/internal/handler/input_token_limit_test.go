@@ -32,7 +32,7 @@ func TestInputTokenLimitRunsBeforeAuditAndCachedCompletion(t *testing.T) {
 			engine := &turnCountingEngine{mode: securityaudit.ModeBlocking}
 			decision := runSecurityAudit(c, nil, securityaudit.NewCoordinator(nil, engine), nil, nil, nil,
 				middleware2.AuthSubject{UserID: 7}, "openai_responses", "test-model",
-				inputLimitBody(t, strings.Repeat("x", 1000001)), stage)
+				inputLimitBody(t, strings.Repeat(" the", 300001)), stage)
 			require.NotNil(t, decision)
 			require.False(t, decision.AllowNextStage)
 			require.Equal(t, inputTokenLimitErrorCode, decision.ErrorCode)
@@ -46,13 +46,31 @@ func TestInputTokenLimitRunsBeforeAuditAndCachedCompletion(t *testing.T) {
 
 func TestInputTokenLimitBoundaryAndConfig(t *testing.T) {
 	c, _ := securityAuditErrorTestContext(t)
-	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1000000)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1000001)), "http"))
-	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 500000)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 500001)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300000)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300001)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 300000)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 300001)), "http"))
 	cfg := &config.Config{Gateway: config.GatewayConfig{MaxInputTokens: 10}}
-	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 33)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat("x", 34)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat(" the", 10)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat(" the", 11)), "http"))
+}
+
+func TestInputTokenLimitDoesNotRejectHistoryFromCharacterRatios(t *testing.T) {
+	c, _ := securityAuditErrorTestContext(t)
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxInputTokens: 40000}}
+	// The former ASCII ratio estimates 40,920 tokens; DeepSeek counts about 34k.
+	history := strings.Repeat("the quick brown fox jumps over the lazy dog.\n", 3100)
+	body, err := json.Marshal(map[string]any{
+		"input": []any{map[string]string{"type": "function_call_output", "output": history}},
+	})
+	require.NoError(t, err)
+	for _, model := range []string{"deepseek-flash-latest", "gpt-5", "claude-sonnet", "gemini-pro"} {
+		require.Nil(t, checkInputTokenLimit(c, nil, cfg, model, body, "http"), model)
+	}
+	decision := checkInputTokenLimit(c, nil, cfg, "deepseek-flash-latest",
+		inputLimitBody(t, strings.Repeat(" the", 40001)), "http")
+	require.NotNil(t, decision)
+	require.Contains(t, decision.ClientMessage, "local DeepSeek count reached 40001")
 }
 
 func TestInputTokenLimitRejectsImageHeavyInputBeforeAudit(t *testing.T) {
@@ -81,7 +99,7 @@ func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing
 		key, _ := middleware2.GetAPIKeyFromContext(c)
 		subject, _ := middleware2.GetAuthSubjectFromContext(c)
 		decision := h.checkSecurityAudit(c, nil, key, subject, "openai_responses", "test-model",
-			inputLimitBody(t, strings.Repeat("x", 1000001)))
+			inputLimitBody(t, strings.Repeat(" the", 300001)))
 		if decision != nil && !decision.AllowNextStage {
 			h.openAISecurityAuditError(c, decision)
 			return
@@ -107,8 +125,8 @@ func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing
 	require.Nil(t, entry.AccountID)
 	require.Contains(t, entry.ErrorBody, inputTokenLimitErrorCode)
 	require.Contains(t, entry.ErrorMessage, "300000")
-	require.NotContains(t, entry.ErrorBody, strings.Repeat("x", 100))
-	require.Equal(t, string(inputLimitBody(t, strings.Repeat("x", 1000001))), decodeRequestSnapshot(t, entry.RequestSnapshotGzip))
+	require.NotContains(t, entry.ErrorBody, strings.Repeat(" the", 25))
+	require.Equal(t, string(inputLimitBody(t, strings.Repeat(" the", 300001))), decodeRequestSnapshot(t, entry.RequestSnapshotGzip))
 }
 
 func TestInputTokenLimitWebSocketErrorIsRecordedAfterUpgrade(t *testing.T) {
@@ -123,7 +141,7 @@ func TestInputTokenLimitWebSocketErrorIsRecordedAfterUpgrade(t *testing.T) {
 		c.Set(opsAccountIDKey, int64(123))
 		c.Set(opsUpstreamModelKey, "previous-turn-model")
 		service.BeginOpsStreamTurn(c, 2)
-		decision := checkInputTokenLimit(c, nil, nil, "test-model", inputLimitBody(t, strings.Repeat("x", 1000001)), "subsequent_turn")
+		decision := checkInputTokenLimit(c, nil, nil, "test-model", inputLimitBody(t, strings.Repeat(" the", 300001)), "subsequent_turn")
 		require.NotNil(t, decision)
 		require.Equal(t, coderws.StatusPolicyViolation, securityAuditWSCloseStatus(decision))
 		require.Equal(t, inputTokenLimitErrorCode, securityAuditWSCloseReason(decision))
@@ -151,7 +169,7 @@ func TestInputTokenLimitProtocolErrorEnvelopes(t *testing.T) {
 		googleSecurityAuditError,
 	} {
 		c, recorder := securityAuditErrorTestContext(t)
-		decision := checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("x", 1000001)), "http")
+		decision := checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300001)), "http")
 		write(c, decision)
 		require.Equal(t, http.StatusBadRequest, recorder.Code)
 		require.Contains(t, recorder.Body.String(), inputTokenLimitErrorCode)
@@ -171,7 +189,7 @@ func TestInputTokenLimitRealGenerationHandlers(t *testing.T) {
 		securityAuditCoordinator: coordinator,
 	}
 	gateway := &GatewayHandler{cfg: cfg, gatewayService: &service.GatewayService{}, securityAuditCoordinator: coordinator}
-	large := strings.Repeat("x", 1000001)
+	large := strings.Repeat(" the", 300001)
 	chatBody := map[string]any{"model": "test-model", "max_tokens": 100, "messages": []any{map[string]string{"role": "user", "content": large}}}
 	responsesBody := map[string]any{"model": "test-model", "input": large}
 	geminiBody := map[string]any{"contents": []any{map[string]any{"parts": []any{map[string]string{"text": large}}}}}

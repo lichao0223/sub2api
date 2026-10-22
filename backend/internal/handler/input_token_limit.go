@@ -26,7 +26,7 @@ func checkInputTokenLimit(c *gin.Context, reqLog *zap.Logger, cfg *config.Config
 	if estimated <= limit {
 		return nil
 	}
-	message := fmt.Sprintf("Estimated input exceeds the %d token limit (at least %d tokens). Reduce conversation history, tool results or input text.", limit, estimated)
+	message := fmt.Sprintf("Estimated input exceeds the %d token limit (local DeepSeek count reached %d tokens). Reduce conversation history, tool results or input text.", limit, estimated)
 	c.Set(opsModelKey, model)
 	service.MarkOpsRequestScopedError(c, "invalid_request_error")
 	if isSecurityAuditWebSocketStage(stage) {

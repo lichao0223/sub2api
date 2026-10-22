@@ -1,44 +1,35 @@
-// Package tokenestimate provides a cheap input estimate for admission.
+// Package tokenestimate provides a local input count for admission.
 package tokenestimate
 
 import (
 	"math"
 	"strings"
-	"unicode"
 
 	"github.com/tidwall/gjson"
 )
 
-// Count stops at limit+1. Its result is a lower bound when the limit is exceeded.
-// ASCII characters count as roughly 0.3 token and Han characters as roughly 0.6 token,
-// following DeepSeek public estimation guidance. Other Unicode uses one token.
-// Images use approximate vision estimates; this is not a provider billing tokenizer.
+// Count uses the embedded DeepSeek tokenizer for text across all models and stops
+// at limit+1. Images use approximate vision estimates.
+// shortcut: non-DeepSeek models can tokenize differently; use provider counting for exact model limits.
 // shortcut: audio, video and server-side history are excluded; use provider counting for full-context enforcement.
 func Count(body []byte, limit int) int {
-	var tenths int64
-	tokens := func() int { return int((tenths + 9) / 10) }
-	add := func(text string) bool {
-		for _, r := range text {
-			if r <= 0x7f {
-				tenths += 3
-			} else if unicode.Is(unicode.Han, r) {
-				tenths += 6
-			} else {
-				tenths += 10
-			}
-			if tokens() > limit {
-				return false
-			}
-		}
-		return true
-	}
+	total := 0
 	addTokens := func(n int) bool {
-		if n > limit-tokens() {
-			tenths = int64(limit)*10 + 1
+		if n > limit-total {
+			total = limit + 1
 			return false
 		}
-		tenths += int64(n) * 10
-		return tokens() <= limit
+		total += n
+		return true
+	}
+	add := func(text string) bool {
+		n, err := deepSeek().count(text, limit-total)
+		if err != nil {
+			// Fail closed if local tokenization fails rather than bypassing admission.
+			total = limit + 1
+			return false
+		}
+		return addTokens(n)
 	}
 	var walk func(gjson.Result, bool, int) bool
 	walk = func(value gjson.Result, schema bool, depth int) bool {
@@ -114,5 +105,5 @@ func Count(body []byte, limit int) int {
 			return true
 		}
 	})
-	return tokens()
+	return total
 }
