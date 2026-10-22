@@ -733,6 +733,53 @@ describe("admin SettingsView payment visible method controls", () => {
     adminSettingsFetch.mockResolvedValue(undefined);
   });
 
+  it("defaults input token checks on and saves selected groups and the off switch", async () => {
+    getGroups.mockResolvedValueOnce([
+      { id: 7, name: "Limited", platform: "openai", status: "active" },
+      { id: 8, name: "Other", platform: "anthropic", status: "active" },
+    ]);
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get("#gateway-input-token-limit-enabled");
+    expect((toggle.element as HTMLInputElement).checked).toBe(true);
+    const groups = wrapper.get('[data-testid="gateway-input-token-limit-groups"]');
+    await groups.get('input[type="checkbox"][value="7"]').setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls.at(-1)?.[0]).toMatchObject({
+      gateway_input_token_limit_enabled: true,
+      gateway_input_token_limit_group_ids: [7],
+      gateway_max_input_tokens: 300000,
+    });
+    await toggle.setValue(false);
+    expect(wrapper.find('[data-testid="gateway-input-token-limit-groups"]').exists()).toBe(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls.at(-1)?.[0]).toMatchObject({
+      gateway_input_token_limit_enabled: false,
+      gateway_input_token_limit_group_ids: [7],
+    });
+    wrapper.unmount();
+  });
+
+  it("loads a disabled input token check without discarding its saved group scope", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      gateway_input_token_limit_enabled: false,
+      gateway_input_token_limit_group_ids: [7],
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    expect((wrapper.get("#gateway-input-token-limit-enabled").element as HTMLInputElement).checked).toBe(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls.at(-1)?.[0]).toMatchObject({
+      gateway_input_token_limit_enabled: false,
+      gateway_input_token_limit_group_ids: [7],
+    });
+    wrapper.unmount();
+  });
+
   it("submits the Codex ticket harvest toggle", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

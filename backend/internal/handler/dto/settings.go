@@ -351,10 +351,12 @@ type SystemSettings struct {
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled    bool   `json:"cyber_session_block_enabled"`
-	CyberPolicyUserAllowlist    string `json:"cyber_policy_user_allowlist"`
-	GatewayMaxInputTokens       int    `json:"gateway_max_input_tokens"`
-	CyberSessionBlockTTLSeconds int    `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockEnabled       bool    `json:"cyber_session_block_enabled"`
+	CyberPolicyUserAllowlist       string  `json:"cyber_policy_user_allowlist"`
+	GatewayInputTokenLimitEnabled  bool    `json:"gateway_input_token_limit_enabled"`
+	GatewayInputTokenLimitGroupIDs []int64 `json:"gateway_input_token_limit_group_ids"`
+	GatewayMaxInputTokens          int     `json:"gateway_max_input_tokens"`
+	CyberSessionBlockTTLSeconds    int     `json:"cyber_session_block_ttl_seconds"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`

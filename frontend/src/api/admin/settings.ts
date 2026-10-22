@@ -679,6 +679,8 @@ export interface SystemSettings {
   cyber_policy_user_allowlist: string;
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
+  gateway_input_token_limit_enabled: boolean;
+  gateway_input_token_limit_group_ids: number[];
   gateway_max_input_tokens: number;
 
   payment_min_amount: number;
@@ -1014,6 +1016,8 @@ export interface UpdateSettingsRequest {
   cyber_policy_user_allowlist?: string;
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;
+  gateway_input_token_limit_enabled?: boolean;
+  gateway_input_token_limit_group_ids?: number[];
   gateway_max_input_tokens?: number;
 
   payment_min_amount?: number;

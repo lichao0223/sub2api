@@ -73,7 +73,7 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 	if c.GetBool(service.OpsCaptureRequestSnapshotKey) {
 		c.Set(service.OpsRequestSnapshotBodyKey, body)
 	}
-	if decision := checkInputTokenLimit(c, reqLog, cfg, model, body, stage, settings...); decision != nil {
+	if decision := checkInputTokenLimit(c, reqLog, cfg, apiKey, model, body, stage, settings...); decision != nil {
 		return decision
 	}
 	cacheCompletion := cachesSecurityAuditCompletion(stage)

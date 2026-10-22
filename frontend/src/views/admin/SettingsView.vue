@@ -7604,7 +7604,30 @@
               <Toggle v-model="form.cyber_session_block_enabled" />
             </div>
 
-            <div>
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <label for="gateway-input-token-limit-enabled" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.riskControl.gatewayInputTokenLimitEnabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.riskControl.gatewayInputTokenLimitEnabledHint') }}
+                </p>
+              </div>
+              <Toggle id="gateway-input-token-limit-enabled" v-model="form.gateway_input_token_limit_enabled" />
+            </div>
+
+            <div v-if="form.gateway_input_token_limit_enabled" data-testid="gateway-input-token-limit-groups">
+              <GroupSelector
+                v-model="form.gateway_input_token_limit_group_ids"
+                :groups="tokenRankingGroups"
+                :label="t('admin.settings.features.riskControl.gatewayInputTokenLimitGroups')"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.settings.features.riskControl.gatewayInputTokenLimitGroupsHint') }}
+              </p>
+            </div>
+
+            <div v-if="form.gateway_input_token_limit_enabled">
               <label class="input-label">{{ t('admin.settings.features.riskControl.gatewayMaxInputTokens') }}</label>
               <input v-model.number="form.gateway_max_input_tokens" type="number" min="1" class="input" />
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.features.riskControl.gatewayMaxInputTokensHint') }}</p>
@@ -9909,6 +9932,7 @@ type SettingsForm = Omit<
   default_platform_quotas: DefaultPlatformQuotasMap;
   account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
   token_ranking_excluded_group_ids: number[];
+  gateway_input_token_limit_group_ids: number[];
   token_ranking_excluded_models: string[];
   token_ranking_usd_to_cny_rate: number;
   usage_display_currency: "CNY" | "USD";
@@ -9974,6 +9998,8 @@ const form = reactive<SettingsForm>({
   cyber_policy_user_allowlist: "",
   cyber_session_block_enabled: false,
   cyber_session_block_ttl_seconds: 3600,
+  gateway_input_token_limit_enabled: true,
+  gateway_input_token_limit_group_ids: [],
   gateway_max_input_tokens: 300000,
   payment_min_amount: 1,
   payment_max_amount: 10000,
@@ -11931,6 +11957,8 @@ async function saveSettings() {
       cyber_session_block_enabled: form.cyber_session_block_enabled,
       cyber_session_block_ttl_seconds:
         Number(form.cyber_session_block_ttl_seconds) || 3600,
+      gateway_input_token_limit_enabled: form.gateway_input_token_limit_enabled,
+      gateway_input_token_limit_group_ids: form.gateway_input_token_limit_group_ids,
       gateway_max_input_tokens: Number(form.gateway_max_input_tokens) || 300000,
       payment_min_amount: Number(form.payment_min_amount) || 0,
       payment_max_amount: Number(form.payment_max_amount) || 0,

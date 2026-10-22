@@ -374,10 +374,12 @@ type UpdateSettingsRequest struct {
 	RiskControlEnabled *bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled    *bool   `json:"cyber_session_block_enabled"`
-	CyberPolicyUserAllowlist    *string `json:"cyber_policy_user_allowlist"`
-	GatewayMaxInputTokens       *int    `json:"gateway_max_input_tokens"`
-	CyberSessionBlockTTLSeconds *int    `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockEnabled       *bool   `json:"cyber_session_block_enabled"`
+	CyberPolicyUserAllowlist       *string `json:"cyber_policy_user_allowlist"`
+	GatewayInputTokenLimitEnabled  *bool   `json:"gateway_input_token_limit_enabled"`
+	GatewayInputTokenLimitGroupIDs []int64 `json:"gateway_input_token_limit_group_ids"`
+	GatewayMaxInputTokens          *int    `json:"gateway_max_input_tokens"`
+	CyberSessionBlockTTLSeconds    *int    `json:"cyber_session_block_ttl_seconds"`
 
 	// OpenAI fast/flex policy (optional, only updated when provided)
 	OpenAIFastPolicySettings *dto.OpenAIFastPolicySettings `json:"openai_fast_policy_settings,omitempty"`
@@ -1536,6 +1538,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	}
 
 	// cyber 会话屏蔽 TTL 校验：提供时必须 > 0
+	for _, id := range req.GatewayInputTokenLimitGroupIDs {
+		if id <= 0 {
+			response.BadRequest(c, "gateway_input_token_limit_group_ids must contain positive IDs")
+			return
+		}
+	}
 	if req.GatewayMaxInputTokens != nil && *req.GatewayMaxInputTokens <= 0 {
 		response.BadRequest(c, "gateway_max_input_tokens must be > 0")
 		return
@@ -2068,6 +2076,13 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.CyberSessionBlockEnabled
 		}(),
+		GatewayInputTokenLimitEnabled: boolValueOrDefault(req.GatewayInputTokenLimitEnabled, previousSettings.GatewayInputTokenLimitEnabled),
+		GatewayInputTokenLimitGroupIDs: func() []int64 {
+			if req.GatewayInputTokenLimitGroupIDs != nil {
+				return req.GatewayInputTokenLimitGroupIDs
+			}
+			return previousSettings.GatewayInputTokenLimitGroupIDs
+		}(),
 		GatewayMaxInputTokens: intValueOrDefault(req.GatewayMaxInputTokens, previousSettings.GatewayMaxInputTokens),
 		CyberSessionBlockTTLSeconds: func() int {
 			if req.CyberSessionBlockTTLSeconds != nil {
@@ -2510,13 +2525,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 
 		AffiliateEnabled: updatedSettings.AffiliateEnabled,
 
-		RiskControlEnabled:          updatedSettings.RiskControlEnabled,
-		CyberSessionBlockEnabled:    updatedSettings.CyberSessionBlockEnabled,
-		CyberPolicyUserAllowlist:    updatedSettings.CyberPolicyUserAllowlist,
-		GatewayMaxInputTokens:       updatedSettings.GatewayMaxInputTokens,
-		CyberSessionBlockTTLSeconds: updatedSettings.CyberSessionBlockTTLSeconds,
-		AccountSchedulingThresholds: updatedSettings.AccountSchedulingThresholds,
-		AllowUserViewErrorRequests:  updatedSettings.AllowUserViewErrorRequests,
+		RiskControlEnabled:             updatedSettings.RiskControlEnabled,
+		CyberSessionBlockEnabled:       updatedSettings.CyberSessionBlockEnabled,
+		CyberPolicyUserAllowlist:       updatedSettings.CyberPolicyUserAllowlist,
+		GatewayInputTokenLimitEnabled:  updatedSettings.GatewayInputTokenLimitEnabled,
+		GatewayInputTokenLimitGroupIDs: updatedSettings.GatewayInputTokenLimitGroupIDs,
+		GatewayMaxInputTokens:          updatedSettings.GatewayMaxInputTokens,
+		CyberSessionBlockTTLSeconds:    updatedSettings.CyberSessionBlockTTLSeconds,
+		AccountSchedulingThresholds:    updatedSettings.AccountSchedulingThresholds,
+		AllowUserViewErrorRequests:     updatedSettings.AllowUserViewErrorRequests,
 	}
 	if fastPolicy, err := h.settingService.GetOpenAIFastPolicySettings(c.Request.Context()); err != nil {
 		slog.Error("openai_fast_policy_settings_get_failed", "error", err)

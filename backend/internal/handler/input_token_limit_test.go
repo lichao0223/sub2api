@@ -46,13 +46,65 @@ func TestInputTokenLimitRunsBeforeAuditAndCachedCompletion(t *testing.T) {
 
 func TestInputTokenLimitBoundaryAndConfig(t *testing.T) {
 	c, _ := securityAuditErrorTestContext(t)
-	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300000)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300001)), "http"))
-	require.Nil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 300000)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 300001)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300000)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300001)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 300000)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, nil, nil, "m", inputLimitBody(t, strings.Repeat("中", 300001)), "http"))
 	cfg := &config.Config{Gateway: config.GatewayConfig{MaxInputTokens: 10}}
-	require.Nil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat(" the", 10)), "http"))
-	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "m", inputLimitBody(t, strings.Repeat(" the", 11)), "http"))
+	require.Nil(t, checkInputTokenLimit(c, nil, cfg, nil, "m", inputLimitBody(t, strings.Repeat(" the", 10)), "http"))
+	require.NotNil(t, checkInputTokenLimit(c, nil, cfg, nil, "m", inputLimitBody(t, strings.Repeat(" the", 11)), "http"))
+}
+
+func TestInputTokenLimitSwitchAndGroupScope(t *testing.T) {
+	selected, other := int64(7), int64(8)
+	for _, tc := range []struct {
+		name    string
+		enabled string
+		groups  string
+		groupID *int64
+		blocked bool
+	}{
+		{name: "default", blocked: true},
+		{name: "disabled", enabled: "false", groupID: &selected},
+		{name: "selected", groups: "[7]", groupID: &selected, blocked: true},
+		{name: "other group", groups: "[7]", groupID: &other},
+		{name: "ungrouped", groups: "[7]"},
+	} {
+		for _, stage := range []string{"http", "first_turn", "subsequent_turn"} {
+			t.Run(tc.name+"/"+stage, func(t *testing.T) {
+				c, _ := securityAuditErrorTestContext(t)
+				settings := service.NewSettingService(&contentModerationHandlerSettingRepo{values: map[string]string{
+					service.SettingKeyGatewayMaxInputTokens:          "10",
+					service.SettingKeyGatewayInputTokenLimitEnabled:  tc.enabled,
+					service.SettingKeyGatewayInputTokenLimitGroupIDs: tc.groups,
+				}}, nil)
+				key := &service.APIKey{GroupID: tc.groupID}
+				decision := runSecurityAudit(c, nil, nil, nil, nil, key, middleware2.AuthSubject{UserID: 7},
+					"openai_responses", "m", inputLimitBody(t, strings.Repeat(" the", 11)), stage, settings)
+				if tc.blocked {
+					require.NotNil(t, decision)
+					require.Equal(t, inputTokenLimitErrorCode, decision.ErrorCode)
+				} else {
+					require.Nil(t, decision)
+				}
+			})
+		}
+	}
+}
+
+func TestInputTokenLimitDisabledDoesNotSkipSecurityAudit(t *testing.T) {
+	c, _ := securityAuditErrorTestContext(t)
+	settings := service.NewSettingService(&contentModerationHandlerSettingRepo{values: map[string]string{
+		service.SettingKeyGatewayInputTokenLimitEnabled: "false",
+		service.SettingKeyGatewayMaxInputTokens:         "10",
+	}}, nil)
+	engine := &turnCountingEngine{mode: securityaudit.ModeBlocking}
+	decision := runSecurityAudit(c, nil, securityaudit.NewCoordinator(nil, engine), nil, nil, nil,
+		middleware2.AuthSubject{UserID: 7}, "openai_responses", "m",
+		inputLimitBody(t, strings.Repeat(" the", 11)), "http", settings)
+	require.NotNil(t, decision)
+	require.True(t, decision.AllowNextStage)
+	require.EqualValues(t, 1, engine.evaluates.Load())
 }
 
 func TestInputTokenLimitDoesNotRejectHistoryFromCharacterRatios(t *testing.T) {
@@ -65,9 +117,9 @@ func TestInputTokenLimitDoesNotRejectHistoryFromCharacterRatios(t *testing.T) {
 	})
 	require.NoError(t, err)
 	for _, model := range []string{"deepseek-flash-latest", "gpt-5", "claude-sonnet", "gemini-pro"} {
-		require.Nil(t, checkInputTokenLimit(c, nil, cfg, model, body, "http"), model)
+		require.Nil(t, checkInputTokenLimit(c, nil, cfg, nil, model, body, "http"), model)
 	}
-	decision := checkInputTokenLimit(c, nil, cfg, "deepseek-flash-latest",
+	decision := checkInputTokenLimit(c, nil, cfg, nil, "deepseek-flash-latest",
 		inputLimitBody(t, strings.Repeat(" the", 40001)), "http")
 	require.NotNil(t, decision)
 	require.Contains(t, decision.ClientMessage, "local DeepSeek count reached 40001")
@@ -100,12 +152,12 @@ func TestInputTokenLimitDoesNotCountToolImageBase64AsText(t *testing.T) {
 				"input": []any{map[string]any{"type": outputType, "output": []any{image}}},
 			})
 			require.NoError(t, err)
-			require.Nil(t, checkInputTokenLimit(c, nil, cfg, "gpt-6.1-sol", body, stage))
+			require.Nil(t, checkInputTokenLimit(c, nil, cfg, nil, "gpt-6.1-sol", body, stage))
 			body, err = json.Marshal(map[string]any{
 				"input": []any{map[string]any{"type": outputType, "output": []any{image, image}}},
 			})
 			require.NoError(t, err)
-			require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "gpt-6.1-sol", body, stage))
+			require.NotNil(t, checkInputTokenLimit(c, nil, cfg, nil, "gpt-6.1-sol", body, stage))
 		}
 	}
 }
@@ -164,7 +216,7 @@ func TestInputTokenLimitWebSocketErrorIsRecordedAfterUpgrade(t *testing.T) {
 		c.Set(opsAccountIDKey, int64(123))
 		c.Set(opsUpstreamModelKey, "previous-turn-model")
 		service.BeginOpsStreamTurn(c, 2)
-		decision := checkInputTokenLimit(c, nil, nil, "test-model", inputLimitBody(t, strings.Repeat(" the", 300001)), "subsequent_turn")
+		decision := checkInputTokenLimit(c, nil, nil, nil, "test-model", inputLimitBody(t, strings.Repeat(" the", 300001)), "subsequent_turn")
 		require.NotNil(t, decision)
 		require.Equal(t, coderws.StatusPolicyViolation, securityAuditWSCloseStatus(decision))
 		require.Equal(t, inputTokenLimitErrorCode, securityAuditWSCloseReason(decision))
@@ -192,7 +244,7 @@ func TestInputTokenLimitProtocolErrorEnvelopes(t *testing.T) {
 		googleSecurityAuditError,
 	} {
 		c, recorder := securityAuditErrorTestContext(t)
-		decision := checkInputTokenLimit(c, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300001)), "http")
+		decision := checkInputTokenLimit(c, nil, nil, nil, "m", inputLimitBody(t, strings.Repeat(" the", 300001)), "http")
 		write(c, decision)
 		require.Equal(t, http.StatusBadRequest, recorder.Code)
 		require.Contains(t, recorder.Body.String(), inputTokenLimitErrorCode)

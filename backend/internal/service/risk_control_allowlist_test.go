@@ -52,14 +52,14 @@ func TestRiskControlAllowlistRetainsLastGoodValueAndRetries(t *testing.T) {
 	}
 }
 
-func TestGatewayMaxInputTokensUsesPersistedSetting(t *testing.T) {
-	repo := &fakeSettingRepo{vals: map[string]string{SettingKeyGatewayMaxInputTokens: "12345"}}
+func TestGatewayInputTokenLimitUsesPersistedSetting(t *testing.T) {
+	repo := &contentModerationTestSettingRepo{values: map[string]string{SettingKeyGatewayMaxInputTokens: "12345"}}
 	svc := NewSettingService(repo, nil)
-	require.Equal(t, 12345, svc.GetGatewayMaxInputTokens(context.Background()))
-	repo.vals[SettingKeyGatewayMaxInputTokens] = "67890"
+	require.Equal(t, 12345, svc.GetGatewayInputTokenLimit(context.Background(), nil))
+	repo.values[SettingKeyGatewayMaxInputTokens] = "67890"
 	// Cached reads are intentional; expiry causes the next request to observe the edit.
 	svc.inputTokenLimitCache.Store(&cachedInputTokenLimit{})
-	require.Equal(t, 67890, svc.GetGatewayMaxInputTokens(context.Background()))
+	require.Equal(t, 67890, svc.GetGatewayInputTokenLimit(context.Background(), nil))
 }
 
 func TestRiskControlAllowlistAuditsWithoutLocalPenalties(t *testing.T) {

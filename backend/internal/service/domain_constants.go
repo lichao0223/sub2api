@@ -246,6 +246,8 @@ const (
 	SettingKeyContentModerationConfig             = "content_moderation_config"        // 内容审计配置（JSON）
 	SettingKeyCyberSessionBlockEnabled            = "cyber_session_block_enabled"      // cyber 命中后会话级自动屏蔽总开关(默认关)
 	SettingKeyCyberPolicyUserAllowlist            = "cyber_policy_user_allowlist"      // Platform user IDs with log-only cyber handling
+	SettingKeyGatewayInputTokenLimitEnabled       = "gateway_input_token_limit_enabled"
+	SettingKeyGatewayInputTokenLimitGroupIDs      = "gateway_input_token_limit_group_ids"
 	SettingKeyGatewayMaxInputTokens               = "gateway_max_input_tokens"
 	SettingKeyCyberSessionBlockTTLSeconds         = "cyber_session_block_ttl_seconds" // 会话屏蔽 TTL 秒数(默认 3600)
 	SettingKeyLoginAgreementEnabled               = "login_agreement_enabled"         // 登录前是否要求同意条款

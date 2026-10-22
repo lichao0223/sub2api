@@ -2,6 +2,7 @@ package admin
 
 import (
 	"log/slog"
+	"slices"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -626,6 +627,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.CyberSessionBlockEnabled != after.CyberSessionBlockEnabled {
 		changed = append(changed, "cyber_session_block_enabled")
+	}
+	if before.GatewayInputTokenLimitEnabled != after.GatewayInputTokenLimitEnabled {
+		changed = append(changed, "gateway_input_token_limit_enabled")
+	}
+	if !slices.Equal(before.GatewayInputTokenLimitGroupIDs, after.GatewayInputTokenLimitGroupIDs) {
+		changed = append(changed, "gateway_input_token_limit_group_ids")
 	}
 	if before.GatewayMaxInputTokens != after.GatewayMaxInputTokens {
 		changed = append(changed, "gateway_max_input_tokens")

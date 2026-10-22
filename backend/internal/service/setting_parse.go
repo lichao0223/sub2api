@@ -219,10 +219,12 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyRiskControlEnabled: "false",
 
 		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
-		SettingKeyGatewayMaxInputTokens:       strconv.Itoa(s.defaultGatewayMaxInputTokens()),
-		SettingKeyCyberSessionBlockEnabled:    "false",
-		SettingKeyCyberPolicyUserAllowlist:    "",
-		SettingKeyCyberSessionBlockTTLSeconds: "3600",
+		SettingKeyGatewayInputTokenLimitEnabled:  "true",
+		SettingKeyGatewayInputTokenLimitGroupIDs: "[]",
+		SettingKeyGatewayMaxInputTokens:          strconv.Itoa(s.defaultGatewayMaxInputTokens()),
+		SettingKeyCyberSessionBlockEnabled:       "false",
+		SettingKeyCyberPolicyUserAllowlist:       "",
+		SettingKeyCyberSessionBlockTTLSeconds:    "3600",
 
 		// Claude Code version check (default: empty = disabled)
 		SettingKeyMinClaudeCodeVersion: "",
@@ -848,10 +850,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	// 风控中心功能（默认关闭，严格 true 才启用）
 	result.RiskControlEnabled = settings[SettingKeyRiskControlEnabled] == "true"
 
-	result.GatewayMaxInputTokens = s.defaultGatewayMaxInputTokens()
-	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyGatewayMaxInputTokens])); err == nil && v > 0 {
-		result.GatewayMaxInputTokens = v
-	}
+	inputLimit := s.parseGatewayInputTokenLimit(settings)
+	result.GatewayMaxInputTokens = inputLimit.limit
+	result.GatewayInputTokenLimitEnabled = inputLimit.enabled
+	result.GatewayInputTokenLimitGroupIDs = inputLimit.groupIDs
 
 	// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 	result.CyberSessionBlockEnabled = settings[SettingKeyCyberSessionBlockEnabled] == "true"

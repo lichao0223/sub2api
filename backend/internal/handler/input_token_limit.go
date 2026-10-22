@@ -14,13 +14,20 @@ import (
 
 const inputTokenLimitErrorCode = "input_token_limit_exceeded"
 
-func checkInputTokenLimit(c *gin.Context, reqLog *zap.Logger, cfg *config.Config, model string, body []byte, stage string, settings ...*service.SettingService) *securityaudit.Decision {
+func checkInputTokenLimit(c *gin.Context, reqLog *zap.Logger, cfg *config.Config, apiKey *service.APIKey, model string, body []byte, stage string, settings ...*service.SettingService) *securityaudit.Decision {
 	limit := config.DefaultGatewayMaxInputTokens
 	if cfg != nil && cfg.Gateway.MaxInputTokens > 0 {
 		limit = cfg.Gateway.MaxInputTokens
 	}
 	if len(settings) > 0 && settings[0] != nil {
-		limit = settings[0].GetGatewayMaxInputTokens(c.Request.Context())
+		var groupID *int64
+		if apiKey != nil {
+			groupID = apiKey.GroupID
+		}
+		limit = settings[0].GetGatewayInputTokenLimit(c.Request.Context(), groupID)
+		if limit == 0 {
+			return nil
+		}
 	}
 	estimated := tokenestimate.Count(body, limit)
 	if estimated <= limit {

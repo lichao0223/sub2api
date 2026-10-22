@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -447,6 +448,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	// 风控中心功能开关
 	updates[SettingKeyRiskControlEnabled] = strconv.FormatBool(settings.RiskControlEnabled)
 
+	updates[SettingKeyGatewayInputTokenLimitEnabled] = strconv.FormatBool(settings.GatewayInputTokenLimitEnabled)
+	for _, id := range settings.GatewayInputTokenLimitGroupIDs {
+		if id <= 0 {
+			return nil, fmt.Errorf("gateway input token limit group IDs must be positive")
+		}
+	}
+	inputLimitGroupsJSON, err := json.Marshal(settings.GatewayInputTokenLimitGroupIDs)
+	if err != nil {
+		return nil, fmt.Errorf("marshal gateway input token limit groups: %w", err)
+	}
+	updates[SettingKeyGatewayInputTokenLimitGroupIDs] = string(inputLimitGroupsJSON)
 	if settings.GatewayMaxInputTokens > 0 {
 		updates[SettingKeyGatewayMaxInputTokens] = strconv.Itoa(settings.GatewayMaxInputTokens)
 	}
@@ -814,7 +826,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
 	s.inputTokenLimitMu.Lock()
 	if settings.GatewayMaxInputTokens > 0 {
-		s.inputTokenLimitCache.Store(&cachedInputTokenLimit{limit: settings.GatewayMaxInputTokens, expiresAt: time.Now().Add(time.Minute).UnixNano()})
+		s.inputTokenLimitCache.Store(&cachedInputTokenLimit{limit: settings.GatewayMaxInputTokens, enabled: settings.GatewayInputTokenLimitEnabled, groupIDs: slices.Clone(settings.GatewayInputTokenLimitGroupIDs), expiresAt: time.Now().Add(time.Minute).UnixNano()})
 	} else {
 		s.inputTokenLimitCache.Store(&cachedInputTokenLimit{})
 	}
