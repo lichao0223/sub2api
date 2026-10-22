@@ -1,6 +1,6 @@
 package tokenestimate
 
-import "container/heap"
+import "slices"
 
 type tokenPair struct{ left, right int }
 type tokenMerge struct{ rank, id int }
@@ -10,35 +10,77 @@ type mergeCandidate struct {
 }
 type mergeQueue []mergeCandidate
 
-func (q mergeQueue) Len() int { return len(q) }
-func (q mergeQueue) Less(i, j int) bool {
+func (q mergeQueue) less(i, j int) bool {
 	if q[i].rank != q[j].rank {
 		return q[i].rank < q[j].rank
 	}
 	return q[i].left < q[j].left
 }
-func (q mergeQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
+func (q mergeQueue) down(i int) {
+	for {
+		child := 2*i + 1
+		if child >= len(q) {
+			return
+		}
+		if right := child + 1; right < len(q) && q.less(right, child) {
+			child = right
+		}
+		if !q.less(child, i) {
+			return
+		}
+		q[i], q[child] = q[child], q[i]
+		i = child
+	}
+}
+
+func (q *mergeQueue) push(candidate mergeCandidate) {
+	*q = append(*q, candidate)
+	for i := len(*q) - 1; i > 0; {
+		parent := (i - 1) / 2
+		if !q.less(i, parent) {
+			break
+		}
+		(*q)[i], (*q)[parent] = (*q)[parent], (*q)[i]
+		i = parent
+	}
+}
+
+func (q *mergeQueue) pop() mergeCandidate {
+	first := (*q)[0]
+	last := len(*q) - 1
+	(*q)[0] = (*q)[last]
+	*q = (*q)[:last]
+	q.down(0)
+	return first
+}
+
+// Push and Pop keep the small queue test API; the tokenizer uses typed methods above
+// so the hot path never pays container/heap's interface boxing cost.
 func (q *mergeQueue) Push(x any) {
 	candidate, ok := x.(mergeCandidate)
 	if !ok {
 		panic("tokenestimate: invalid merge candidate")
 	}
-	*q = append(*q, candidate)
-}
-func (q *mergeQueue) Pop() any {
-	last := len(*q) - 1
-	x := (*q)[last]
-	*q = (*q)[:last]
-	return x
+	q.push(candidate)
 }
 
-func (t *deepSeekTokenizer) countPiece(text string) int {
-	type symbol struct{ id, prev, next int }
-	symbols := make([]symbol, len(text))
+func (q *mergeQueue) Pop() any { return q.pop() }
+
+type bpeSymbol struct{ id, prev, next int }
+
+// Scratch is local to one count call, never shared across requests or retained globally.
+type bpeScratch struct {
+	symbols []bpeSymbol
+	queue   mergeQueue
+}
+
+func (t *deepSeekTokenizer) countPiece(text string, scratch *bpeScratch) int {
+	scratch.symbols = slices.Grow(scratch.symbols[:0], len(text))[:len(text)]
+	symbols := scratch.symbols
 	for i := range symbols {
-		symbols[i] = symbol{id: t.byteID[text[i]], prev: i - 1, next: i + 1}
+		symbols[i] = bpeSymbol{id: t.byteID[text[i]], prev: i - 1, next: i + 1}
 	}
-	var queue mergeQueue
+	queue := scratch.queue[:0]
 	candidate := func(left int) (mergeCandidate, bool) {
 		if left < 0 || left >= len(symbols) || symbols[left].id < 0 {
 			return mergeCandidate{}, false
@@ -55,11 +97,12 @@ func (t *deepSeekTokenizer) countPiece(text string) int {
 			queue = append(queue, c)
 		}
 	}
-	heap.Init(&queue)
+	for i := len(queue)/2 - 1; i >= 0; i-- {
+		queue.down(i)
+	}
 	count := len(symbols)
-	for queue.Len() > 0 {
-		c := queue[0]
-		heap.Pop(&queue)
+	for len(queue) > 0 {
+		c := queue.pop()
 		// Neighboring merges invalidate queued pairs; equal ranks merge leftmost first.
 		if current, ok := candidate(c.left); !ok || current != c {
 			continue
@@ -73,9 +116,10 @@ func (t *deepSeekTokenizer) countPiece(text string) int {
 		count--
 		for _, left := range [2]int{symbols[c.left].prev, c.left} {
 			if next, ok := candidate(left); ok {
-				heap.Push(&queue, next)
+				queue.push(next)
 			}
 		}
 	}
+	scratch.queue = queue
 	return count
 }

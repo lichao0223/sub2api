@@ -100,13 +100,42 @@ func newDeepSeekTokenizer() (*deepSeekTokenizer, error) {
 
 func (t *deepSeekTokenizer) count(text string, limit int) (int, error) {
 	total := 0
+	var scratch bpeScratch
+	var splitRunes func([]rune, int) error
+	splitRunes = func(runes []rune, stage int) error {
+		if len(runes) == 0 || total > limit {
+			return nil
+		}
+		if stage == len(t.splits) {
+			total += t.countPiece(string(runes), &scratch)
+			return nil
+		}
+		re := t.splits[stage]
+		match, err := re.FindRunesMatch(runes)
+		start := 0
+		for err == nil && match != nil && total <= limit {
+			if err = splitRunes(runes[start:match.RuneIndex], stage+1); err != nil {
+				return err
+			}
+			end := match.RuneIndex + match.RuneLength
+			if err = splitRunes(runes[match.RuneIndex:end], stage+1); err != nil {
+				return err
+			}
+			start = end
+			match, err = re.FindNextMatch(match)
+		}
+		if err != nil {
+			return err
+		}
+		return splitRunes(runes[start:], stage+1)
+	}
 	var split func(string, int) error
 	split = func(text string, stage int) error {
 		if text == "" || total > limit {
 			return nil
 		}
 		if stage == len(t.splits) {
-			total += t.countPiece(text)
+			total += t.countPiece(text, &scratch)
 			return nil
 		}
 		runes := []rune(text)
@@ -129,7 +158,14 @@ func (t *deepSeekTokenizer) count(text string, limit int) (int, error) {
 		return split(string(runes[start:]), stage+1)
 	}
 	start := 0
-	for _, match := range t.added.FindAllStringIndex(text, -1) {
+	addedMatches := t.added.FindAllStringIndex(text, -1)
+	if len(addedMatches) == 0 {
+		if err := splitRunes([]rune(text), 0); err != nil {
+			return 0, err
+		}
+		return min(total, limit+1), nil
+	}
+	for _, match := range addedMatches {
 		if err := split(text[start:match[0]], 0); err != nil {
 			return 0, err
 		}
