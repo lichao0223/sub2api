@@ -79,6 +79,63 @@ func TestCountImageReadsBoundedHeaders(t *testing.T) {
 	}
 }
 
+func TestCountResponsesToolOutputImages(t *testing.T) {
+	var buf bytes.Buffer
+	require.NoError(t, png.Encode(&buf, image.NewRGBA(image.Rect(0, 0, 513, 1))))
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes()) + strings.Repeat("A", 16000)
+	imagePart := map[string]any{"type": "input_image", "image_url": dataURL}
+	for _, outputType := range []string{"function_call_output", "custom_tool_call_output", "tool_search_output", "tool_search_call_output", "mcp_tool_call_output"} {
+		t.Run(outputType, func(t *testing.T) {
+			for _, output := range []any{
+				imagePart,
+				[]any{imagePart},
+				map[string]any{"content": []any{imagePart}},
+				[]any{map[string]any{"type": "image_url", "image_url": map[string]string{"url": dataURL}}},
+			} {
+				body := map[string]any{"input": []any{map[string]any{"type": outputType, "output": output}}}
+				raw, err := json.Marshal(body)
+				require.NoError(t, err)
+				n := Count(raw, 500)
+				require.GreaterOrEqual(t, n, 425, "image dimensions must still count")
+				require.Less(t, n, 500, "image Base64 must not count as text")
+				body["instructions"] = strings.Repeat(" the", 501)
+				raw, err = json.Marshal(body)
+				require.NoError(t, err)
+				require.Equal(t, 501, Count(raw, 500), "adjacent text must still count")
+			}
+			body, err := json.Marshal(map[string]any{
+				"input": []any{map[string]any{"type": outputType, "output": []any{imagePart, imagePart}}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 501, Count(body, 500), "multiple images must still hit the limit")
+			body, err = json.Marshal(map[string]any{
+				"input": []any{map[string]any{"type": outputType, "output": []any{
+					imagePart, map[string]string{"type": "input_text", "text": strings.Repeat(" the", 501)},
+				}}},
+			})
+			require.NoError(t, err)
+			require.Equal(t, 501, Count(body, 500), "text inside tool output must still count")
+		})
+	}
+}
+
+func TestCountToolJSONAndSchemasRemainText(t *testing.T) {
+	large := strings.Repeat(" the", 501)
+	fakeImage := map[string]any{"type": "image", "data": large}
+	for _, body := range []any{
+		map[string]any{"input": []any{map[string]any{"type": "function_call_output", "output": fakeImage}}},
+		map[string]any{"input": []any{map[string]any{"type": "custom_tool_call_output", "output": []any{fakeImage}}}},
+		map[string]any{"input": []any{map[string]any{"type": "function_call", "arguments": fakeImage}}},
+		map[string]any{"tools": []any{map[string]any{
+			"type": "custom_tool_call_output", "output": []any{map[string]any{"type": "input_image", "image_url": large}},
+		}}},
+	} {
+		raw, err := json.Marshal(body)
+		require.NoError(t, err)
+		require.Equal(t, 501, Count(raw, 500), "business JSON and tool schemas must not be mistaken for media")
+	}
+}
+
 func TestCountIncludesHistoryToolsAndResultsAcrossProtocols(t *testing.T) {
 	large := strings.Repeat(" the", 101)
 	for _, body := range []any{

@@ -8,6 +8,14 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+type countMode uint8
+
+const (
+	contentMode countMode = iota
+	textMode
+	toolOutputMode
+)
+
 // Count uses the embedded DeepSeek tokenizer for text across all models and stops
 // at limit+1. Images use approximate vision estimates.
 // shortcut: non-DeepSeek models can tokenize differently; use provider counting for exact model limits.
@@ -31,8 +39,8 @@ func Count(body []byte, limit int) int {
 		}
 		return addTokens(n)
 	}
-	var walk func(gjson.Result, bool, int) bool
-	walk = func(value gjson.Result, schema bool, depth int) bool {
+	var walk func(gjson.Result, countMode, int) bool
+	walk = func(value gjson.Result, mode countMode, depth int) bool {
 		switch value.Type {
 		case gjson.String:
 			return add(value.Str)
@@ -40,8 +48,12 @@ func Count(body []byte, limit int) int {
 			if depth >= 64 {
 				return add(value.Raw)
 			}
-			if !schema {
-				switch value.Get("type").Str {
+			partType := value.Get("type").Str
+			// Tool outputs mix typed image parts with arbitrary business JSON.
+			imageOutput := mode == toolOutputMode && (partType == "input_image" || partType == "image_url") &&
+				(value.Get("image_url").Str != "" || value.Get("image_url.url").Str != "")
+			if mode == contentMode || imageOutput {
+				switch partType {
 				case "image", "image_url", "input_image":
 					if strings.EqualFold(value.Get("detail").Str, "low") || strings.EqualFold(value.Get("image_url.detail").Str, "low") {
 						return addTokens(85)
@@ -66,7 +78,7 @@ func Count(body []byte, limit int) int {
 			}
 			keepGoing := true
 			value.ForEach(func(key, child gjson.Result) bool {
-				if !schema {
+				if mode == contentMode {
 					switch key.Str {
 					case "inlineData", "inline_data", "fileData", "file_data":
 						mime := strings.ToLower(child.Get("mimeType").Str + child.Get("mime_type").Str)
@@ -78,12 +90,22 @@ func Count(body []byte, limit int) int {
 						return true
 					}
 				}
-				allText := schema
-				switch key.Str {
-				case "tools", "functions", "tool_choice", "arguments", "output", "functionResponse", "function_response", "functionCall", "function_call":
-					allText = true
+				childMode := mode
+				if mode != toolOutputMode {
+					switch key.Str {
+					case "output":
+						childMode = textMode
+						if mode == contentMode {
+							switch partType {
+							case "function_call_output", "custom_tool_call_output", "tool_search_output", "tool_search_call_output", "mcp_tool_call_output":
+								childMode = toolOutputMode
+							}
+						}
+					case "tools", "functions", "tool_choice", "arguments", "functionResponse", "function_response", "functionCall", "function_call":
+						childMode = textMode
+					}
 				}
-				keepGoing = add(key.Str) && walk(child, allText, depth+1)
+				keepGoing = add(key.Str) && walk(child, childMode, depth+1)
 				return keepGoing
 			})
 			return keepGoing
@@ -98,9 +120,9 @@ func Count(body []byte, limit int) int {
 	root.ForEach(func(key, value gjson.Result) bool {
 		switch key.Str {
 		case "tools", "functions", "tool_choice", "function_call":
-			return walk(value, true, 0)
+			return walk(value, textMode, 0)
 		case "system", "instructions", "messages", "input", "contents", "content", "systemInstruction", "system_instruction", "prompt", "query", "questions", "instances", "requests", "response":
-			return walk(value, false, 0)
+			return walk(value, contentMode, 0)
 		default:
 			return true
 		}

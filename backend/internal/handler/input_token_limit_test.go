@@ -87,6 +87,29 @@ func TestInputTokenLimitRejectsImageHeavyInputBeforeAudit(t *testing.T) {
 	require.Zero(t, engine.enqueues.Load())
 }
 
+func TestInputTokenLimitDoesNotCountToolImageBase64AsText(t *testing.T) {
+	c, _ := securityAuditErrorTestContext(t)
+	cfg := &config.Config{Gateway: config.GatewayConfig{MaxInputTokens: 2000}}
+	image := map[string]any{
+		"type": "input_image", "width": 2048, "height": 978,
+		"image_url": "data:image/png;base64," + strings.Repeat("A", 32000),
+	}
+	for _, outputType := range []string{"function_call_output", "custom_tool_call_output"} {
+		for _, stage := range []string{"http", "first_turn", "subsequent_turn"} {
+			body, err := json.Marshal(map[string]any{
+				"input": []any{map[string]any{"type": outputType, "output": []any{image}}},
+			})
+			require.NoError(t, err)
+			require.Nil(t, checkInputTokenLimit(c, nil, cfg, "gpt-6.1-sol", body, stage))
+			body, err = json.Marshal(map[string]any{
+				"input": []any{map[string]any{"type": outputType, "output": []any{image, image}}},
+			})
+			require.NoError(t, err)
+			require.NotNil(t, checkInputTokenLimit(c, nil, cfg, "gpt-6.1-sol", body, stage))
+		}
+	}
+}
+
 func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 1)
 	gin.SetMode(gin.TestMode)
