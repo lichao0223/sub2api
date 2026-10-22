@@ -18,7 +18,13 @@ func (q mergeQueue) Less(i, j int) bool {
 	return q[i].left < q[j].left
 }
 func (q mergeQueue) Swap(i, j int) { q[i], q[j] = q[j], q[i] }
-func (q *mergeQueue) Push(x any)   { *q = append(*q, x.(mergeCandidate)) }
+func (q *mergeQueue) Push(x any) {
+	candidate, ok := x.(mergeCandidate)
+	if !ok {
+		panic("tokenestimate: invalid merge candidate")
+	}
+	*q = append(*q, candidate)
+}
 func (q *mergeQueue) Pop() any {
 	last := len(*q) - 1
 	x := (*q)[last]
@@ -52,7 +58,8 @@ func (t *deepSeekTokenizer) countPiece(text string) int {
 	heap.Init(&queue)
 	count := len(symbols)
 	for queue.Len() > 0 {
-		c := heap.Pop(&queue).(mergeCandidate)
+		c := queue[0]
+		heap.Pop(&queue)
 		// Neighboring merges invalidate queued pairs; equal ranks merge leftmost first.
 		if current, ok := candidate(c.left); !ok || current != c {
 			continue

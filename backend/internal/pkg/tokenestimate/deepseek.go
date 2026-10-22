@@ -85,7 +85,7 @@ func newDeepSeekTokenizer() (*deepSeekTokenizer, error) {
 	n := rune(256)
 	for b := range t.byteID {
 		r := rune(b)
-		if !(b >= 33 && b <= 126 || b >= 161 && b <= 172 || b >= 174) {
+		if b < 33 || b >= 127 && b <= 160 || b == 173 {
 			r = n
 			n++
 		}

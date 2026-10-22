@@ -9,6 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestMergeQueuePush(t *testing.T) {
+	var queue mergeQueue
+	require.Panics(t, func() { queue.Push(nil) })
+	want := mergeCandidate{left: 1, right: 2}
+	queue.Push(want)
+	require.Equal(t, want, queue[0])
+}
+
 func TestDeepSeekTokenizerGolden(t *testing.T) {
 	raw, err := os.ReadFile("deepseek/golden.json")
 	require.NoError(t, err)
