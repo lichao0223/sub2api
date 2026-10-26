@@ -36,8 +36,12 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
-	nonworkService *service.UsageNonworkAggregationService,
+	nonworkServices ...*service.UsageNonworkAggregationService,
 ) *UsageHandler {
+	var nonworkService *service.UsageNonworkAggregationService
+	if len(nonworkServices) > 0 {
+		nonworkService = nonworkServices[0]
+	}
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
