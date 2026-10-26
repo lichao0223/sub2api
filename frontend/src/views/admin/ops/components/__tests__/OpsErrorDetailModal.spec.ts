@@ -93,8 +93,8 @@ describe('OpsErrorDetailModal', () => {
     })
   }
 
-  it('loads request content only on demand and downloads the full original blob', async () => {
-    const body = JSON.stringify({ messages: [{ role: 'tool', content: 'tool output '.repeat(10000) }], tail: 'full-file-marker' })
+  it('previews formatted content on demand and downloads it without truncation', async () => {
+    const body = JSON.stringify({ messages: [{ role: 'tool', content: 'tool output '.repeat(10000) }], tail: 'full-file-marker' }, null, 2)
     const blob = new NodeBlob([body], { type: 'application/json' })
     mocks.getErrorRequestSnapshot.mockResolvedValue(blob)
     const wrapper = mountSnapshotDetail()
@@ -105,6 +105,9 @@ describe('OpsErrorDetailModal', () => {
     expect(mocks.getErrorRequestSnapshot).toHaveBeenCalledWith(42)
     expect(wrapper.text()).toContain('admin.ops.errorDetail.requestSnapshot.previewLimited')
     expect(wrapper.text()).not.toContain('full-file-marker')
+    const preview = wrapper.get('[data-testid="error-request-snapshot"] pre')
+    expect(preview.element.textContent).toBe(body.slice(0, 64 * 1024))
+    expect(preview.classes()).toEqual(expect.arrayContaining(['whitespace-pre-wrap', 'break-words']))
     await wrapper.get('[data-testid="download-request-snapshot"]').trigger('click')
     await flushPromises()
     expect(mocks.saveAs).toHaveBeenCalledWith(blob, 'error-42-request.json')
@@ -112,6 +115,17 @@ describe('OpsErrorDetailModal', () => {
     expect(mocks.getErrorRequestSnapshot).toHaveBeenCalledTimes(1)
     await wrapper.setProps({ show: false })
     expect(wrapper.find('[data-testid="view-request-snapshot"]').exists()).toBe(false)
+  })
+
+  it('preserves formatted JSON and large integers in small previews', async () => {
+    const body = '{\n  "id": 9007199254740993,\n  "tools": []\n}'
+    mocks.getErrorRequestSnapshot.mockResolvedValue(new NodeBlob([body], { type: 'application/json' }))
+    const wrapper = mountSnapshotDetail()
+    await flushPromises()
+    await wrapper.get('[data-testid="view-request-snapshot"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="error-request-snapshot"] pre').element.textContent).toBe(body)
+    expect(wrapper.text()).not.toContain('admin.ops.errorDetail.requestSnapshot.previewLimited')
   })
 
   it('does not offer a download for old or uncaptured requests', async () => {

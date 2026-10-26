@@ -1,6 +1,8 @@
 package admin
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -32,6 +34,10 @@ func (h *OpsHandler) DownloadErrorRequestSnapshot(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	var formatted bytes.Buffer
+	if err := json.Indent(&formatted, body, "", "  "); err == nil {
+		body = formatted.Bytes()
 	}
 	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="error-%d-request.json"`, id))
 	c.Header("Cache-Control", "no-store")

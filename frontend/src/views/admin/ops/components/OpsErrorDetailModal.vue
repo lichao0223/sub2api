@@ -141,7 +141,7 @@
         <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t(detail.request_snapshot_bytes ? 'admin.ops.errorDetail.requestSnapshot.omitted' : 'admin.ops.errorDetail.requestSnapshot.unavailable') }}</p>
         <template v-if="snapshotPreview">
           <p v-if="snapshotPreviewTruncated" class="mt-3 text-xs text-amber-700 dark:text-amber-300">{{ t('admin.ops.errorDetail.requestSnapshot.previewLimited') }}</p>
-          <pre class="mt-3 max-h-[520px] overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ snapshotPreview }}</code></pre>
+          <pre class="mt-3 max-h-[520px] whitespace-pre-wrap break-words overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ snapshotPreview }}</code></pre>
         </template>
       </div>
 
@@ -289,7 +289,7 @@ async function loadRequestSnapshot(download: boolean) {
       const preview = await blob.slice(0, 64 * 1024).text()
       if (!props.show || props.errorId !== id) return
       snapshotPreviewTruncated.value = blob.size > 64 * 1024
-      snapshotPreview.value = snapshotPreviewTruncated.value ? preview : prettyJSON(preview)
+      snapshotPreview.value = preview
     }
   } catch {
     if (props.show && props.errorId === id) appStore.showError(t('admin.ops.errorDetail.requestSnapshot.loadFailed'))
