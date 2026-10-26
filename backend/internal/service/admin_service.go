@@ -762,8 +762,12 @@ func NewAdminService(
 	affiliateService *AffiliateService,
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
-	channelCacheInvalidator ChannelCacheInvalidator,
+	channelCacheInvalidators ...ChannelCacheInvalidator,
 ) AdminService {
+	var channelCacheInvalidator ChannelCacheInvalidator
+	if len(channelCacheInvalidators) > 0 {
+		channelCacheInvalidator = channelCacheInvalidators[0]
+	}
 	return &adminServiceImpl{
 		cfg:                  cfg,
 		userRepo:             userRepo,
