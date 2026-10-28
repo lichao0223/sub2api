@@ -474,7 +474,7 @@ describe('CostManagementView', () => {
       subscription_unit_name: '', billing_cycle: '', fixed_unit_cost_cny: '0', monthly_unit_cost_cny: '0',
       prices: [{
         upstream_model: 'deepseek-v4-flash', billing_mode: 'token', input_price_cny: '1.5', output_price_cny: '4.5',
-        cache_write_price_cny: '1.5', cache_read_price_cny: '0.05', image_input_price_cny: '0', image_output_price_cny: '0', per_request_price_cny: '0',
+        cache_write_price_cny: '0.017', cache_read_price_cny: '0.05', image_input_price_cny: '0', image_output_price_cny: '0', per_request_price_cny: '0',
         time_pricing: { timezone: 'Asia/Shanghai', weekdays_only: true, periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: 2 }] },
       }],
     }])
@@ -486,6 +486,7 @@ describe('CostManagementView', () => {
     await flushPromises()
 
     const dialog = wrapper.findAll('[data-test="dialog"]').find(item => item.text().includes('价格历史 · GLM 按量'))!
+    expect(dialog.text()).toContain('缓存写入 ¥0.017/MTok')
     expect(dialog.text()).toContain('缓存读取 ¥0.05/MTok')
     expect(dialog.text()).toContain('仅工作日 · Asia/Shanghai · 09:00:00-12:00:00 ×2')
   })
