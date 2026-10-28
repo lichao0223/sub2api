@@ -681,8 +681,10 @@ func lockAndMergeAccountProbeExtra(
 				false
 			),
 			extra -> 'opencode_go_usage_auto_refresh',
-			extra -> 'opencode_go_usage_snapshot'
-			, extra
+			extra -> 'opencode_go_usage_snapshot',
+			extra -> 'grok_observed_models',
+			extra -> 'upstream_model_metadata',
+			extra
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -711,6 +713,8 @@ func lockAndMergeAccountProbeExtra(
 		currentOllamaSnapshot          []byte
 		currentOpenCodeAutoRefresh     []byte
 		currentOpenCodeSnapshot        []byte
+		currentGrokObservedModels      []byte
+		currentUpstreamModelMetadata   []byte
 		currentExtra                   []byte
 	)
 	columns, err := rows.Columns()
@@ -725,7 +729,7 @@ func lockAndMergeAccountProbeExtra(
 		return nil, err
 	}
 	read := func(index int, dst *[]byte) {
-		if index >= len(values) || dst == nil {
+		if index < 0 || index >= len(values) || dst == nil {
 			return
 		}
 		raw, _ := (*(values[index].(*any))).([]byte)
@@ -736,7 +740,7 @@ func lockAndMergeAccountProbeExtra(
 		}
 	}
 	readBool := func(index int, dst *bool) {
-		if index >= len(values) || dst == nil {
+		if index < 0 || index >= len(values) || dst == nil {
 			return
 		}
 		switch value := (*(values[index].(*any))).(type) {
@@ -760,11 +764,38 @@ func lockAndMergeAccountProbeExtra(
 	readBool(9, &opencodeGroupIdentityUnchanged)
 	read(10, &currentOpenCodeAutoRefresh)
 	read(11, &currentOpenCodeSnapshot)
-	if len(values) == 10 {
-		read(9, &currentExtra)
-	} else if len(values) >= 13 {
-		read(12, &currentExtra)
+	readIndex := func(name string) int {
+		for i, column := range columns {
+			if column == name {
+				return i
+			}
+		}
+		return -1
 	}
+	grokIndex := readIndex("grok_observed_models")
+	metadataIndex := readIndex("upstream_model_metadata")
+	extraIndex := readIndex("current_extra")
+	// PostgreSQL labels expression columns as ?column?; use known positions when
+	// the driver does not expose the sqlmock aliases.
+	if len(values) >= 14 {
+		if grokIndex < 0 {
+			grokIndex = 12
+		}
+		if metadataIndex < 0 {
+			metadataIndex = 13
+		}
+	}
+	if extraIndex < 0 {
+		switch {
+		case len(values) >= 15:
+			extraIndex = 14
+		case len(values) == 13, len(values) == 10:
+			extraIndex = len(values) - 1
+		}
+	}
+	read(grokIndex, &currentGrokObservedModels)
+	read(metadataIndex, &currentUpstreamModelMetadata)
+	read(extraIndex, &currentExtra)
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -887,6 +918,21 @@ func lockAndMergeAccountProbeExtra(
 		}
 	} else {
 		extra = service.MergeOpenAICodexTicketExtra(extra, nil)
+	}
+	// Grok 目录和能力 metadata 是同步写入的受管状态。普通更新在行锁内采用最新
+	// 数据库值，忽略表单旧值、缺键和注入。来源身份变化不删除已有成功快照。
+	for key, raw := range map[string][]byte{
+		"grok_observed_models":                currentGrokObservedModels,
+		service.UpstreamModelMetadataExtraKey: currentUpstreamModelMetadata,
+	} {
+		delete(extra, key)
+		value, ok, err := decodeAccountExtraJSON(raw)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			extra[key] = value
+		}
 	}
 	return extra, nil
 }
