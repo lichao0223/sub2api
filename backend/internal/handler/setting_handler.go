@@ -94,6 +94,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		GitHubOAuthEnabled:                  settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
+		MCPEnabled:                          settings.MCPEnabled,
 		PaymentEnabled:                      settings.PaymentEnabled,
 		UsageDisplayCurrency:                settings.UsageDisplayCurrency,
 		UsageDisplayUSDToCNYRate:            settings.UsageDisplayUSDToCNYRate,

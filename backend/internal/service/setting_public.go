@@ -347,6 +347,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		WeChatOAuthMPEnabled:                weChatMPEnabled,
 		WeChatOAuthMobileEnabled:            weChatMobileEnabled,
 		BackendModeEnabled:                  settings[SettingKeyBackendModeEnabled] == "true",
+		MCPEnabled:                          s.cfg != nil && s.cfg.MCP.Enabled(),
 		PaymentEnabled:                      settings[SettingPaymentEnabled] == "true",
 		UsageDisplayCurrency:                normalizeUsageDisplayCurrency(settings[SettingKeyUsageDisplayCurrency]),
 		UsageDisplayUSDToCNYRate:            s.GetTokenRankingSettings(ctx).USDToCNYRate,
@@ -615,6 +616,7 @@ type PublicSettingsInjectionPayload struct {
 	GitHubOAuthEnabled                  bool                     `json:"github_oauth_enabled"`
 	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
 	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
+	MCPEnabled                          bool                     `json:"mcp_enabled"`
 	PaymentEnabled                      bool                     `json:"payment_enabled"`
 	PaymentBalanceDisabled              bool                     `json:"payment_balance_disabled"`
 	Version                             string                   `json:"version"`
@@ -711,6 +713,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		GitHubOAuthEnabled:                  settings.GitHubOAuthEnabled,
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
+		MCPEnabled:                          settings.MCPEnabled,
 		PaymentEnabled:                      settings.PaymentEnabled,
 		UsageDisplayCurrency:                settings.UsageDisplayCurrency,
 		UsageDisplayUSDToCNYRate:            settings.UsageDisplayUSDToCNYRate,
