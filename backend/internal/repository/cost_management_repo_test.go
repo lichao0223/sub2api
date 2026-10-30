@@ -14,6 +14,51 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetCostRequestDetails(t *testing.T) {
+	for _, empty := range []bool{false, true} {
+		name := "with requests"
+		if empty {
+			name = "empty range"
+		}
+		t.Run(name, func(t *testing.T) {
+			db, mock := newSQLMock(t)
+			start := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+			end := start.AddDate(0, 0, 1)
+			rows := sqlmock.NewRows([]string{
+				"id", "created_at", "request_id", "model", "upstream_model",
+				"input_tokens", "cache_creation_tokens", "cache_read_tokens", "output_tokens", "image_input_tokens", "image_output_tokens",
+				"billing_mode", "input_cost", "cache_write_cost", "cache_read_cost", "output_cost", "image_input_cost", "image_output_cost",
+				"per_request_cost", "time_multiplier", "total_cost", "total_count", "total_account_cost",
+			})
+			if !empty {
+				rows.AddRow(1, start, "req-1", "client-model", "upstream-model",
+					1_000_000, 0, 0, 1_000_000, 0, 0, "token", 1, 0, 0, 2, 0, 0, 0, 1, 3, 1, 3)
+			}
+			// Every computed CTE column referenced by the outer query needs a name.
+			mock.ExpectQuery(`(?s)WITH scoped AS .* AS request_id,.* AS model,.* AS upstream_model,.* AS image_input_tokens,.* AS image_output_tokens,.* AS cost_mode.*FROM scoped`).
+				WithArgs(int64(7), start, end).WillReturnRows(rows)
+
+			details, err := (&costManagementRepository{db: db}).GetCostRequestDetails(context.Background(), 7, start, end)
+			require.NoError(t, err)
+			require.NotNil(t, details.Items)
+			if empty {
+				require.Empty(t, details.Items)
+				require.Zero(t, details.TotalCount)
+				require.Zero(t, details.TotalAccountCost)
+			} else {
+				require.Len(t, details.Items, 1)
+				require.EqualValues(t, 1, details.TotalCount)
+				require.Equal(t, "req-1", details.Items[0].RequestID)
+				require.Equal(t, "client-model", details.Items[0].Model)
+				require.Equal(t, "upstream-model", details.Items[0].UpstreamModel)
+				require.Equal(t, float64(3), details.Items[0].TotalCostCNY)
+				require.Equal(t, float64(3), details.TotalAccountCost)
+			}
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestFixedBillingPeriodPreservesOriginalAnchor(t *testing.T) {
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	require.NoError(t, err)

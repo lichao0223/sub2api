@@ -966,12 +966,12 @@ func (r *costManagementRepository) GetCostBreakdown(ctx context.Context, start, 
 func (r *costManagementRepository) GetCostRequestDetails(ctx context.Context, accountID int64, start, end time.Time) (*service.CostRequestDetails, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		WITH scoped AS (
-			SELECT ul.id,ul.created_at,COALESCE(ul.request_id,''),COALESCE(ul.model,''),COALESCE(NULLIF(BTRIM(ul.upstream_model),''),ul.model),
-			       ul.input_tokens,ul.cache_creation_tokens,ul.cache_read_tokens,ul.output_tokens,COALESCE(ul.image_input_tokens,0),COALESCE(ul.image_output_tokens,0),
+			SELECT ul.id,ul.created_at,COALESCE(ul.request_id,'') AS request_id,COALESCE(ul.model,'') AS model,COALESCE(NULLIF(BTRIM(ul.upstream_model),''),ul.model) AS upstream_model,
+			       ul.input_tokens,ul.cache_creation_tokens,ul.cache_read_tokens,ul.output_tokens,COALESCE(ul.image_input_tokens,0) AS image_input_tokens,COALESCE(ul.image_output_tokens,0) AS image_output_tokens,
 			       COALESCE(mp.billing_mode,'') AS billing_mode,COALESCE(mp.input_price_cny,0) AS input_price,COALESCE(mp.cache_write_price_cny,0) AS cache_write_price,
 			       COALESCE(mp.cache_read_price_cny,0) AS cache_read_price,COALESCE(mp.output_price_cny,0) AS output_price,COALESCE(mp.image_input_price_cny,0) AS image_input_price,COALESCE(mp.image_output_price_cny,0) AS image_output_price,COALESCE(mp.per_request_price_cny,0) AS per_request_price,
 			       COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (COALESCE((mp.time_pricing->>'weekdays_only')::boolean,FALSE)=FALSE OR EXTRACT(ISODOW FROM (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))) BETWEEN 1 AND 5) AND (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) AS time_multiplier,
-			       COALESCE(c.cost_mode,'metered')
+			       COALESCE(c.cost_mode,'metered') AS cost_mode
 			FROM usage_logs ul
 			LEFT JOIN LATERAL(SELECT * FROM account_cost_configs x WHERE x.account_id=ul.account_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at) ORDER BY x.effective_from DESC LIMIT 1)c ON TRUE
 			LEFT JOIN LATERAL(SELECT * FROM cost_plan_versions x WHERE x.plan_id=c.plan_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at) ORDER BY x.version_no DESC LIMIT 1)v ON TRUE

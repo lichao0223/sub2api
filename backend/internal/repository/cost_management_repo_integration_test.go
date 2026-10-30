@@ -66,6 +66,28 @@ func TestCostIncrementalIsIdempotent(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, created)
 
+	t.Run("request cost details", func(t *testing.T) {
+		details, err := repo.GetCostRequestDetails(ctx, account.ID, effective, effective.Add(2*time.Hour))
+		require.NoError(t, err)
+		require.Len(t, details.Items, 1)
+		require.EqualValues(t, 1, details.TotalCount)
+		require.Equal(t, fmt.Sprintf("cost-request-%d", suffix), details.Items[0].RequestID)
+		require.Equal(t, "client-model", details.Items[0].Model)
+		require.Equal(t, model, details.Items[0].UpstreamModel)
+		require.Zero(t, details.Items[0].ImageInputTokens)
+		require.Zero(t, details.Items[0].ImageOutputTokens)
+		require.Equal(t, float64(1), details.Items[0].InputCostCNY)
+		require.Equal(t, float64(2), details.Items[0].OutputCostCNY)
+		require.Equal(t, float64(3), details.Items[0].TotalCostCNY)
+		require.Equal(t, float64(3), details.TotalAccountCost)
+
+		empty, err := repo.GetCostRequestDetails(ctx, account.ID, effective.Add(-time.Hour), effective)
+		require.NoError(t, err)
+		require.Empty(t, empty.Items)
+		require.Zero(t, empty.TotalCount)
+		require.Zero(t, empty.TotalAccountCost)
+	})
+
 	for {
 		processed, runErr := repo.RunCostIncremental(ctx, 2000)
 		require.NoError(t, runErr)
