@@ -220,7 +220,7 @@ async function openRequestDetails(account:AccountCostRow){
   try{Object.assign(requestDetails,await costManagementAPI.requestDetails({account_id:account.account_id,start_date:range.start,end_date:range.end}))}
   catch(e:any){requestDetailsDialog.value=false;app.showError(e.message||'加载请求明细失败')}
 }
-function csvCell(value:unknown){const text=value==null?'':String(value);return /[",\n]/.test(text)?`"${text.replaceAll('"','""')}"`:text}
+function csvCell(value:unknown){const text=value==null?'':String(value);return /[",\n]/.test(text)?`"${text.replace(/"/g,'""')}"`:text}
 async function exportRequestDetails(){
   if(!requestDetails.items.length||requestDetailsExporting.value)return
   requestDetailsExporting.value=true

@@ -46,7 +46,9 @@ export interface CostBreakdown {
 export interface CostRequestDetail {
   id:number; created_at:string; request_id:string; model:string; upstream_model:string
   input_tokens:number; cache_creation_tokens:number; cache_read_tokens:number; output_tokens:number
+  image_input_tokens:number; image_output_tokens:number
   input_cost_cny:number; cache_creation_cost_cny:number; cache_read_cost_cny:number; output_cost_cny:number
+  image_input_cost_cny:number; image_output_cost_cny:number
   per_request_cost_cny:number; total_cost_cny:number; billing_mode:string; time_multiplier:number
 }
 export interface CostRequestDetails { total_count:number; total_account_cost_cny:number; items:CostRequestDetail[] }
