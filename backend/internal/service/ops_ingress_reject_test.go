@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -40,6 +41,15 @@ func (r *ingressRejectRepoStub) ListIngressRejects(context.Context, *OpsIngressR
 func TestOpsIngressRejectAggregatorUsesGlobalBucketCapacity(t *testing.T) {
 	repo := &ingressRejectRepoStub{}
 	a := NewOpsIngressRejectAggregator(repo)
+	// Keep the tight insertion loop in one minute bucket; otherwise a runner
+	// starting at xx:59 can legitimately reset the counter mid-assertion.
+	for {
+		remaining := time.Until(time.Now().UTC().Truncate(ingressRejectBucketSize).Add(ingressRejectBucketSize))
+		if remaining >= time.Second {
+			break
+		}
+		time.Sleep(time.Second - remaining)
+	}
 	a.Start()
 
 	// Concentrating all dimensions in one shard must not waste capacity in the others.
