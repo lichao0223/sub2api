@@ -25,8 +25,10 @@ func RegisterMCPRoutes(v1 *gin.RouterGroup, h *handler.Handlers, audit middlewar
 	inner := gin.New()
 	inner.Use(gin.Recovery())
 	api := inner.Group("/api/v1")
-	RegisterUserRoutes(api, h, middleware.JWTAuthMiddleware(managementmcp.DispatchAuth(false)), audit, settings, limiter)
-	RegisterAdminRoutes(api, h, middleware.AdminAuthMiddleware(managementmcp.DispatchAuth(true)), audit, stepUp, settings, limiter)
+	RegisterUserRoutes(api, h,
+		middleware.JWTAuthMiddleware(managementmcp.DispatchAuth(false)),
+		middleware.AdminAuthMiddleware(managementmcp.DispatchAuth(true)), audit, settings, limiter)
+	RegisterAdminRoutes(api, h, middleware.AdminAuthMiddleware(managementmcp.DispatchAuth(true)), audit, stepUp, settings, redisClient, limiter)
 	transport := managementmcp.NewHandler(inner, allowedOrigins)
 	var handlers []gin.HandlerFunc
 	if redisClient != nil {

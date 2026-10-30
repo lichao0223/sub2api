@@ -63,6 +63,15 @@ func ProvideQoderCaches(cache QoderCache) []QoderCache {
 	return []QoderCache{cache}
 }
 
+// Variadic constructors are represented as slice dependencies by Wire.
+func ProvideChannelCacheInvalidators(cache ChannelCacheInvalidator) []ChannelCacheInvalidator {
+	return []ChannelCacheInvalidator{cache}
+}
+
+func ProvideUsageNonworkAggregationServices(svc *UsageNonworkAggregationService) []*UsageNonworkAggregationService {
+	return []*UsageNonworkAggregationService{svc}
+}
+
 // BuildInfo contains build information
 type BuildInfo struct {
 	Version   string
@@ -924,6 +933,8 @@ var ProviderSet = wire.NewSet(
 	ProvideLegacyKimiProvider,
 	ProvideQoderCache,
 	ProvideQoderCaches,
+	ProvideChannelCacheInvalidators,
+	ProvideUsageNonworkAggregationServices,
 	NewGatewayService,
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
