@@ -279,6 +279,37 @@ type CostBreakdownResult struct {
 	Items        []CostBreakdownItem `json:"items"`
 }
 
+// CostRequestDetail is a single request priced with the selected CNY cost plan.
+type CostRequestDetail struct {
+	ID                   int64     `json:"id"`
+	CreatedAt            time.Time `json:"created_at"`
+	RequestID            string    `json:"request_id"`
+	Model                string    `json:"model"`
+	UpstreamModel        string    `json:"upstream_model"`
+	InputTokens          int64     `json:"input_tokens"`
+	CacheCreationTokens  int64     `json:"cache_creation_tokens"`
+	CacheReadTokens      int64     `json:"cache_read_tokens"`
+	OutputTokens         int64     `json:"output_tokens"`
+	ImageInputTokens     int64     `json:"image_input_tokens"`
+	ImageOutputTokens    int64     `json:"image_output_tokens"`
+	InputCostCNY         float64   `json:"input_cost_cny"`
+	CacheCreationCostCNY float64   `json:"cache_creation_cost_cny"`
+	CacheReadCostCNY     float64   `json:"cache_read_cost_cny"`
+	OutputCostCNY        float64   `json:"output_cost_cny"`
+	ImageInputCostCNY    float64   `json:"image_input_cost_cny"`
+	ImageOutputCostCNY   float64   `json:"image_output_cost_cny"`
+	PerRequestCostCNY    float64   `json:"per_request_cost_cny"`
+	TotalCostCNY         float64   `json:"total_cost_cny"`
+	BillingMode          string    `json:"billing_mode"`
+	TimeMultiplier       float64   `json:"time_multiplier"`
+}
+
+type CostRequestDetails struct {
+	TotalCount       int64               `json:"total_count"`
+	TotalAccountCost float64             `json:"total_account_cost_cny"`
+	Items            []CostRequestDetail `json:"items"`
+}
+
 type PendingCostDetail struct {
 	AccountID     int64     `json:"account_id"`
 	AccountName   string    `json:"account_name"`
@@ -365,6 +396,7 @@ type CostManagementRepository interface {
 	EndAccountCost(context.Context, int64, time.Time) error
 	GetCostOverview(context.Context, time.Time, time.Time) (*CostOverview, error)
 	GetCostBreakdown(context.Context, time.Time, time.Time, string) (*CostBreakdownResult, error)
+	GetCostRequestDetails(context.Context, int64, time.Time, time.Time) (*CostRequestDetails, error)
 	GetPendingCostDetails(context.Context, time.Time, time.Time, int64) (*PendingCostDetails, error)
 	GetCostAnalysis(context.Context, string, time.Time, ...time.Time) (*CostAnalysis, error)
 	GetUserCosts(context.Context, time.Time, time.Time) ([]UserCost, error)
@@ -605,6 +637,13 @@ func (s *CostManagementService) Breakdown(ctx context.Context, start, end time.T
 		return nil, errors.New("成本类型无效")
 	}
 	return s.repo.GetCostBreakdown(ctx, start, end, scope)
+}
+
+func (s *CostManagementService) RequestDetails(ctx context.Context, accountID int64, start, end time.Time) (*CostRequestDetails, error) {
+	if accountID <= 0 {
+		return nil, errors.New("账号无效")
+	}
+	return s.repo.GetCostRequestDetails(ctx, accountID, start, end)
 }
 func (s *CostManagementService) PendingDetails(ctx context.Context, start, end time.Time, accountID int64) (*PendingCostDetails, error) {
 	if accountID < 0 {

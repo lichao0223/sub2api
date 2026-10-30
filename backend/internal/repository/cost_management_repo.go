@@ -963,6 +963,50 @@ func (r *costManagementRepository) GetCostBreakdown(ctx context.Context, start, 
 	return out, rows.Err()
 }
 
+func (r *costManagementRepository) GetCostRequestDetails(ctx context.Context, accountID int64, start, end time.Time) (*service.CostRequestDetails, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		WITH scoped AS (
+			SELECT ul.id,ul.created_at,COALESCE(ul.request_id,''),COALESCE(ul.model,''),COALESCE(NULLIF(BTRIM(ul.upstream_model),''),ul.model),
+			       ul.input_tokens,ul.cache_creation_tokens,ul.cache_read_tokens,ul.output_tokens,COALESCE(ul.image_input_tokens,0),COALESCE(ul.image_output_tokens,0),
+			       COALESCE(mp.billing_mode,'') AS billing_mode,COALESCE(mp.input_price_cny,0) AS input_price,COALESCE(mp.cache_write_price_cny,0) AS cache_write_price,
+			       COALESCE(mp.cache_read_price_cny,0) AS cache_read_price,COALESCE(mp.output_price_cny,0) AS output_price,COALESCE(mp.image_input_price_cny,0) AS image_input_price,COALESCE(mp.image_output_price_cny,0) AS image_output_price,COALESCE(mp.per_request_price_cny,0) AS per_request_price,
+			       COALESCE((SELECT NULLIF(period->>'multiplier','')::numeric FROM jsonb_array_elements(COALESCE(mp.time_pricing->'periods','[]'::jsonb)) period WHERE (COALESCE((mp.time_pricing->>'weekdays_only')::boolean,FALSE)=FALSE OR EXTRACT(ISODOW FROM (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))) BETWEEN 1 AND 5) AND (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time >= (period->>'start_time')::time AND ((period->>'end_time') IN ('00:00','00:00:00') OR (ul.created_at AT TIME ZONE COALESCE(mp.time_pricing->>'timezone','Asia/Shanghai'))::time < (period->>'end_time')::time) LIMIT 1),1) AS time_multiplier,
+			       COALESCE(c.cost_mode,'metered')
+			FROM usage_logs ul
+			LEFT JOIN LATERAL(SELECT * FROM account_cost_configs x WHERE x.account_id=ul.account_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at) ORDER BY x.effective_from DESC LIMIT 1)c ON TRUE
+			LEFT JOIN LATERAL(SELECT * FROM cost_plan_versions x WHERE x.plan_id=c.plan_id AND x.effective_from<=ul.created_at AND(x.effective_to IS NULL OR x.effective_to>ul.created_at) ORDER BY x.version_no DESC LIMIT 1)v ON TRUE
+			LEFT JOIN cost_model_prices mp ON mp.plan_version_id=v.id AND mp.upstream_model=COALESCE(NULLIF(BTRIM(ul.upstream_model),''),ul.model)
+			WHERE ul.account_id=$1 AND ul.created_at >= $2 AND ul.created_at < $3
+			ORDER BY ul.created_at ASC,ul.id ASC
+		)
+		SELECT id,created_at,request_id,model,upstream_model,input_tokens,cache_creation_tokens,cache_read_tokens,output_tokens,image_input_tokens,image_output_tokens,billing_mode,
+		       input_price*input_tokens/1000000,cache_write_price*cache_creation_tokens/1000000,cache_read_price*cache_read_tokens/1000000,output_price*output_tokens/1000000,image_input_price*image_input_tokens/1000000,image_output_price*image_output_tokens/1000000,
+		       per_request_price, time_multiplier,
+		       CASE WHEN cost_mode='metered' AND billing_mode IN('token','hybrid') THEN (input_price*input_tokens/1000000+cache_write_price*cache_creation_tokens/1000000+cache_read_price*cache_read_tokens/1000000+output_price*output_tokens/1000000+image_input_price*image_input_tokens/1000000+image_output_price*image_output_tokens/1000000)*time_multiplier ELSE 0 END+
+		       CASE WHEN cost_mode='metered' AND billing_mode IN('request','hybrid') THEN per_request_price*time_multiplier ELSE 0 END,
+		       COUNT(*) OVER(),COALESCE(SUM(CASE WHEN cost_mode='metered' AND billing_mode IN('token','hybrid') THEN (input_price*input_tokens/1000000+cache_write_price*cache_creation_tokens/1000000+cache_read_price*cache_read_tokens/1000000+output_price*output_tokens/1000000+image_input_price*image_input_tokens/1000000+image_output_price*image_output_tokens/1000000)*time_multiplier ELSE 0 END+CASE WHEN cost_mode='metered' AND billing_mode IN('request','hybrid') THEN per_request_price*time_multiplier ELSE 0 END) OVER(),0)
+		FROM scoped`, accountID, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	out := &service.CostRequestDetails{Items: make([]service.CostRequestDetail, 0)}
+	for rows.Next() {
+		var item service.CostRequestDetail
+		var requestID, model, upstream string
+		if err := rows.Scan(&item.ID, &item.CreatedAt, &requestID, &model, &upstream,
+			&item.InputTokens, &item.CacheCreationTokens, &item.CacheReadTokens, &item.OutputTokens, &item.ImageInputTokens, &item.ImageOutputTokens,
+			&item.BillingMode, &item.InputCostCNY, &item.CacheCreationCostCNY, &item.CacheReadCostCNY, &item.OutputCostCNY,
+			&item.ImageInputCostCNY, &item.ImageOutputCostCNY, &item.PerRequestCostCNY, &item.TimeMultiplier, &item.TotalCostCNY,
+			&out.TotalCount, &out.TotalAccountCost); err != nil {
+			return nil, err
+		}
+		item.RequestID, item.Model, item.UpstreamModel = requestID, model, upstream
+		out.Items = append(out.Items, item)
+	}
+	return out, rows.Err()
+}
+
 func (r *costManagementRepository) GetPendingCostDetails(ctx context.Context, start, end time.Time, accountID int64) (*service.PendingCostDetails, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT d.account_id,a.name,MIN(d.bucket_date),MAX(d.bucket_date),d.issue_code,d.upstream_model,

@@ -180,6 +180,7 @@ func registerCostManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		costs.GET("/overview", h.Admin.CostManagement.Overview)
 		costs.GET("/breakdown", h.Admin.CostManagement.Breakdown)
+		costs.GET("/request-details", h.Admin.CostManagement.RequestDetails)
 		costs.GET("/pending-details", h.Admin.CostManagement.PendingDetails)
 		costs.GET("/analysis", h.Admin.CostManagement.Analysis)
 		costs.GET("/accounts", h.Admin.CostManagement.ListAccounts)

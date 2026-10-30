@@ -43,6 +43,13 @@ export interface CostBreakdownItem {
 export interface CostBreakdown {
   total_cost_cny:string;items:CostBreakdownItem[]
 }
+export interface CostRequestDetail {
+  id:number; created_at:string; request_id:string; model:string; upstream_model:string
+  input_tokens:number; cache_creation_tokens:number; cache_read_tokens:number; output_tokens:number
+  input_cost_cny:number; cache_creation_cost_cny:number; cache_read_cost_cny:number; output_cost_cny:number
+  per_request_cost_cny:number; total_cost_cny:number; billing_mode:string; time_multiplier:number
+}
+export interface CostRequestDetails { total_count:number; total_account_cost_cny:number; items:CostRequestDetail[] }
 export interface PendingCostDetail {
   account_id:number;account_name:string;start_date:string;end_date:string;issue_code:string;upstream_model:string;pending_count:number
 }
@@ -66,6 +73,7 @@ const base='/admin/cost-management'
 export const costManagementAPI={
   overview:async(params:{start_date:string;end_date:string})=>(await apiClient.get<CostOverview>(`${base}/overview`,{params})).data,
   breakdown:async(params:{start_date:string;end_date:string;scope:'total'|'metered'|'fixed'})=>(await apiClient.get<CostBreakdown>(`${base}/breakdown`,{params})).data,
+  requestDetails:async(params:{start_date:string;end_date:string;account_id:number})=>(await apiClient.get<CostRequestDetails>(`${base}/request-details`,{params})).data,
   pendingDetails:async(params:{start_date:string;end_date:string;account_id?:number})=>(await apiClient.get<PendingCostDetails>(`${base}/pending-details`,{params})).data,
   analysis:async(params:{start_date:string;end_date:string;period?:string})=>(await apiClient.get<CostAnalysis>(`${base}/analysis`,{params})).data,
   accounts:async(params:Record<string,unknown>)=>(await apiClient.get<BasePaginationResponse<AccountCostRow>>(`${base}/accounts`,{params})).data,

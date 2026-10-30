@@ -28,7 +28,7 @@
 
       <template v-else-if="tab==='accounts'">
         <div class="flex flex-wrap justify-between gap-3"><div class="flex gap-2"><input v-model="accountSearch" class="input w-64" placeholder="搜索账号或平台" @keyup.enter="loadAccounts"><Select v-model="accountMode" :options="accountModeOptions" class="w-40" @change="accountPage=1;loadAccounts()" /></div><button class="btn btn-primary" :disabled="!selectedAccounts.size" @click="openBatch">批量配置（{{ selectedAccounts.size }}）</button></div>
-        <div class="card overflow-hidden"><div class="overflow-x-auto"><table class="table"><thead><tr><th><input type="checkbox" :checked="allAccountsSelected" @change="toggleAllAccounts"></th><th>账号</th><th>平台</th><th>成本方式</th><th>成本方案</th><th>归属订阅</th><th>生效时间</th><th>范围内待核算</th><th>操作</th></tr></thead><tbody><tr v-for="x in accounts" :key="x.account_id"><td><input type="checkbox" :checked="selectedAccounts.has(x.account_id)" @change="toggleAccount(x.account_id)"></td><td>{{ x.account_name }}</td><td>{{ x.platform }}</td><td>{{ modeLabel(x.cost_mode) }}</td><td>{{ x.plan_name||'-' }}</td><td><span v-if="x.cost_mode==='fixed'" :class="x.subscription_unit_name?'':'text-amber-600'">{{ x.subscription_unit_name||'待归组' }}</span><span v-else>-</span></td><td>{{ date(x.effective_from) }}</td><td><button v-if="x.pending_count" class="font-medium text-primary-600 hover:underline" @click="openPendingDetails(x.account_id,x.account_name)">{{ x.pending_count }}</button><span v-else>0</span></td><td><button class="text-primary-600" @click="openAccount(x)">配置</button></td></tr></tbody></table></div><Pagination :page="accountPage" :page-size="pageSize" :total="accountTotal" @update:page="accountPage=$event;loadAccounts()" @update:pageSize="pageSize=$event;accountPage=1;loadAccounts()" /></div>
+        <div class="card overflow-hidden"><div class="overflow-x-auto"><table class="table"><thead><tr><th><input type="checkbox" :checked="allAccountsSelected" @change="toggleAllAccounts"></th><th>账号</th><th>平台</th><th>成本方式</th><th>成本方案</th><th>归属订阅</th><th>生效时间</th><th>范围内待核算</th><th>操作</th></tr></thead><tbody><tr v-for="x in accounts" :key="x.account_id"><td><input type="checkbox" :checked="selectedAccounts.has(x.account_id)" @change="toggleAccount(x.account_id)"></td><td>{{ x.account_name }}</td><td>{{ x.platform }}</td><td>{{ modeLabel(x.cost_mode) }}</td><td>{{ x.plan_name||'-' }}</td><td><span v-if="x.cost_mode==='fixed'" :class="x.subscription_unit_name?'':'text-amber-600'">{{ x.subscription_unit_name||'待归组' }}</span><span v-else>-</span></td><td>{{ date(x.effective_from) }}</td><td><button v-if="x.pending_count" class="font-medium text-primary-600 hover:underline" @click="openPendingDetails(x.account_id,x.account_name)">{{ x.pending_count }}</button><span v-else>0</span></td><td class="space-x-3"><button class="text-primary-600" @click="openAccount(x)">配置</button><button class="text-primary-600" @click="openRequestDetails(x)">导出请求明细</button></td></tr></tbody></table></div><Pagination :page="accountPage" :page-size="pageSize" :total="accountTotal" @update:page="accountPage=$event;loadAccounts()" @update:pageSize="pageSize=$event;accountPage=1;loadAccounts()" /></div>
       </template>
 
       <template v-else>
@@ -43,6 +43,15 @@
         <div class="max-h-[60vh] overflow-auto"><table class="table"><thead class="sticky top-0 bg-white dark:bg-dark-900"><tr><th>类型</th><th>成本方案</th><th>账号/订阅实例</th><th>上游模型</th><th>计价依据</th><th>请求数</th><th>输入</th><th>缓存写入</th><th>缓存读取</th><th>输出</th><th>金额</th></tr></thead><tbody><tr v-for="(row,index) in groupedBreakdownItems" :key="index"><td>{{ row.item.cost_mode==='metered'?'按量':'固定' }}</td><td v-if="row.rowspan" :rowspan="row.rowspan" class="align-top font-medium">{{ row.item.plan_name||'未匹配方案' }}</td><td>{{ row.item.account_name||row.item.subscription_unit_name||'-' }}</td><td>{{ row.item.upstream_model||'-' }}</td><td class="min-w-64 text-xs">{{ pricingText(row.item) }}</td><td>{{ row.item.request_count||'-' }}</td><td :title="tokenTitle(row.item.input_tokens)">{{ tokenText(row.item.input_tokens) }}</td><td :title="tokenTitle(row.item.cache_write_tokens)">{{ tokenText(row.item.cache_write_tokens) }}</td><td :title="tokenTitle(row.item.cache_read_tokens)">{{ tokenText(row.item.cache_read_tokens) }}</td><td :title="tokenTitle(row.item.output_tokens)">{{ tokenText(row.item.output_tokens) }}</td><td class="font-medium">{{ money(row.item.amount_cny) }}</td></tr></tbody></table><div v-if="!costBreakdown.items.length" class="py-8 text-center text-sm text-gray-400">当前范围暂无已核算成本</div></div>
       </div>
       <template #footer><button class="btn btn-secondary" @click="breakdownDialog=false">关闭</button><button class="btn btn-primary" :disabled="!costBreakdown.items.length||breakdownExporting" @click="exportCostBreakdown">{{ breakdownExporting?'导出中...':'导出 Excel' }}</button></template>
+    </BaseDialog>
+
+    <BaseDialog :show="requestDetailsDialog" :title="`${requestDetailsAccountName} · 请求成本明细`" width="extra-wide" @close="requestDetailsDialog=false">
+      <div class="space-y-3">
+        <div class="flex flex-wrap justify-between gap-2 text-sm"><span class="text-gray-500">统计范围：{{ range.start }} 至 {{ range.end }} · 共 {{ requestDetails.total_count }} 条</span><b>按量成本合计：¥{{ requestDetails.total_account_cost_cny.toFixed(8) }}</b></div>
+        <p class="text-xs text-gray-500">导出内容按当前账号绑定的人民币成本方案逐请求计算，可与上游账单的 Token 用量逐条对账。</p>
+        <div class="max-h-[60vh] overflow-auto"><table class="table text-xs"><thead class="sticky top-0 bg-white dark:bg-dark-900"><tr><th>时间</th><th>请求 ID</th><th>模型</th><th>上游模型</th><th>计价方式</th><th>输入</th><th>缓存命中</th><th>输出</th><th>请求成本（¥）</th><th>时间倍率</th><th>总成本（¥）</th></tr></thead><tbody><tr v-for="item in requestDetails.items" :key="item.id"><td class="whitespace-nowrap">{{ dateTime(item.created_at) }}</td><td class="max-w-40 truncate" :title="item.request_id">{{ item.request_id||'-' }}</td><td>{{ item.model||'-' }}</td><td>{{ item.upstream_model||'-' }}</td><td>{{ item.billing_mode||'-' }}</td><td>{{ item.input_tokens }}</td><td>{{ item.cache_read_tokens }}</td><td>{{ item.output_tokens }}</td><td>{{ item.per_request_cost_cny.toFixed(8) }}</td><td>{{ item.time_multiplier }}</td><td class="font-medium">{{ item.total_cost_cny.toFixed(8) }}</td></tr></tbody></table><div v-if="!requestDetails.items.length" class="py-8 text-center text-sm text-gray-400">当前范围暂无请求记录</div></div>
+      </div>
+      <template #footer><button class="btn btn-secondary" @click="requestDetailsDialog=false">关闭</button><button class="btn btn-primary" :disabled="!requestDetails.items.length||requestDetailsExporting" @click="exportRequestDetails">{{ requestDetailsExporting?'导出中...':'导出 CSV' }}</button></template>
     </BaseDialog>
 
     <BaseDialog :show="pendingDialog" :title="pendingTitle" width="extra-wide" @close="pendingDialog=false">
@@ -150,7 +159,7 @@ import Select from '@/components/common/Select.vue'
 import TimePricingSection from '@/components/admin/channel/TimePricingSection.vue'
 import { apiTimePricingToForm, formTimePricingToAPI, validateTimePricing, type TimePricingFormEntry } from '@/components/admin/channel/types'
 import { useAppStore } from '@/stores'
-import costManagementAPI, { type AccountCostInput, type AccountCostRow, type CostAnalysis, type CostBreakdown, type CostBreakdownItem, type CostJob, type CostOverview, type PendingCostDetails, type CostPlan, type CostPriceVersion, type CostSubscriptionUnit } from '@/api/admin/costManagement'
+import costManagementAPI, { type AccountCostInput, type AccountCostRow, type CostAnalysis, type CostBreakdown, type CostBreakdownItem, type CostJob, type CostOverview, type PendingCostDetails, type CostPlan, type CostPriceVersion, type CostRequestDetails, type CostSubscriptionUnit } from '@/api/admin/costManagement'
 import { formatCompactNumber, formatDateLocalInput } from '@/utils/format'
 
 const app=useAppStore(),tab=ref<'overview'|'accounts'|'plans'>('overview'),tabs=[{key:'overview',label:'成本总览'},{key:'accounts',label:'账号成本'},{key:'plans',label:'成本方案'}] as const
@@ -200,6 +209,34 @@ async function exportCostBreakdown(){
     XLSX.writeFile(workbook,`成本组成_${breakdownScope.value}_${range.start}_to_${range.end}.xlsx`)
     app.showSuccess('成本组成已导出')
   }catch(e:any){app.showError(e.message||'导出成本组成失败')}finally{breakdownExporting.value=false}
+}
+const requestDetailsDialog=ref(false),requestDetailsExporting=ref(false),requestDetailsAccountID=ref(0),requestDetailsAccountName=ref('')
+const requestDetails=reactive<CostRequestDetails>({total_count:0,total_account_cost_cny:0,items:[]})
+async function openRequestDetails(account:AccountCostRow){
+  requestDetailsAccountID.value=account.account_id
+  requestDetailsAccountName.value=account.account_name
+  requestDetailsDialog.value=true
+  Object.assign(requestDetails,{total_count:0,total_account_cost_cny:0,items:[]})
+  try{Object.assign(requestDetails,await costManagementAPI.requestDetails({account_id:account.account_id,start_date:range.start,end_date:range.end}))}
+  catch(e:any){requestDetailsDialog.value=false;app.showError(e.message||'加载请求明细失败')}
+}
+function csvCell(value:unknown){const text=value==null?'':String(value);return /[",\n]/.test(text)?`"${text.replaceAll('"','""')}"`:text}
+async function exportRequestDetails(){
+  if(!requestDetails.items.length||requestDetailsExporting.value)return
+  requestDetailsExporting.value=true
+  try{
+    const headers=['时间','请求ID','模型','上游模型','计价方式','输入Token','缓存写入Token','缓存命中Token','输出Token','图像输入Token','图像输出Token','输入成本(CNY)','缓存写入成本(CNY)','缓存命中成本(CNY)','输出成本(CNY)','图像输入成本(CNY)','图像输出成本(CNY)','按请求成本(CNY)','时间倍率','总成本(CNY)']
+    const rows=requestDetails.items.map(item=>[item.created_at,item.request_id,item.model,item.upstream_model,item.billing_mode,item.input_tokens,item.cache_creation_tokens,item.cache_read_tokens,item.output_tokens,item.image_input_tokens,item.image_output_tokens,item.input_cost_cny,item.cache_creation_cost_cny,item.cache_read_cost_cny,item.output_cost_cny,item.image_input_cost_cny,item.image_output_cost_cny,item.per_request_cost_cny,item.time_multiplier,item.total_cost_cny])
+    const summary=[
+      ['统计范围',`${range.start} 至 ${range.end}`],
+      ['账号',requestDetailsAccountName.value],
+      ['请求总数',requestDetails.total_count],
+      ['按量成本合计（CNY）',requestDetails.total_account_cost_cny.toFixed(8)],
+      [],
+    ]
+    const csv='\ufeff'+[...summary,headers,...rows].map(row=>row.map(csvCell).join(',')).join('\n')+'\n'
+    const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=`请求成本明细_${requestDetailsAccountName.value}_${range.start}_至_${range.end}.csv`;link.click();URL.revokeObjectURL(url);app.showSuccess('请求明细已导出')
+  }catch(e:any){app.showError(e.message||'导出请求明细失败')}finally{requestDetailsExporting.value=false}
 }
 const pendingDialog=ref(false),pendingAccountName=ref(''),pendingDetails=reactive<PendingCostDetails>({total_count:0,items:[]})
 const pendingTitle=computed(()=>pendingAccountName.value?`${pendingAccountName.value} · 待核算明细`:'待核算明细')

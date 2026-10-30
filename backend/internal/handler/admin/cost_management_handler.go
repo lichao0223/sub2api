@@ -265,6 +265,23 @@ func (h *CostManagementHandler) Breakdown(c *gin.Context) {
 	}
 	response.Success(c, x)
 }
+func (h *CostManagementHandler) RequestDetails(c *gin.Context) {
+	start, end, ok := costDateRange(c)
+	if !ok {
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Query("account_id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "invalid account_id")
+		return
+	}
+	x, err := h.service.RequestDetails(c.Request.Context(), accountID, start, end)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, x)
+}
 func (h *CostManagementHandler) PendingDetails(c *gin.Context) {
 	start, end, ok := costDateRange(c)
 	if !ok {
