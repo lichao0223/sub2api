@@ -76,6 +76,9 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 
 	body, err := readGatewayRequestBody(c.Request)
 	if err != nil {
+		if handleRequestBodyReadError(c, err) {
+			return
+		}
 		if maxErr, ok := extractMaxBytesError(err); ok {
 			imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
 			return
