@@ -1141,7 +1141,7 @@ const analyticsCompatibleUserCostsSQL = `WITH publications AS(
     SELECT month,MAX(generation) generation FROM analytics_publications
     WHERE month>=DATE_TRUNC('month',$1::date)::date AND month<$2::date GROUP BY month
   ), selected AS(
-    SELECT DATE_TRUNC('month',bucket_date)::date month,subscription_unit_id unit_id,SUM(amount_cny) total
+    SELECT DATE_TRUNC('month',bucket_date)::date AS month,subscription_unit_id unit_id,SUM(amount_cny) total
     FROM cost_daily_aggregates WHERE aggregate_scope='fixed_plan_total' AND calculation_status='calculated'
       AND bucket_date>=$1::date AND bucket_date<$2::date GROUP BY 1,2
   ), parts AS(
