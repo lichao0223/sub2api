@@ -20,9 +20,9 @@ func NewDataAnalyticsRepository(db *sql.DB) service.DataAnalyticsRepository {
 }
 
 type analyticsDirectoryDB interface {
-	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
-	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
-	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
 }
 
 func analyticsIdentities(ctx context.Context, db analyticsDirectoryDB, directory service.AnalyticsDirectory) ([]service.AnalyticsIdentity, error) {
@@ -124,7 +124,7 @@ func (r *dataAnalyticsRepository) PreviewAnalyticsDirectory(ctx context.Context,
 }
 
 func (r *dataAnalyticsRepository) AnalyticsDirectory(ctx context.Context) (*service.AnalyticsDirectoryState, error) {
-	state := &service.AnalyticsDirectoryState{Directory: service.AnalyticsDirectory{Orgs: []service.AnalyticsOrg{}, People: []service.AnalyticsPerson{}}, Imports: []map[string]interface{}{}}
+	state := &service.AnalyticsDirectoryState{Directory: service.AnalyticsDirectory{Orgs: []service.AnalyticsOrg{}, People: []service.AnalyticsPerson{}}, Imports: []map[string]any{}}
 	var data []byte
 	var effective time.Time
 	err := r.db.QueryRowContext(ctx, `SELECT (SELECT directory_revision FROM analytics_runtime_state WHERE id=1),effective_at,data FROM analytics_directory_versions ORDER BY effective_at DESC LIMIT 1`).
@@ -154,7 +154,7 @@ func (r *dataAnalyticsRepository) AnalyticsDirectory(ctx context.Context) (*serv
 		if err := rows.Scan(&id, &created, &applied); err != nil {
 			return nil, err
 		}
-		state.Imports = append(state.Imports, map[string]interface{}{"id": id, "created_at": created, "applied_at": applied})
+		state.Imports = append(state.Imports, map[string]any{"id": id, "created_at": created, "applied_at": applied})
 	}
 	return state, rows.Err()
 }

@@ -53,11 +53,11 @@ type AnalyticsIdentity struct {
 }
 
 type AnalyticsDirectoryState struct {
-	Version     int64                    `json:"version"`
-	EffectiveAt *time.Time               `json:"effective_at"`
-	Directory   AnalyticsDirectory       `json:"directory"`
-	Identities  []AnalyticsIdentity      `json:"identities"`
-	Imports     []map[string]interface{} `json:"imports"`
+	Version     int64               `json:"version"`
+	EffectiveAt *time.Time          `json:"effective_at"`
+	Directory   AnalyticsDirectory  `json:"directory"`
+	Identities  []AnalyticsIdentity `json:"identities"`
+	Imports     []map[string]any    `json:"imports"`
 }
 
 type AnalyticsPeriod struct {
@@ -214,20 +214,20 @@ type AnalyticsFixedShare struct {
 }
 
 type AnalyticsReport struct {
-	Period      AnalyticsPeriod        `json:"period"`
-	ScopeOrgID  string                 `json:"scope_org_id"`
-	Summary     AnalyticsValues        `json:"summary"`
-	Users       int                    `json:"users"`
-	People      []AnalyticsRow         `json:"people"`
-	PeopleTotal int                    `json:"people_total"`
-	Departments []AnalyticsDepartment  `json:"departments"`
-	Trend       []AnalyticsTrend       `json:"trend"`
-	Models      []AnalyticsRow         `json:"models"`
-	FixedShares []AnalyticsFixedShare  `json:"fixed_shares"`
-	PublicCost  string                 `json:"public_cost"`
-	Versions    map[string]int64       `json:"versions"`
-	Coverage    map[string]interface{} `json:"coverage"`
-	TaskStatus  *AnalyticsTaskStatus   `json:"task_status,omitempty"`
+	Period      AnalyticsPeriod       `json:"period"`
+	ScopeOrgID  string                `json:"scope_org_id"`
+	Summary     AnalyticsValues       `json:"summary"`
+	Users       int                   `json:"users"`
+	People      []AnalyticsRow        `json:"people"`
+	PeopleTotal int                   `json:"people_total"`
+	Departments []AnalyticsDepartment `json:"departments"`
+	Trend       []AnalyticsTrend      `json:"trend"`
+	Models      []AnalyticsRow        `json:"models"`
+	FixedShares []AnalyticsFixedShare `json:"fixed_shares"`
+	PublicCost  string                `json:"public_cost"`
+	Versions    map[string]int64      `json:"versions"`
+	Coverage    map[string]any        `json:"coverage"`
+	TaskStatus  *AnalyticsTaskStatus  `json:"task_status,omitempty"`
 }
 
 type DataAnalyticsRepository interface {
@@ -355,7 +355,7 @@ func (s *DataAnalyticsService) Rebuild(ctx context.Context, start, end time.Time
 	})
 }
 
-func AnalyticsJSON(v interface{}) string {
+func AnalyticsJSON(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)
 }

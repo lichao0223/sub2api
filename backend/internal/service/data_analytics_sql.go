@@ -43,14 +43,14 @@ func analyticsStatements(text string) ([]string, error) {
 	for i := 0; i < len(text); i++ {
 		c := text[i]
 		if quoted != 0 {
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 			if c == '\\' && quoted != '`' && i+1 < len(text) {
 				i++
-				b.WriteByte(text[i])
+				_ = b.WriteByte(text[i])
 			} else if c == quoted {
 				if i+1 < len(text) && text[i+1] == quoted {
 					i++
-					b.WriteByte(text[i])
+					_ = b.WriteByte(text[i])
 				} else {
 					quoted = 0
 				}
@@ -59,26 +59,26 @@ func analyticsStatements(text string) ([]string, error) {
 		}
 		if c == '\'' || c == '"' || c == '`' {
 			quoted = c
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 		} else if c == '#' || (c == '-' && i+1 < len(text) && text[i+1] == '-') {
 			for i < len(text) && text[i] != '\n' {
 				i++
 			}
-			b.WriteByte('\n')
+			_ = b.WriteByte('\n')
 		} else if c == '/' && i+1 < len(text) && text[i+1] == '*' {
 			end := strings.Index(text[i+2:], "*/")
 			if end < 0 {
 				return nil, errors.New("SQL注释未闭合")
 			}
 			i += end + 3
-			b.WriteByte(' ')
+			_ = b.WriteByte(' ')
 		} else if c == ';' {
 			if s := strings.TrimSpace(b.String()); s != "" {
 				out = append(out, s)
 			}
 			b.Reset()
 		} else {
-			b.WriteByte(c)
+			_ = b.WriteByte(c)
 		}
 	}
 	if quoted != 0 || strings.TrimSpace(b.String()) != "" {
@@ -188,17 +188,17 @@ func parseAnalyticsRows(text, expected string) ([]map[string]string, error) {
 							case '0':
 								c = 0
 							}
-							value.WriteByte(c)
+							_ = value.WriteByte(c)
 						} else if c == '\'' {
 							if i < len(data) && data[i] == '\'' {
-								value.WriteByte('\'')
+								_ = value.WriteByte('\'')
 								i++
 							} else {
 								closed = true
 								break
 							}
 						} else {
-							value.WriteByte(c)
+							_ = value.WriteByte(c)
 						}
 					}
 					if !closed {
@@ -214,7 +214,7 @@ func parseAnalyticsRows(text, expected string) ([]map[string]string, error) {
 						if !analyticsLiteral.MatchString(token) {
 							return nil, errors.New("SQL包含表达式，必须使用字面值导出")
 						}
-						value.WriteString(token)
+						_, _ = value.WriteString(token)
 					}
 				}
 				values = append(values, value.String())

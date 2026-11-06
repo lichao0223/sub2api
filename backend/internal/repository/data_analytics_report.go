@@ -69,7 +69,7 @@ func (r *dataAnalyticsRepository) AnalyticsReport(ctx context.Context, q service
 		}
 	}
 	report := &service.AnalyticsReport{
-		Period: q.Period, ScopeOrgID: q.OrgID, Versions: map[string]int64{}, Coverage: map[string]interface{}{},
+		Period: q.Period, ScopeOrgID: q.OrgID, Versions: map[string]int64{}, Coverage: map[string]any{},
 		People: []service.AnalyticsRow{}, Models: []service.AnalyticsRow{}, Departments: []service.AnalyticsDepartment{},
 		Trend: []service.AnalyticsTrend{}, FixedShares: []service.AnalyticsFixedShare{}, PublicCost: "0",
 	}
@@ -372,7 +372,7 @@ func (r *dataAnalyticsRepository) AnalyticsReport(ctx context.Context, q service
 		return nil, err
 	}
 	historyGap := rawStart != nil && q.Period.Keys[0] < rawStart.In(loc).Format("2006-01-02")
-	report.Coverage = map[string]interface{}{"directory_ready": directoryReady, "issues": issues, "raw_history_start": rawStart, "history_gap": historyGap, "backlog_days": backlog, "failed_days": failed, "earliest_pending": first,
+	report.Coverage = map[string]any{"directory_ready": directoryReady, "issues": issues, "raw_history_start": rawStart, "history_gap": historyGap, "backlog_days": backlog, "failed_days": failed, "earliest_pending": first,
 		"last_updated": last, "last_error": lastError, "pending_requests": pending, "completed_days": completed, "expected_days": expected,
 		"complete": completed == expected && pending == 0 && !historyGap, "history_basis": "首次目录按当前组织回溯；后续按实际生效时间归属", "provisional": q.Period.Year == now.Year() && analyticsContainsMonth(q.Period.Months, int(now.Month()))}
 	if err := tx.Commit(); err != nil {
