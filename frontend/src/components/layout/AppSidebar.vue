@@ -332,6 +332,14 @@ const ChartIcon = {
     )
 }
 
+const WorkInsightIcon = {
+  render: () => h(Icon, { name: 'lightbulb' })
+}
+
+const DataAnalyticsIcon = {
+  render: () => h(Icon, { name: 'trendingUp' })
+}
+
 const GiftIcon = {
   render: () =>
     h(
@@ -784,7 +792,7 @@ const adminNavItems = computed((): NavItem[] => {
   const baseItems: NavItem[] = [
     { path: '/admin/dashboard', label: t('nav.dashboard'), icon: DashboardIcon },
     { path: '/admin/ops', label: t('nav.ops'), icon: ChartIcon, featureFlag: flagOpsMonitoring },
-    { path: '/admin/ai-work-insights', label: t('nav.workInsight'), icon: ChartIcon, hideInSimpleMode: true },
+    { path: '/admin/ai-work-insights', label: t('nav.workInsight'), icon: WorkInsightIcon, hideInSimpleMode: true },
     { path: '/admin/users', label: t('nav.users'), icon: UsersIcon, hideInSimpleMode: true },
     { path: '/admin/groups', label: t('nav.groups'), icon: FolderIcon },
     {
@@ -844,7 +852,7 @@ const adminNavItems = computed((): NavItem[] => {
       ],
     },
     { path: '/admin/usage', label: t('nav.usage'), icon: ChartIcon },
-    { path: '/admin/data-analytics', label: t('nav.dataAnalytics'), icon: ChartIcon },
+    { path: '/admin/data-analytics', label: t('nav.dataAnalytics'), icon: DataAnalyticsIcon },
     { path: '/admin/cost-management', label: t('nav.costManagement'), icon: CreditCardIcon },
     { path: '/admin/audit-logs', label: t('nav.auditLogs'), icon: ShieldIcon, hideInSimpleMode: true }
   ]
