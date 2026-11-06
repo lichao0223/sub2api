@@ -137,6 +137,7 @@ docs/*
 !docs/DATA_ANALYTICS_TEST_CASES.md
 !docs/ACCOUNT_LOCAL_FEATURES_MERGE_CHECKLIST.md
 !docs/agent-resource-safety.md
+!docs/moego-json-batching.md
 !docs/admin-api-keys.md
 !docs/mcp.md
 !docs/PAYMENT.md
