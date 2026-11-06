@@ -99,6 +99,10 @@ export default defineConfig(({ mode }) => {
       'vue-i18n': 'vue-i18n/dist/vue-i18n.runtime.esm-bundler.js'
     }
   },
+  worker: {
+    // 报表 Worker 动态加载 XLSX，需要支持分包的 ES 模块格式。
+    format: 'es'
+  },
   build: {
     outDir: '../backend/internal/web/dist',
     emptyOutDir: true,
