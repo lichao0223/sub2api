@@ -181,7 +181,7 @@ CREATE FUNCTION analytics_archive_deleted() RETURNS trigger LANGUAGE plpgsql AS 
 BEGIN
   IF NOT (SELECT activated FROM analytics_runtime_state WHERE id=1) THEN RETURN NULL; END IF;
   IF NOT pg_try_advisory_xact_lock(9072028) THEN RAISE EXCEPTION '数据分析正在核算，稍后重试日志清理'; END IF;
-  IF EXISTS(SELECT 1 FROM (SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Shanghai')::date day FROM analytics_old) x
+  IF EXISTS(SELECT 1 FROM (SELECT DISTINCT (created_at AT TIME ZONE 'Asia/Shanghai')::date AS day FROM analytics_old) x
     LEFT JOIN analytics_bucket_state s USING(day)
     WHERE x.day>=(DATE_TRUNC('month',NOW() AT TIME ZONE 'Asia/Shanghai')-INTERVAL '59 months')::date
       AND (s.day IS NULL OR s.pending_count>0 OR EXISTS(SELECT 1 FROM analytics_dirty_days d WHERE d.day=x.day))) THEN
@@ -202,7 +202,7 @@ BEGIN
   -- Outside daily retention no baseline is kept: freeze only after the entire
   -- month is accounted, before any raw subset can disappear.
   IF EXISTS(
-    SELECT 1 FROM (SELECT DISTINCT DATE_TRUNC('month',created_at AT TIME ZONE 'Asia/Shanghai')::date month FROM analytics_old
+    SELECT 1 FROM (SELECT DISTINCT DATE_TRUNC('month',created_at AT TIME ZONE 'Asia/Shanghai')::date AS month FROM analytics_old
       WHERE (created_at AT TIME ZONE 'Asia/Shanghai')::date<(DATE_TRUNC('month',NOW() AT TIME ZONE 'Asia/Shanghai')-INTERVAL '12 months')::date
         AND (created_at AT TIME ZONE 'Asia/Shanghai')::date>=(DATE_TRUNC('month',NOW() AT TIME ZONE 'Asia/Shanghai')-INTERVAL '59 months')::date) x
     WHERE EXISTS(SELECT 1 FROM analytics_dirty_days d WHERE DATE_TRUNC('month',d.day)::date=x.month)
@@ -227,7 +227,7 @@ BEGIN
     write_cost=analytics_archived_daily.write_cost+EXCLUDED.write_cost,read_cost=analytics_archived_daily.read_cost+EXCLUDED.read_cost,
     image_cost=analytics_archived_daily.image_cost+EXCLUDED.image_cost,request_cost=analytics_archived_daily.request_cost+EXCLUDED.request_cost;
   UPDATE analytics_bucket_state s SET archived_count=s.archived_count+x.n,archived_until=GREATEST(s.archived_until,x.last_at)
-  FROM(SELECT (created_at AT TIME ZONE 'Asia/Shanghai')::date day,COUNT(*) n,MAX(created_at) last_at FROM analytics_old GROUP BY 1)x WHERE s.day=x.day;
+  FROM(SELECT (created_at AT TIME ZONE 'Asia/Shanghai')::date AS day,COUNT(*) n,MAX(created_at) last_at FROM analytics_old GROUP BY 1)x WHERE s.day=x.day;
   RETURN NULL;
 END $$;
 CREATE TRIGGER analytics_usage_delete AFTER DELETE ON usage_logs

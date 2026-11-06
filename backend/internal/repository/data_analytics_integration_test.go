@@ -90,6 +90,11 @@ func TestAnalyticsAllModesAndRetentionPreserveFacts(t *testing.T) {
           DELETE FROM usage_logs WHERE id=1;
         `)
 			require.NoError(t, err)
+			var archivedCount int64
+			var archivedUntil time.Time
+			require.NoError(t, tx.QueryRowContext(ctx, `SELECT archived_count,archived_until FROM analytics_bucket_state WHERE archived_count>0`).Scan(&archivedCount, &archivedUntil))
+			require.Equal(t, int64(1), archivedCount)
+			require.False(t, archivedUntil.IsZero())
 			require.NoError(t, tx.QueryRowContext(ctx, `SELECT (input_cost+output_cost+write_cost+read_cost)::text FROM analytics_archived_daily`).Scan(&cost))
 			require.True(t, decimal.RequireFromString(cost).Equal(decimal.RequireFromString("0.03")))
 			var combined string
