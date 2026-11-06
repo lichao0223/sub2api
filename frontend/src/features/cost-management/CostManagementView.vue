@@ -1,6 +1,7 @@
 <template>
   <AppLayout>
     <div class="space-y-5">
+      <AnalyticsTaskControl />
       <div class="flex gap-6 border-b border-gray-200 dark:border-dark-700">
         <button v-for="item in tabs" :key="item.key" class="border-b-2 px-1 pb-3 text-sm font-medium" :class="tab===item.key?'border-primary-500 text-primary-600':'border-transparent text-gray-500'" @click="tab=item.key">{{ item.label }}</button>
       </div>
@@ -148,6 +149,7 @@
 </template>
 
 <script setup lang="ts">
+import AnalyticsTaskControl from '@/components/admin/settings/AnalyticsTaskControl.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Chart } from 'chart.js/auto'
 import AppLayout from '@/components/layout/AppLayout.vue'

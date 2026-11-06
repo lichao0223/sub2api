@@ -242,6 +242,8 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionedSortsAndInvali
 		mock.ExpectBegin()
 		mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 			WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+		mock.ExpectQuery(`SELECT pg_try_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"locked"}).AddRow(true))
+		mock.ExpectQuery(`SELECT activated FROM analytics_runtime_state`).WillReturnRows(sqlmock.NewRows([]string{"activated"}).AddRow(false))
 		mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 			WithArgs(partition.start, "Asia/Shanghai").
 			WillReturnResult(sqlmock.NewResult(0, 1))
@@ -313,6 +315,8 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 	mock.ExpectBegin()
 	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectQuery(`SELECT pg_try_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"locked"}).AddRow(true))
+	mock.ExpectQuery(`SELECT activated FROM analytics_runtime_state`).WillReturnRows(sqlmock.NewRows([]string{"activated"}).AddRow(false))
 	mock.ExpectExec(`UPDATE usage_group_rollup_state`).
 		WithArgs(aprilStart, "Asia/Shanghai").
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -328,4 +332,17 @@ func TestDashboardAggregationRepositoryCleanupUsageLogsPartitionFailureRollsBack
 func setGroupUsageRollupTestTimezone(t *testing.T) {
 	t.Helper()
 	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+}
+
+func TestAnalyticsPartitionDropRetainsNonemptySource(t *testing.T) {
+	db, mock := newSQLMock(t)
+	mock.ExpectBegin()
+	mock.ExpectQuery(`SELECT id FROM usage_group_rollup_state.*FOR UPDATE`).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(1))
+	mock.ExpectQuery(`SELECT pg_try_advisory_xact_lock`).WillReturnRows(sqlmock.NewRows([]string{"locked"}).AddRow(true))
+	mock.ExpectQuery(`SELECT activated FROM analytics_runtime_state`).WillReturnRows(sqlmock.NewRows([]string{"activated"}).AddRow(true))
+	mock.ExpectExec(`LOCK TABLE "usage_logs_202604" IN ACCESS EXCLUSIVE MODE`).WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(`SELECT EXISTS.*usage_logs_202604`).WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectCommit()
+	require.NoError(t, dropUsageLogsPartitionWithRollupInvalidation(context.Background(), db, "usage_logs_202604", time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)))
+	require.NoError(t, mock.ExpectationsWereMet())
 }

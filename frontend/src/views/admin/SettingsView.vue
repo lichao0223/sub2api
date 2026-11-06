@@ -7009,6 +7009,7 @@
             </div>
           </div>
 
+          <AnalyticsTaskControl v-if="activeTab === 'general'" editable />
           <div class="card">
             <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
               <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Token 使用排名</h2>
@@ -9164,6 +9165,7 @@ import {
   stepUpBlockReason,
 } from "@/composables/useStepUp";
 import AdminAccessKeysSettings from "@/components/admin/settings/AdminAccessKeysSettings.vue";
+import AnalyticsTaskControl from "@/components/admin/settings/AnalyticsTaskControl.vue";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";

@@ -133,6 +133,8 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/DATA_ANALYTICS_DEVELOPMENT_PLAN.md
+!docs/DATA_ANALYTICS_TEST_CASES.md
 !docs/ACCOUNT_LOCAL_FEATURES_MERGE_CHECKLIST.md
 !docs/agent-resource-safety.md
 !docs/admin-api-keys.md

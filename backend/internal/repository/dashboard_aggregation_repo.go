@@ -638,12 +638,7 @@ func (r *dashboardAggregationRepository) dropUsageLogsPartitions(ctx context.Con
 		}
 		return nil
 	}
-	for _, partition := range partitions {
-		if _, err := r.sql.ExecContext(ctx, fmt.Sprintf("DROP TABLE IF EXISTS %s", pq.QuoteIdentifier(partition.name))); err != nil {
-			return err
-		}
-	}
-	return nil
+	return fmt.Errorf("partition cleanup requires a transactional database")
 }
 
 func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.DB, name string, monthStart time.Time) error {
@@ -658,6 +653,30 @@ func dropUsageLogsPartitionWithRollupInvalidation(ctx context.Context, db *sql.D
 
 	if err := lockGroupUsageRollupState(ctx, tx); err != nil {
 		return rollback(err)
+	}
+	var locked, activated bool
+	if err := tx.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(9072028)`).Scan(&locked); err != nil {
+		return rollback(err)
+	}
+	if !locked {
+		return rollback(service.ErrCostAggregationBusy)
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT activated FROM analytics_runtime_state WHERE id=1`).Scan(&activated); err != nil {
+		return rollback(err)
+	}
+	if activated {
+		// Nonempty partitions are drained through the parent DELETE trigger in
+		// bounded batches; a later cleanup may drop the empty partition.
+		if _, err := tx.ExecContext(ctx, fmt.Sprintf("LOCK TABLE %s IN ACCESS EXCLUSIVE MODE", pq.QuoteIdentifier(name))); err != nil {
+			return rollback(err)
+		}
+		var nonempty bool
+		if err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM %s LIMIT 1)", pq.QuoteIdentifier(name))).Scan(&nonempty); err != nil {
+			return rollback(err)
+		}
+		if nonempty {
+			return tx.Commit()
+		}
 	}
 	if err := invalidateGroupUsageRollupsAt(ctx, tx, monthStart); err != nil {
 		return rollback(err)

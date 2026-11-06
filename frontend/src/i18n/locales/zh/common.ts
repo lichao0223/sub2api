@@ -216,6 +216,7 @@ export default {
     promptAudit: '提示词审计',
     workInsight: 'AI 使用洞察',
     auditLogs: '操作日志',
+    dataAnalytics: '数据分析',
     costManagement: '成本管理',
   },
 

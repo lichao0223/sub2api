@@ -146,6 +146,10 @@ vi.mock("@/composables/useClipboard", () => ({
   }),
 }));
 
+vi.mock("@/components/admin/settings/AnalyticsTaskControl.vue", () => ({
+  default: { template: "<div />" },
+}));
+
 vi.mock("@/utils/apiError", () => ({
   extractApiErrorMessage: () => "error",
 }));

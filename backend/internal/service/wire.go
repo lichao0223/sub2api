@@ -1014,6 +1014,8 @@ var ProviderSet = wire.NewSet(
 	ProvideDashboardAggregationService,
 	ProvideUsageNonworkAggregationService,
 	ProvideCostManagementService,
+	ProvideAnalyticsTaskService,
+	ProvideDataAnalyticsService,
 	ProvideUsageCleanupService,
 	ProvideDeferredService,
 	NewAntigravityQuotaFetcher,

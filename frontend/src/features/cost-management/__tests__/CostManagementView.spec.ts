@@ -98,6 +98,7 @@ const mountView = () => mount(CostManagementView, {
   global: {
     stubs: {
       AppLayout: { template: '<div><slot /></div>' },
+      AnalyticsTaskControl: true,
       Select: SelectStub,
       BaseDialog: BaseDialogStub,
       ConfirmDialog: ConfirmDialogStub,

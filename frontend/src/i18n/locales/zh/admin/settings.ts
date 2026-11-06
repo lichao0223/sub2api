@@ -2,6 +2,21 @@ export default {
     settings: {
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
+      analyticsTasks: {
+        title: '数据分析 · 后台统计任务',
+        description: '控制共享成本增量统计和历史补算。关闭后保留已有结果，重新开启后按原进度分批处理。开关即时单独保存。',
+        enabled: '启用后台统计任务',
+        actualState: '实际状态',
+        running: '运行任务数',
+        lastSuccess: '最近任务成功时间',
+        refresh: '刷新状态',
+        openSettings: '前往系统设置',
+        pausedNotice: '后台统计已暂停或状态待确认，当前展示已有结果。长期暂停会造成数据滞后，请留意请求日志的保留期限。',
+        loadFailed: '无法确认后台任务状态，请刷新后重试。',
+        saveFailed: '保存结果未确认，请刷新状态后重试。',
+        conflict: '设置已被其他管理员修改，已刷新，请确认后重试。',
+        states: { idle: '已开启，等待下一批', running: '运行中', pausing: '正在暂停', paused: '已暂停', unknown: '状态未知' },
+      },
       tabs: {
         general: '通用设置',
         agreement: '登录条款',

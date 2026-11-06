@@ -1,5 +1,20 @@
 export default {
     settings: {
+      analyticsTasks: {
+        title: 'Data analytics · Background tasks',
+        description: 'Control shared cost aggregation and historical recalculation. Pausing keeps existing results; resuming continues in batches. This switch saves immediately.',
+        enabled: 'Enable background statistics',
+        actualState: 'Actual state',
+        running: 'Running tasks',
+        lastSuccess: 'Last successful task',
+        refresh: 'Refresh status',
+        openSettings: 'Open system settings',
+        pausedNotice: 'Statistics are paused or awaiting confirmation. Existing results remain visible. Prolonged pauses cause stale data; check request log retention.',
+        loadFailed: 'Unable to confirm task status. Refresh and try again.',
+        saveFailed: 'The save result is unconfirmed. Refresh status before retrying.',
+        conflict: 'Another administrator changed this setting. The latest state is loaded; review and retry.',
+        states: { idle: 'Enabled, waiting for next batch', running: 'Running', pausing: 'Pausing', paused: 'Paused', unknown: 'Unknown' },
+      },
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {

@@ -216,6 +216,7 @@ export default {
     promptAudit: 'Prompt Audit',
     workInsight: 'AI Work Insights',
     auditLogs: 'Audit Logs',
+    dataAnalytics: 'Data Analytics',
     costManagement: 'Cost Management',
   },
 

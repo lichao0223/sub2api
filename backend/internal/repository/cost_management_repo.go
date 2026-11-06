@@ -1135,17 +1135,38 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 	return a, top.Err()
 }
 
+// Published monthly participation is authoritative. A partial-day selection
+// applies that same participation ratio to the selected accrued procurement.
+const analyticsCompatibleUserCostsSQL = `WITH publications AS(
+    SELECT month,MAX(generation) generation FROM analytics_publications
+    WHERE month>=DATE_TRUNC('month',$1::date)::date AND month<$2::date GROUP BY month
+  ), selected AS(
+    SELECT DATE_TRUNC('month',bucket_date)::date month,subscription_unit_id unit_id,SUM(amount_cny) total
+    FROM cost_daily_aggregates WHERE aggregate_scope='fixed_plan_total' AND calculation_status='calculated'
+      AND bucket_date>=$1::date AND bucket_date<$2::date GROUP BY 1,2
+  ), parts AS(
+    SELECT s.month,s.unit_id,s.total,a.user_id,TRUNC(s.total*a.amount/NULLIF(t.total,0),12) amount
+    FROM selected s JOIN publications p ON p.month=s.month
+    JOIN analytics_fixed_totals t ON t.month=p.month AND t.generation=p.generation AND t.unit_id=s.unit_id AND t.total>0
+    JOIN analytics_fixed_allocations a ON a.month=t.month AND a.generation=t.generation AND a.unit_id=t.unit_id
+  ), balanced AS(
+    SELECT user_id,amount+CASE WHEN ROW_NUMBER() OVER(PARTITION BY month,unit_id ORDER BY user_id)
+      <=ROUND((total-SUM(amount) OVER(PARTITION BY month,unit_id))*1000000000000) THEN 0.000000000001 ELSE 0 END amount
+    FROM parts
+  ), facts AS(
+    SELECT d.user_id,CASE WHEN d.aggregate_scope='usage' THEN d.amount_cny ELSE 0 END dynamic,
+      CASE WHEN d.aggregate_scope='fixed_user_allocation' THEN d.amount_cny ELSE 0 END fixed
+    FROM cost_daily_aggregates d WHERE d.user_id IS NOT NULL AND d.calculation_status='calculated'
+      AND d.bucket_date>=$1::date AND d.bucket_date<$2::date AND d.aggregate_scope IN('usage','fixed_user_allocation')
+      AND NOT(d.aggregate_scope='fixed_user_allocation' AND EXISTS(
+        SELECT 1 FROM publications p JOIN analytics_fixed_totals t ON t.month=p.month AND t.generation=p.generation
+          WHERE p.month=DATE_TRUNC('month',d.bucket_date)::date AND t.unit_id=d.subscription_unit_id))
+    UNION ALL SELECT user_id,0,amount FROM balanced
+  ) SELECT COALESCE(m.target_user_id,f.user_id),SUM(dynamic)::text,SUM(fixed)::text,SUM(dynamic+fixed)::text
+    FROM facts f LEFT JOIN user_usage_migrations m ON m.source_user_id=f.user_id GROUP BY 1`
+
 func (r *costManagementRepository) GetUserCosts(ctx context.Context, start, end time.Time) ([]service.UserCost, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT COALESCE(m.target_user_id,d.user_id),
-		       COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope='usage'),0)::text,
-		       COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope='fixed_user_allocation'),0)::text,
-		       COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope IN('usage','fixed_user_allocation')),0)::text
-		FROM cost_daily_aggregates d
-		LEFT JOIN user_usage_migrations m ON m.source_user_id=d.user_id
-		WHERE d.user_id IS NOT NULL AND calculation_status='calculated'
-		  AND bucket_date >= $1::date AND bucket_date < $2::date
-		GROUP BY COALESCE(m.target_user_id,d.user_id)`, start, end)
+	rows, err := r.db.QueryContext(ctx, analyticsCompatibleUserCostsSQL, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1266,10 +1287,18 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = tx.Rollback() }()
 	defer func() {
+		// Release transaction locks before writing retry status separately.
+		_ = tx.Rollback()
 		if runErr != nil && !errors.Is(runErr, service.ErrCostAggregationBusy) {
-			_, _ = r.db.ExecContext(context.Background(), `UPDATE cost_jobs SET status='failed',error_message=$1,updated_at=NOW() WHERE job_key='incremental'`, runErr.Error())
+			status, retry := recalculationFailureStatus(runErr)
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			if retry {
+				_, _ = r.db.ExecContext(cleanupCtx, `UPDATE cost_jobs SET status='queued',error_message='',updated_at=NOW() WHERE job_key='incremental'`)
+			} else {
+				_, _ = r.db.ExecContext(cleanupCtx, `UPDATE cost_jobs SET status=$2,error_message=$1,updated_at=NOW() WHERE job_key='incremental'`, runErr.Error(), status)
+			}
 		}
 	}()
 	var locked bool
@@ -1400,6 +1429,9 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 			return false, err
 		}
 	}
+	if err = checkAnalyticsPublication(ctx, tx); err != nil {
+		return false, err
+	}
 	if err = tx.Commit(); err != nil {
 		return false, err
 	}
@@ -1419,14 +1451,7 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		JOIN cost_subscription_unit_versions v ON v.subscription_unit_id=u.id
 		  AND v.effective_from<$2 AND(v.effective_to IS NULL OR v.effective_to>$1)
 		WHERE u.effective_from<$2 AND(u.effective_to IS NULL OR u.effective_to>$1)
-		  AND EXISTS (
-		    SELECT 1 FROM account_cost_configs c
-		    JOIN usage_logs ul ON ul.account_id=c.account_id
-		      AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
-		    WHERE c.cost_mode='fixed' AND c.subscription_unit_id=u.id
-		      AND ul.created_at>=$3 AND ul.created_at<$4
-		  )
-		`, bucket, bucket.AddDate(0, 0, 1), monthStart, monthEnd)
+		`, bucket, bucket.AddDate(0, 0, 1))
 	if err != nil {
 		return err
 	}
@@ -1461,18 +1486,19 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 			return err
 		}
 		weights, err := tx.QueryContext(ctx, `
-			SELECT ul.user_id,COUNT(*)::bigint,
-			       SUM(ul.input_tokens+ul.output_tokens+ul.cache_creation_tokens+ul.cache_read_tokens)::bigint
+			SELECT COALESCE(m.target_user_id,ul.user_id),COUNT(*)::bigint,0::bigint
 			FROM usage_logs ul JOIN account_cost_configs c ON c.account_id=ul.account_id AND c.cost_mode='fixed' AND c.subscription_unit_id=$2
 			  AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
-			WHERE ul.created_at >= $1 AND ul.created_at < $1::timestamptz+INTERVAL '1 day'
-			GROUP BY ul.user_id`, bucket, unit.unitID)
+            LEFT JOIN user_usage_migrations m ON m.source_user_id=ul.user_id
+			WHERE ul.created_at >= $1 AND ul.created_at < $3
+              AND (ul.input_tokens::bigint+ul.output_tokens+ul.cache_creation_tokens+ul.cache_read_tokens>0
+                OR COALESCE(ul.image_count,0)>0 OR COALESCE(ul.video_count,0)>0 OR ul.image_input_tokens>0 OR ul.image_output_tokens>0 OR ul.billing_mode IN('per_request','request','hybrid'))
+			GROUP BY COALESCE(m.target_user_id,ul.user_id) ORDER BY 1`, monthStart, unit.unitID, monthEnd)
 		if err != nil {
 			return err
 		}
 		type weight struct{ userID, requests, tokens int64 }
 		var list []weight
-		var totalTokens, totalRequests int64
 		for weights.Next() {
 			var w weight
 			if err = weights.Scan(&w.userID, &w.requests, &w.tokens); err != nil {
@@ -1480,21 +1506,17 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 				return err
 			}
 			list = append(list, w)
-			totalTokens += w.tokens
-			totalRequests += w.requests
 		}
 		if err = weights.Close(); err != nil {
 			return err
 		}
-		for _, w := range list {
-			den, num := totalTokens, w.tokens
-			if den == 0 {
-				den, num = totalRequests, w.requests
-			}
-			if den == 0 {
-				continue
-			}
-			amount := daily.Mul(decimal.NewFromInt(num)).Div(decimal.NewFromInt(den))
+		equal := make([]decimal.Decimal, len(list))
+		for i := range equal {
+			equal[i] = decimal.NewFromInt(1)
+		}
+		shares := service.AllocateAnalyticsCost(daily.Round(12), equal)
+		for i, w := range list {
+			amount := shares[i]
 			if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,subscription_unit_id,subscription_unit_version_id,request_count,amount_cny) VALUES($1,'fixed_user_allocation',$2,$3,$4,$5,$6,$7::numeric)`, bucket, w.userID, unit.planID, unit.unitID, unit.versionID, w.requests, amount.String()); err != nil {
 				return err
 			}
@@ -1571,10 +1593,16 @@ func (r *costManagementRepository) RunNextCostRecalculation(ctx context.Context)
 	defer func() {
 		if runErr != nil {
 			status, retry := recalculationFailureStatus(runErr)
-			_, _ = r.db.ExecContext(context.Background(), `
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			message := runErr.Error()
+			if errors.Is(runErr, service.ErrAnalyticsTasksPaused) || errors.Is(runErr, context.Canceled) {
+				message = ""
+			}
+			_, _ = r.db.ExecContext(cleanupCtx, `
 				UPDATE cost_jobs
 				SET status=$2,error_message=$3,finished_at=CASE WHEN $4 THEN NULL ELSE NOW() END,updated_at=NOW()
-				WHERE id=$1 AND status='running'`, id, status, runErr.Error(), retry)
+				WHERE id=$1 AND status='running'`, id, status, message, retry)
 		}
 	}()
 	loc, err := time.LoadLocation("Asia/Shanghai")
@@ -1610,7 +1638,7 @@ func (r *costManagementRepository) RunNextCostRecalculation(ctx context.Context)
 }
 
 func recalculationFailureStatus(err error) (string, bool) {
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || errors.Is(err, service.ErrAnalyticsTasksPaused) {
 		return "queued", true
 	}
 	return "failed", false
@@ -1635,6 +1663,9 @@ func (r *costManagementRepository) rebuildCostDay(ctx context.Context, jobID int
 		return err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE cost_jobs SET completed_days=$2,updated_at=NOW() WHERE id=$1`, jobID, completed); err != nil {
+		return err
+	}
+	if err = checkAnalyticsPublication(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()

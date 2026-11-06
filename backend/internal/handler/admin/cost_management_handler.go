@@ -1,6 +1,9 @@
 package admin
 
 import (
+	"context"
+	"errors"
+	"net/http"
 	"strconv"
 	"time"
 
@@ -12,10 +15,50 @@ import (
 
 type CostManagementHandler struct {
 	service *service.CostManagementService
+	tasks   *service.AnalyticsTaskService
 }
 
-func NewCostManagementHandler(s *service.CostManagementService) *CostManagementHandler {
-	return &CostManagementHandler{service: s}
+func NewCostManagementHandler(s *service.CostManagementService, tasks *service.AnalyticsTaskService) *CostManagementHandler {
+	return &CostManagementHandler{service: s, tasks: tasks}
+}
+
+func (h *CostManagementHandler) AnalyticsTaskStatus(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	status, err := h.tasks.Status(ctx)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, status)
+}
+
+func (h *CostManagementHandler) UpdateAnalyticsTaskSettings(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok || subject.UserID <= 0 {
+		response.Unauthorized(c, "authentication required")
+		return
+	}
+	var in struct {
+		Enabled *bool `json:"enabled" binding:"required"`
+		Version int64 `json:"version" binding:"required,min=1"`
+	}
+	if err := c.ShouldBindJSON(&in); err != nil {
+		response.BadRequest(c, "enabled and a positive version are required")
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 3*time.Second)
+	defer cancel()
+	control, err := h.tasks.SetEnabled(ctx, *in.Enabled, in.Version, subject.UserID)
+	if errors.Is(err, service.ErrAnalyticsControlConflict) {
+		response.Error(c, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, control)
 }
 
 func (h *CostManagementHandler) ListPlans(c *gin.Context) {

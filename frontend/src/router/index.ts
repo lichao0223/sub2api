@@ -670,6 +670,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/data-analytics',
+    name: 'AdminDataAnalytics',
+    component: () => import('@/features/data-analytics/DataAnalyticsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Data Analytics', titleKey: 'nav.dataAnalytics' }
+  },
+  {
     path: '/admin/cost-management',
     name: 'AdminCostManagement',
     component: () => import('@/features/cost-management/CostManagementView.vue'),

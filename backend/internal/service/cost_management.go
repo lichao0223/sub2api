@@ -411,14 +411,16 @@ type CostManagementService struct {
 	repo        CostManagementRepository
 	timingWheel *TimingWheelService
 	running     int32
+	tasks       *AnalyticsTaskService
 }
 
 func NewCostManagementService(repo CostManagementRepository, timingWheel *TimingWheelService) *CostManagementService {
 	return &CostManagementService{repo: repo, timingWheel: timingWheel}
 }
 
-func ProvideCostManagementService(repo CostManagementRepository, timingWheel *TimingWheelService) *CostManagementService {
+func ProvideCostManagementService(repo CostManagementRepository, timingWheel *TimingWheelService, tasks *AnalyticsTaskService) *CostManagementService {
 	s := NewCostManagementService(repo, timingWheel)
+	s.tasks = tasks
 	s.Start()
 	return s
 }
@@ -436,13 +438,30 @@ func (s *CostManagementService) runAggregation() {
 		return
 	}
 	defer atomic.StoreInt32(&s.running, 0)
-	ctx, cancel := context.WithTimeout(context.Background(), costAggregationTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*costAggregationTimeout)
+	defer cancel()
+	var err error
+	if s.tasks != nil {
+		err = s.tasks.Run(ctx, s.aggregate)
+	} else {
+		err = s.aggregate(ctx)
+	}
+	if err != nil && !errors.Is(err, ErrAnalyticsTasksPaused) && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrCostAggregationBusy) {
+		logger.LegacyPrintf("service.cost_management", "[CostManagement] aggregation stopped: %v", err)
+	}
+}
+
+func (s *CostManagementService) aggregate(parent context.Context) error {
+	ctx, cancel := context.WithTimeout(parent, costAggregationTimeout)
+	var incrementalErr error
 	for {
 		more, err := s.repo.RunCostIncremental(ctx, 2000)
 		if err != nil {
-			if !errors.Is(err, ErrCostAggregationBusy) {
-				logger.LegacyPrintf("service.cost_management", "[CostManagement] incremental aggregation failed: %v", err)
+			cancel()
+			if parent.Err() != nil || errors.Is(err, ErrAnalyticsTasksPaused) {
+				return err
 			}
+			incrementalErr = err
 			break
 		}
 		if !more {
@@ -450,18 +469,21 @@ func (s *CostManagementService) runAggregation() {
 		}
 	}
 	cancel()
-	recalculationCtx, cancelRecalculation := context.WithTimeout(context.Background(), costAggregationTimeout)
+	if err := parent.Err(); err != nil {
+		return err
+	}
+	recalculationCtx, cancelRecalculation := context.WithTimeout(parent, costAggregationTimeout)
 	defer cancelRecalculation()
 	for {
 		processed, err := s.repo.RunNextCostRecalculation(recalculationCtx)
 		if err != nil {
-			logger.LegacyPrintf("service.cost_management", "[CostManagement] recalculation failed: %v", err)
-			break
+			return err
 		}
 		if !processed {
 			break
 		}
 	}
+	return incrementalErr
 }
 
 func (s *CostManagementService) ListPlans(ctx context.Context, page, pageSize int, kind, search string) ([]CostPlan, int64, error) {
@@ -702,6 +724,11 @@ func (s *CostManagementService) CreateRecalculation(ctx context.Context, start, 
 	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
 	if end.After(today) {
 		return nil, errors.New("历史补算的结束日期不能晚于今天")
+	}
+	if s.tasks != nil {
+		if err := s.tasks.RequireEnabled(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return s.repo.CreateCostRecalculation(ctx, start, end, userID)
 }

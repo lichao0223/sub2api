@@ -176,6 +176,14 @@ func registerWorkInsightRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerCostManagementRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	admin.GET("/data-analytics/task-status", h.Admin.CostManagement.AnalyticsTaskStatus)
+	analytics := admin.Group("/data-analytics")
+	analytics.GET("/directory", h.Admin.DataAnalytics.Directory)
+	analytics.POST("/directory/preview", h.Admin.DataAnalytics.Preview)
+	analytics.POST("/directory/apply", h.Admin.DataAnalytics.Apply)
+	analytics.PUT("/identities", h.Admin.DataAnalytics.Map)
+	analytics.GET("/report", h.Admin.DataAnalytics.Report)
+	analytics.POST("/rebuild", h.Admin.DataAnalytics.Rebuild)
 	costs := admin.Group("/cost-management")
 	{
 		costs.GET("/overview", h.Admin.CostManagement.Overview)
@@ -653,6 +661,8 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, loginIPBlocker *appmiddleware.LoginIPBlocker, stepUpAuth middleware.StepUpAuthMiddleware) {
 	adminSettings := admin.Group("/settings")
+	adminSettings.GET("/data-analytics", h.Admin.CostManagement.AnalyticsTaskStatus)
+	adminSettings.PUT("/data-analytics", h.Admin.CostManagement.UpdateAnalyticsTaskSettings)
 	registerScopedAdminKeyRoutes(adminSettings, h, stepUpAuth)
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
