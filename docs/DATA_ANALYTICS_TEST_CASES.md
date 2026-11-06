@@ -16,6 +16,10 @@
 | PERIOD-01 | 选年、单月、非连续多月 | 趋势分别为月、日、所选月；所有卡片和导出联动 | 服务 / UI |
 | PERIOD-02 | 2024/2025 年 2 月，2026 年 11/12 月 | 闰年 29 天；平年 28 天；本月截止测试当天；未来数据不混入 | 服务 / UI |
 | PERIOD-03 | 重复月、空月、月份越界、跨年列表、超保留范围 | 去重有效月；其他非法请求明确拒绝 | 服务 / API |
+| UI-01 | 部门/人员/数据维护/统计口径切换 | 四页签、组织树与五列明细布局对应原型；个人详情在右侧打开 | UI |
+| UI-02 | 三级组织树搜索、展开、点击部门、点击姓名 | 下级归入上级；请求携带所选部门；姓名打开该人的模型与成本明细 | UI |
+| UI-03 | 多月选择 1、3 月，编辑后确认或取消 | 编辑期间不请求；确认后一次应用；取消保持原范围 | UI |
+| UI-04 | 个人全年逐月与模型月份过滤，期间新增月发布版本 | 所选月份仍使用固定版本；其他月为快照内最新版本；未发布标记缺失；最多12个月 | UI / 集成 |
 | TOKEN-01 | 普通、固定、不计成本及待核算模型 | 全部用量保留；四项之和等于总数 | 核算 / 集成 |
 | TOKEN-02 | 零 Token 按次请求、纯失败占位、图片请求 | 有效按次使用可统计；失败不参与固定均摊；真实成本不丢失 | 核算 |
 | TOKEN-03 | 同模型跨账号、方案、固定订阅 | 同来源归集，异来源分开；不重复计数 | 集成 |
@@ -78,7 +82,11 @@
 | `backend/internal/repository/data_analytics_integration_test.go` | 回滚隔离Schema中的迁移922；普通/分区父表DELETE保护；四项Token、采购价与销售金额隔离；归档前后基线守恒；价格版本结束范围；固定实例按规范用户去重、失败占位、模型拆分尾差、无人公共池 |
 | `backend/internal/repository/dashboard_aggregation_group_usage_test.go` | 旧清理断言更新；启用统计后非空分区禁止直接DROP |
 | `frontend/src/features/data-analytics/__tests__/format.spec.ts` | B/M/K、非零不足1K、安全整数之外的大值、微额采购成本 |
-| `frontend/src/features/data-analytics/__tests__/DataAnalyticsView.spec.ts` | 顶部月/年选择驱动同一趋势、没有额外粒度开关、Token显示紧凑单位 |
+| `frontend/src/features/data-analytics/__tests__/DataAnalyticsView.spec.ts` | 四页签、组织树、人员下钻、年/月趋势联动、多月确认后应用、旧请求不可覆盖新范围、任务状态同步、导出不受姓名搜索影响 |
+| `frontend/src/features/data-analytics/__tests__/PersonDrawer.spec.ts` | 右侧个人详情、含不计成本模型、缓存组成、全年未发布月份、单月模型与固定发布版本、模型分页、关闭时取消请求及再次打开状态 |
+| `frontend/src/features/data-analytics/__tests__/DirectoryPanel.spec.ts` | 预检后统一应用、刷新失败不提示成功、目录刷新可重试 |
+| `frontend/src/features/data-analytics/__tests__/organizations.spec.ts` | 四级人员折入三级及上级、历史组织保留、待确认人员、超安全整数百分比 |
+| `frontend/src/components/common/__tests__/BaseDialog.escape.spec.ts` | 居中和右侧抽屉共用的最上层关闭、禁止穿透关闭父级 |
 | `frontend/src/features/data-analytics/__tests__/export.spec.ts` | 八张工作表、精确金额字符串、全部Token紧凑展示、姓名公式文本安全 |
 
 尚待部署环境执行以上用例，并验收迁移回滚、页面交互、改价/调岗竞争、真实五年容量与查询计划。不得把已编写的测试或静态阅读记作运行通过。

@@ -38,6 +38,7 @@ import { analyticsTasksAPI, type AnalyticsTaskStatus } from '@/api/admin/dataAna
 import { formatDateTime } from '@/utils/format'
 
 defineProps<{ editable?: boolean }>()
+const emit = defineEmits<{ loaded: [status: AnalyticsTaskStatus | null] }>()
 const { t } = useI18n()
 const status = ref<AnalyticsTaskStatus | null>(null)
 const loading = ref(false)
@@ -55,11 +56,13 @@ async function load() {
     if (!disposed) {
       status.value = result
       unavailable.value = false
+      emit('loaded', result)
     }
   } catch {
     if (!disposed) {
       unavailable.value = true
       error.value = t('admin.settings.analyticsTasks.loadFailed')
+      emit('loaded', null)
     }
   } finally {
     loading.value = false
@@ -90,6 +93,7 @@ async function save(enabled: boolean) {
       error.value = t('admin.settings.analyticsTasks.saveFailed')
       // The request may have committed before a connection failure.
       unavailable.value = true
+      emit('loaded', null)
     }
   } finally {
     saving.value = false

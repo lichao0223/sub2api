@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
@@ -175,4 +176,29 @@ func TestAnalyticsMonthlyFixedUsesDistinctUsersAndBalancesModelParts(t *testing.
 	require.NoError(t, rows.Err())
 	require.NotContains(t, seen, int64(99))
 	require.Len(t, seen, 2)
+
+	// The drawer must retain the selected publication even if a new month
+	// generation has been published before its yearly breakdown is queried.
+	var generation int64
+	require.NoError(t, tx.QueryRowContext(ctx, `SELECT MAX(generation) FROM analytics_publications WHERE month=$1::date`, month).Scan(&generation))
+	_, err = tx.ExecContext(ctx, `INSERT INTO analytics_publications(month) VALUES($1::date)`, month)
+	require.NoError(t, err)
+	period, err := service.NewAnalyticsPeriod(now.Year(), "month", []int{int(now.Month())}, now)
+	require.NoError(t, err)
+	monthly, err := analyticsPersonMonths(ctx, tx, service.AnalyticsQuery{Period: period, UserID: 1}, map[string]int64{month.Format("2006-01-02"): generation})
+	require.NoError(t, err)
+	var found bool
+	for _, row := range monthly {
+		if row.Month == month.Format("2006-01-02") {
+			found = true
+			require.Equal(t, generation, row.Generation)
+			require.Equal(t, "4000", row.Tokens)
+			require.True(t, decimal.RequireFromString(row.Fixed).Equal(decimal.RequireFromString(personal)))
+		} else {
+			require.Zero(t, row.Generation)
+			require.Equal(t, "0", row.Tokens)
+		}
+	}
+	require.True(t, found)
+	require.LessOrEqual(t, len(monthly), 12)
 }

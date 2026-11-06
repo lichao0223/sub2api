@@ -4,6 +4,7 @@
       <div
         v-if="show"
         class="modal-overlay"
+        :class="{ 'modal-overlay-drawer': placement === 'right' }"
         :style="zIndexStyle"
         :aria-labelledby="dialogId"
         role="dialog"
@@ -11,7 +12,7 @@
         @click.self="handleClose"
       >
         <!-- Modal panel -->
-        <div ref="dialogRef" :class="['modal-content', widthClasses]" @click.stop>
+        <div ref="dialogRef" :class="['modal-content', widthClasses, { 'modal-content-drawer': placement === 'right' }]" @click.stop>
           <!-- Header -->
           <div class="modal-header">
             <h3 :id="dialogId" class="modal-title">
@@ -66,6 +67,7 @@ interface Props {
   show: boolean
   title: string
   width?: DialogWidth
+  placement?: 'center' | 'right'
   closeOnEscape?: boolean
   closeOnClickOutside?: boolean
   showCloseButton?: boolean
@@ -78,6 +80,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   width: 'normal',
+  placement: 'center',
   closeOnEscape: true,
   closeOnClickOutside: false,
   showCloseButton: true,
@@ -180,3 +183,35 @@ onUnmounted(() => {
   updateScrollLock(false)
 })
 </script>
+
+<style scoped>
+.modal-overlay-drawer {
+  justify-content: flex-end;
+  padding: 0;
+}
+.modal-content-drawer {
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, 96vw);
+  height: 100dvh;
+  max-height: 100dvh;
+  margin: 0;
+  border-radius: 0;
+}
+.modal-content-drawer .modal-body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .modal-enter-from .modal-content-drawer,
+  .modal-leave-to .modal-content-drawer {
+    transform: translateX(100%);
+  }
+}
+@media (max-width: 640px) {
+  .modal-content-drawer {
+    width: 100vw;
+  }
+}
+</style>

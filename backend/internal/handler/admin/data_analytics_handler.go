@@ -179,7 +179,7 @@ func (h *DataAnalyticsHandler) Report(c *gin.Context) {
 		size = 100
 	}
 	q := service.AnalyticsQuery{Period: period, OrgID: c.Query("org_id"), Search: strings.TrimSpace(c.Query("search")), Page: page, PageSize: size, Sort: c.DefaultQuery("sort", "tokens"), Export: c.Query("export") == "true"}
-	if len(q.Search) > 512 || len(q.OrgID) > 128 || (q.Sort != "tokens" && q.Sort != "cost") {
+	if len(q.Search) > 512 || len(q.OrgID) > 128 || (q.Sort != "tokens" && q.Sort != "cost" && q.Sort != "name") {
 		response.BadRequest(c, "筛选条件无效")
 		return
 	}

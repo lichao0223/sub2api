@@ -48,12 +48,14 @@ export interface AnalyticsDepartment extends AnalyticsValues { id: string; name:
 export interface AnalyticsFixedShare {
   month: string; unit_id: number; name: string; user_id: number; total: string; participants: number; amount: string; public: string
 }
+export interface AnalyticsPersonMonth extends AnalyticsValues { month: string; generation: number }
 export interface AnalyticsReport {
   scope_org_id: string
   period: { year: number; mode: string; months: number[]; keys: string[]; grain: string }
   summary: AnalyticsValues; users: number; people: AnalyticsRow[]; people_total: number
   departments: AnalyticsDepartment[]; trend: { bucket: string; tokens: string }[]; models: AnalyticsRow[]
   fixed_shares: AnalyticsFixedShare[]; public_cost: string; versions: Record<string, number>; task_status: AnalyticsTaskStatus
+  person_months?: AnalyticsPersonMonth[]
   coverage: { backlog_days: number; failed_days: number; earliest_pending: string | null; last_updated: string | null
     directory_ready: boolean; issues: { day: string; message: string }[]; raw_history_start: string | null; history_gap: boolean; last_error: string; pending_requests: number; completed_days: number; expected_days: number; complete: boolean
     history_basis: string; provisional: boolean }

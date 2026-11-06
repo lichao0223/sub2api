@@ -213,21 +213,28 @@ type AnalyticsFixedShare struct {
 	Public       string `json:"public"`
 }
 
+type AnalyticsPersonMonth struct {
+	AnalyticsValues
+	Month      string `json:"month"`
+	Generation int64  `json:"generation"`
+}
+
 type AnalyticsReport struct {
-	Period      AnalyticsPeriod       `json:"period"`
-	ScopeOrgID  string                `json:"scope_org_id"`
-	Summary     AnalyticsValues       `json:"summary"`
-	Users       int                   `json:"users"`
-	People      []AnalyticsRow        `json:"people"`
-	PeopleTotal int                   `json:"people_total"`
-	Departments []AnalyticsDepartment `json:"departments"`
-	Trend       []AnalyticsTrend      `json:"trend"`
-	Models      []AnalyticsRow        `json:"models"`
-	FixedShares []AnalyticsFixedShare `json:"fixed_shares"`
-	PublicCost  string                `json:"public_cost"`
-	Versions    map[string]int64      `json:"versions"`
-	Coverage    map[string]any        `json:"coverage"`
-	TaskStatus  *AnalyticsTaskStatus  `json:"task_status,omitempty"`
+	Period       AnalyticsPeriod        `json:"period"`
+	ScopeOrgID   string                 `json:"scope_org_id"`
+	Summary      AnalyticsValues        `json:"summary"`
+	Users        int                    `json:"users"`
+	People       []AnalyticsRow         `json:"people"`
+	PeopleTotal  int                    `json:"people_total"`
+	Departments  []AnalyticsDepartment  `json:"departments"`
+	Trend        []AnalyticsTrend       `json:"trend"`
+	Models       []AnalyticsRow         `json:"models"`
+	FixedShares  []AnalyticsFixedShare  `json:"fixed_shares"`
+	PersonMonths []AnalyticsPersonMonth `json:"person_months,omitempty"`
+	PublicCost   string                 `json:"public_cost"`
+	Versions     map[string]int64       `json:"versions"`
+	Coverage     map[string]any         `json:"coverage"`
+	TaskStatus   *AnalyticsTaskStatus   `json:"task_status,omitempty"`
 }
 
 type DataAnalyticsRepository interface {

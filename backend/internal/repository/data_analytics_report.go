@@ -232,6 +232,9 @@ func (r *dataAnalyticsRepository) AnalyticsReport(ctx context.Context, q service
 		sortKey = "cost"
 	}
 	sort.Slice(report.People, func(i, j int) bool {
+		if q.Sort == "name" && report.People[i].Name != report.People[j].Name {
+			return report.People[i].Name < report.People[j].Name
+		}
 		a, b := personValues[report.People[i].UserID][sortKey], personValues[report.People[j].UserID][sortKey]
 		if a.Equal(b) {
 			return report.People[i].UserID < report.People[j].UserID
@@ -321,6 +324,12 @@ func (r *dataAnalyticsRepository) AnalyticsReport(ctx context.Context, q service
 	if err := analyticsReportTrend(ctx, tx, q, report); err != nil {
 		return nil, err
 	}
+	if q.UserID > 0 {
+		report.PersonMonths, err = analyticsPersonMonths(ctx, tx, q, report.Versions)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var directoryReady bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analytics_directory_versions)`).Scan(&directoryReady); err != nil {
 		return nil, err
@@ -379,6 +388,66 @@ func (r *dataAnalyticsRepository) AnalyticsReport(ctx context.Context, q service
 		return nil, err
 	}
 	return report, nil
+}
+
+// One indexed yearly query serves the drawer, with selected months pinned to
+// the same publications as the visible report.
+func analyticsPersonMonths(ctx context.Context, tx *sql.Tx, q service.AnalyticsQuery, versions map[string]int64) ([]service.AnalyticsPersonMonth, error) {
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	period, err := service.NewAnalyticsPeriod(q.Period.Year, "year", nil, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	start := time.Date(q.Period.Year, 1, 1, 0, 0, 0, 0, loc)
+	rows, err := tx.QueryContext(ctx, `WITH publications AS (
+		SELECT month,COALESCE(($3::jsonb->>month::text)::bigint,MAX(generation)) AS generation
+		FROM analytics_publications WHERE month >= $1::date AND month < $2::date GROUP BY month
+	), facts AS (
+		SELECT m.* FROM analytics_monthly m LEFT JOIN analytics_assignments a ON a.id=m.attribution
+		WHERE m.user_id=$4 AND m.day >= $1::date AND m.day < $2::date
+		  AND ($5='' OR $5=ANY(a.org_ids) OR ($5='0' AND (a.id IS NULL OR CARDINALITY(a.org_ids)=0)))
+	)
+	SELECT p.month::text,p.generation,
+		COALESCE(SUM(m.input),0)::text,COALESCE(SUM(m.output),0)::text,
+		COALESCE(SUM(m.cache_write),0)::text,COALESCE(SUM(m.cache_read),0)::text,COALESCE(SUM(m.requests),0)::text,
+		COALESCE(SUM(m.input_cost),0)::text,COALESCE(SUM(m.output_cost),0)::text,
+		COALESCE(SUM(m.write_cost),0)::text,COALESCE(SUM(m.read_cost),0)::text,
+		COALESCE(SUM(m.image_cost),0)::text,COALESCE(SUM(m.request_cost),0)::text,COALESCE(SUM(m.fixed),0)::text,
+		COALESCE(SUM(CASE WHEN m.mode='excluded' THEN m.input+m.output+m.cache_write+m.cache_read ELSE 0 END),0)::text,
+		COALESCE(SUM(CASE WHEN m.issue<>'' THEN m.requests ELSE 0 END),0)::text
+	FROM publications p LEFT JOIN facts m ON m.day=p.month AND m.generation=p.generation
+	GROUP BY p.month,p.generation ORDER BY p.month`,
+		start, start.AddDate(1, 0, 0), service.AnalyticsJSON(versions), q.UserID, q.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	byMonth := map[string]service.AnalyticsPersonMonth{}
+	for rows.Next() {
+		var month service.AnalyticsPersonMonth
+		if err := rows.Scan(&month.Month, &month.Generation, &month.Input, &month.Output, &month.CacheWrite, &month.CacheRead, &month.Requests,
+			&month.InputCost, &month.OutputCost, &month.WriteCost, &month.ReadCost, &month.ImageCost, &month.RequestCost, &month.Fixed, &month.Excluded, &month.Pending); err != nil {
+			return nil, err
+		}
+		values := analyticsValueMap(month.AnalyticsValues)
+		values["tokens"] = values["input"].Add(values["output"]).Add(values["cache_write"]).Add(values["cache_read"])
+		values["metered"] = values["input_cost"].Add(values["output_cost"]).Add(values["write_cost"]).Add(values["read_cost"]).Add(values["image_cost"]).Add(values["request_cost"])
+		values["cost"] = values["metered"].Add(values["fixed"])
+		month.AnalyticsValues = analyticsValues(values)
+		byMonth[month.Month] = month
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make([]service.AnalyticsPersonMonth, 0, len(period.Keys))
+	for _, key := range period.Keys {
+		month, ok := byMonth[key]
+		if !ok {
+			month = service.AnalyticsPersonMonth{Month: key, AnalyticsValues: analyticsValues(map[string]decimal.Decimal{})}
+		}
+		result = append(result, month)
+	}
+	return result, nil
 }
 
 func analyticsReportTrend(ctx context.Context, tx *sql.Tx, q service.AnalyticsQuery, report *service.AnalyticsReport) error {

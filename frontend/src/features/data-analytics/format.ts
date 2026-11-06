@@ -13,3 +13,16 @@ export function moneyText(value: string | undefined): string {
   if (whole === '0' && !decimals && /[1-9]/.test(fraction)) return '¥＜0.000001'
   return `¥${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}${decimals ? `.${decimals}` : '.00'}`
 }
+
+export function sumDecimalStrings(values: string[]): string {
+  const scale = 1000000000000n
+  const sum = values.reduce((total, value) => {
+    const negative = value.startsWith('-')
+    const [whole = '0', fraction = ''] = value.replace(/^-/, '').split('.')
+    const units = BigInt(whole) * scale + BigInt(fraction.padEnd(12, '0').slice(0, 12))
+    return total + (negative ? -units : units)
+  }, 0n)
+  const absolute = sum < 0n ? -sum : sum
+  const fraction = String(absolute % scale).padStart(12, '0').replace(/0+$/, '')
+  return `${sum < 0n ? '-' : ''}${absolute / scale}${fraction ? `.${fraction}` : ''}`
+}

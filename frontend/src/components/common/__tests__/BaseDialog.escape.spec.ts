@@ -6,9 +6,9 @@ enableAutoUnmount(afterEach)
 const pressEscape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
 
 describe('stacked dialog Escape handling', () => {
-  it('closes only the most recently opened dialog, then allows the parent to close', async () => {
+  it.each(['center', 'right'] as const)('closes only the most recently opened %s dialog, then allows the parent to close', async placement => {
     const parent = mount(BaseDialog, { props: { show: true, title: 'Parent' } })
-    const child = mount(BaseDialog, { props: { show: true, title: 'Child' } })
+    const child = mount(BaseDialog, { props: { show: true, title: 'Child', placement } })
     pressEscape()
     expect(child.emitted('close')).toHaveLength(1)
     expect(parent.emitted('close')).toBeUndefined()
