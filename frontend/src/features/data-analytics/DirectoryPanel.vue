@@ -53,6 +53,7 @@ import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import { dataAnalyticsAPI, type AnalyticsDirectoryState, type AnalyticsPerson, type AnalyticsPreview } from '@/api/admin/dataAnalytics'
 import { useAppStore } from '@/stores/app'
+import { extractApiErrorMessage } from '@/utils/apiError'
 const props = defineProps<{ enabled: boolean; initialState?: AnalyticsDirectoryState }>()
 const emit = defineEmits<{ changed: [state: AnalyticsDirectoryState]; loaded: [state: AnalyticsDirectoryState] }>()
 const app = useAppStore()
@@ -81,7 +82,7 @@ async function load() { state.value = await dataAnalyticsAPI.directory(); emit('
 async function reload() {
   if(busy.value)return
   busy.value=true;error.value=''
-  try { await load() } catch(e) { error.value=e instanceof Error ? e.message : '读取目录失败' } finally { busy.value=false }
+  try { await load() } catch(e) { error.value=extractApiErrorMessage(e, '读取目录失败') } finally { busy.value=false }
 }
 onMounted(() => {
   effective.value=new Date(Date.now()+8*3600000).toISOString().slice(0,16)
@@ -98,18 +99,18 @@ async function previewFiles() {
   if (!orgFile.value || !personFile.value) return
   busy.value=true; error.value=''
   try { preview.value=await dataAnalyticsAPI.preview(orgFile.value,personFile.value) }
-  catch(e) { error.value=e instanceof Error ? e.message : 'SQL预检失败' } finally { busy.value=false }
+  catch(e) { error.value=extractApiErrorMessage(e, 'SQL预检失败') } finally { busy.value=false }
 }
 async function apply() {
   if (!preview.value || !state.value || !props.enabled || busy.value) return
   busy.value=true; error.value=''
   try { await dataAnalyticsAPI.apply(preview.value.id,new Date(`${effective.value}:00+08:00`).toISOString(),state.value.version); preview.value=undefined; await load(); if(state.value)emit('changed',state.value); app.showSuccess('目录已应用，正在分批核算') }
-  catch(e) { error.value=e instanceof Error ? e.message : '应用失败'; await load().catch(() => {}) } finally { busy.value=false }
+  catch(e) { error.value=extractApiErrorMessage(e, '应用失败'); await load().catch(() => {}) } finally { busy.value=false }
 }
 async function saveMapping() {
   if (!state.value || !props.enabled || busy.value) return
   busy.value=true; error.value=''
   try { await dataAnalyticsAPI.map(mappingUser.value,mappingPerson.value,state.value.version); mappingUser.value=0; await load(); if(state.value)emit('changed',state.value); app.showSuccess('身份归属已保存') }
-  catch(e) { error.value=e instanceof Error ? e.message : '匹配失败'; await load().catch(() => {}) } finally { busy.value=false }
+  catch(e) { error.value=extractApiErrorMessage(e, '匹配失败'); await load().catch(() => {}) } finally { busy.value=false }
 }
 </script>
