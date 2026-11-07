@@ -43,7 +43,7 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 // ChatCompletionsToResponsesWithOptionsAndMinOutputTokens converts a Chat
 // Completions request with provider-specific options and an output-token floor.
 func ChatCompletionsToResponsesWithOptionsAndMinOutputTokens(req *ChatCompletionsRequest, opts *ChatCompletionsToResponsesOptions, minOutputTokens int) (*ResponsesRequest, error) {
-	if err := openai.ValidateGPT61SolReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
+	if err := openai.ValidateGPT61ReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
 	input, err := convertChatMessagesToResponsesInput(req.Messages, opts)
