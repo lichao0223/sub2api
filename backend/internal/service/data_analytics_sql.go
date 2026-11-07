@@ -27,7 +27,7 @@ func NormalizeAnalyticsName(name string) string {
 
 var analyticsInsert = regexp.MustCompile("(?is)^INSERT\\s+INTO\\s+`?([a-zA-Z_][a-zA-Z_0-9]*)`?\\s*(\\([^)]*\\))?\\s*VALUES\\s*")
 var analyticsCreate = regexp.MustCompile("(?is)^CREATE\\s+TABLE\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?`?([a-zA-Z_][a-zA-Z_0-9]*)`?\\s*\\(")
-var analyticsColumn = regexp.MustCompile("(?m)(?:^|[,\\n])\\s*`([a-zA-Z_][a-zA-Z_0-9]*)`\\s+")
+var analyticsColumn = regexp.MustCompile("^\\s*`([a-zA-Z_][a-zA-Z_0-9]*)`\\s+")
 var analyticsLiteral = regexp.MustCompile(`^-?\d+(?:\.\d+)?$`)
 
 var analyticsStandardColumns = map[string][]string{
@@ -87,6 +87,49 @@ func analyticsStatements(text string) ([]string, error) {
 	return out, nil
 }
 
+func analyticsCreateColumns(definition string) ([]string, error) {
+	var columns []string
+	start, depth := 0, 0
+	quoted := byte(0)
+	for i := 0; i < len(definition); i++ {
+		c := definition[i]
+		if quoted != 0 {
+			if c == '\\' && quoted != '`' && i+1 < len(definition) {
+				i++
+			} else if c == quoted {
+				if i+1 < len(definition) && definition[i+1] == quoted {
+					i++
+				} else {
+					quoted = 0
+				}
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			quoted = c
+		case '(':
+			depth++
+		case ',', ')':
+			if depth > 0 {
+				if c == ')' {
+					depth--
+				}
+				continue
+			}
+			// Only top-level definitions declare columns; index references and quoted metadata do not.
+			if m := analyticsColumn.FindStringSubmatch(definition[start:i]); m != nil {
+				columns = append(columns, m[1])
+			}
+			if c == ')' {
+				return columns, nil
+			}
+			start = i + 1
+		}
+	}
+	return nil, errors.New("CREATE TABLE括号未闭合")
+}
+
 func parseAnalyticsRows(text, expected string) ([]map[string]string, error) {
 	if len(text) > AnalyticsSQLLimit || !utf8.ValidString(text) {
 		return nil, errors.New("请上传20MiB以内的UTF-8 SQL文件")
@@ -103,9 +146,9 @@ func parseAnalyticsRows(text, expected string) ([]map[string]string, error) {
 			if statement[m[2]:m[3]] != expected {
 				return nil, errors.New("SQL包含其他数据表")
 			}
-			var declared []string
-			for _, c := range analyticsColumn.FindAllStringSubmatch(statement[m[1]:], -1) {
-				declared = append(declared, c[1])
+			declared, err := analyticsCreateColumns(statement[m[1]:])
+			if err != nil {
+				return nil, err
 			}
 			if len(declared) > 0 {
 				columns = declared
@@ -143,7 +186,7 @@ func parseAnalyticsRows(text, expected string) ([]map[string]string, error) {
 		keySet := map[string]bool{}
 		for _, key := range keys {
 			if keySet[key] {
-				return nil, errors.New("SQL列名重复")
+				return nil, fmt.Errorf("SQL列名重复：%s", key)
 			}
 			keySet[key] = true
 		}
@@ -263,11 +306,11 @@ func ParseAnalyticsDirectory(orgSQL, personSQL string) (AnalyticsDirectory, stri
 	var directory AnalyticsDirectory
 	orgs, err := parseAnalyticsRows(orgSQL, "devp_org")
 	if err != nil {
-		return directory, "", err
+		return directory, "", fmt.Errorf("devp_org.sql：%w", err)
 	}
 	people, err := parseAnalyticsRows(personSQL, "devp_user")
 	if err != nil {
-		return directory, "", err
+		return directory, "", fmt.Errorf("devp_user.sql：%w", err)
 	}
 	index := map[string]int{}
 	for _, row := range orgs {

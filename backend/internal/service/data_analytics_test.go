@@ -70,6 +70,43 @@ func TestAnalyticsSQLQuotedSemicolonsCommentsAndInlineSchema(t *testing.T) {
 	require.Equal(t, "张三A", NormalizeAnalyticsName(" 张\u200b三Ａ "))
 }
 
+func TestAnalyticsSQLCreateColumnsIgnoreIndexesAndQuotedMetadata(t *testing.T) {
+	for _, schema := range []string{
+		"`id` varchar(64), `parent_id` varchar(64), `org_name` varchar(64), KEY `idx_parent` (`parent_id` ASC, `id` ASC)",
+		"`id` varchar(64),\n`parent_id` varchar(64),\n`org_name` varchar(64),\nUNIQUE KEY `idx_org` (`parent_id` ASC,\n`org_name` DESC),\nPRIMARY KEY (`id`)",
+		"`id` varchar(64), `parent_id` varchar(64), `org_name` varchar(64) COMMENT '名称, `id` 不是真实字段'",
+		"`id` varchar(64), `parent_id` varchar(64), `org_name` enum('公司', '研发, `id` 引用')",
+		"`id` varchar(64), `parent_id` varchar(64), `org_name` varchar(64) COMMENT '名称\\'含逗号, `id` 引用'",
+		"`id` varchar(64), `parent_id` varchar(64), `org_name` varchar(64) COMMENT '名称''含逗号, `id` 引用'",
+		"`id` varchar(64), `parent_id` varchar(64), `org_name` varchar(64) COMMENT \"名称, `id` 引用\"",
+	} {
+		t.Run(schema, func(t *testing.T) {
+			org := "CREATE TABLE devp_org (" + schema + ") COMMENT='目录, `id` 仅作说明'; INSERT INTO devp_org VALUES('1','0','公司');"
+			people := "CREATE TABLE devp_user (`id` varchar(64), `real_name` varchar(64), `dev_org_id` varchar(64), KEY `idx_org` (`dev_org_id` ASC, `id` ASC)); INSERT INTO devp_user VALUES('p','张三','1');"
+			directory, _, err := ParseAnalyticsDirectory(org, people)
+			require.NoError(t, err)
+			require.Equal(t, []AnalyticsOrg{{ID: "1", Parent: "0", Name: "公司", Path: []string{"1"}, Names: []string{"公司"}, Level: 1}}, directory.Orgs)
+			require.Equal(t, []AnalyticsPerson{{ID: "p", Name: "张三", Org: "1", Active: true}}, directory.People)
+		})
+	}
+}
+
+func TestAnalyticsSQLDuplicateColumnErrorsNameFileAndColumn(t *testing.T) {
+	org := "INSERT INTO devp_org(id,parent_id,org_name) VALUES('1','0','公司');"
+	people := "INSERT INTO devp_user(id,real_name,dev_org_id) VALUES('p','张三','1');"
+	for _, tc := range []struct{ name, org, people, message string }{
+		{"organization", "INSERT INTO devp_org(id,parent_id,org_name,id) VALUES('1','0','公司','1');", people, "devp_org.sql：SQL列名重复：id"},
+		{"person", org, "INSERT INTO devp_user(id,real_name,dev_org_id,id) VALUES('p','张三','1','p');", "devp_user.sql：SQL列名重复：id"},
+		{"schema", "CREATE TABLE devp_org (`id` varchar(64), `parent_id` varchar(64), `org_name` varchar(64), `id` varchar(64)); INSERT INTO devp_org VALUES('1','0','公司','1');", people, "devp_org.sql：SQL列名重复：id"},
+		{"unclosed schema", "CREATE TABLE devp_org (`id` varchar(64); INSERT INTO devp_org VALUES('1','0','公司');", people, "devp_org.sql：CREATE TABLE括号未闭合"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := ParseAnalyticsDirectory(tc.org, tc.people)
+			require.EqualError(t, err, tc.message)
+		})
+	}
+}
+
 func TestAnalyticsAllocationSkipsZeroWeightAndUsesRequestsFallback(t *testing.T) {
 	result := AllocateAnalyticsCost(decimal.RequireFromString("0.000000000001"), []decimal.Decimal{decimal.Zero, decimal.NewFromInt(1), decimal.NewFromInt(1)})
 	require.True(t, result[0].IsZero())
