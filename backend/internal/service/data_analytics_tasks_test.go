@@ -96,6 +96,31 @@ func TestAnalyticsEnabledWithoutWorkerHeartbeatIsUnknown(t *testing.T) {
 	require.Equal(t, "unknown", status.State)
 }
 
+func TestAnalyticsTasksRestartIgnoresStaleRunningWorker(t *testing.T) {
+	ctx := context.Background()
+	repo := newAnalyticsTaskMemoryRepo()
+	repo.control.Enabled = true
+	old := time.Now().Add(-time.Minute)
+	repo.workers["old"] = AnalyticsTaskWorker{InstanceID: "old", Running: 1, ObservedVersion: 1, LastSeenAt: old,
+		AnalyticsDay: "2026-11-08", AnalyticsStartedAt: &old}
+	s := NewAnalyticsTaskService(repo, "restarted")
+	require.NoError(t, s.Refresh(ctx))
+	idle, err := s.Status(ctx)
+	require.NoError(t, err)
+	require.Equal(t, "idle", idle.State)
+	require.Zero(t, idle.Running)
+	require.Empty(t, idle.AnalyticsDay)
+	require.NoError(t, s.Run(ctx, func(ctx context.Context) error {
+		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-09"))
+		status, err := s.Status(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "running", status.State)
+		require.Equal(t, 1, status.Running)
+		require.Equal(t, "2026-11-09", status.AnalyticsDay)
+		return nil
+	}))
+}
+
 func TestAnalyticsTasksDisabledDoesNotExecute(t *testing.T) {
 	repo := newAnalyticsTaskMemoryRepo()
 	s := NewAnalyticsTaskService(repo, "a")

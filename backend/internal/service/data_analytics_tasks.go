@@ -269,25 +269,26 @@ func (s *AnalyticsTaskService) Status(ctx context.Context) (*AnalyticsTaskStatus
 	if control.Enabled {
 		status.State = "idle"
 	}
-	unknown, unacknowledged := false, false
+	heartbeatCutoff := time.Now().Add(-15 * time.Second)
+	staleRunning, unacknowledged := false, false
 	for _, worker := range workers {
 		if status.LastSeenAt == nil || worker.LastSeenAt.After(*status.LastSeenAt) {
 			seen := worker.LastSeenAt
 			status.LastSeenAt = &seen
+		}
+		if worker.LastSuccessAt != nil && (status.LastSuccessAt == nil || worker.LastSuccessAt.After(*status.LastSuccessAt)) {
+			status.LastSuccessAt = worker.LastSuccessAt
+		}
+		if worker.LastSeenAt.Before(heartbeatCutoff) {
+			staleRunning = staleRunning || worker.Running > 0
+			continue
 		}
 		if worker.AnalyticsDay != "" && worker.AnalyticsStartedAt != nil &&
 			(status.AnalyticsStartedAt == nil || worker.AnalyticsStartedAt.After(*status.AnalyticsStartedAt)) {
 			status.AnalyticsDay, status.AnalyticsStartedAt = worker.AnalyticsDay, worker.AnalyticsStartedAt
 		}
 		status.Running += worker.Running
-		if worker.LastSuccessAt != nil && (status.LastSuccessAt == nil || worker.LastSuccessAt.After(*status.LastSuccessAt)) {
-			status.LastSuccessAt = worker.LastSuccessAt
-		}
-		stale := time.Since(worker.LastSeenAt) > 15*time.Second
-		if stale && worker.Running > 0 {
-			unknown = true
-		}
-		if !control.Enabled && worker.ObservedVersion != control.Version && !stale {
+		if !control.Enabled && worker.ObservedVersion != control.Version {
 			unacknowledged = true
 		}
 	}
@@ -298,7 +299,8 @@ func (s *AnalyticsTaskService) Status(ctx context.Context) (*AnalyticsTaskStatus
 			status.State = "pausing"
 		}
 	}
-	if unknown || (control.Enabled && (status.LastSeenAt == nil || time.Since(*status.LastSeenAt) > 15*time.Second)) {
+	// An old instance must not hide live work after a restart, but cannot acknowledge a pause.
+	if (!control.Enabled && staleRunning) || (control.Enabled && (status.LastSeenAt == nil || status.LastSeenAt.Before(heartbeatCutoff))) {
 		status.State = "unknown"
 	}
 	return status, nil
