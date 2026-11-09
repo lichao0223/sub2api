@@ -360,7 +360,7 @@
         />
       </div>
       <div v-else class="text-xs text-gray-400">-</div>
-      <OpenAIQuotaResetCell :account="account" glm class="mt-1">
+      <OpenAIQuotaResetCell :account="account" glm class="mt-1" @glm-reset="handleGLMReset">
         <template v-if="usageInfo" #pre-actions>
           <button
             type="button"
@@ -1866,11 +1866,12 @@ const attachVisibilityObserver = () => {
 }
 
 const loadActiveUsage = async () => {
+  const id = props.account.id
   activeQueryLoading.value = true
   try {
-    const result = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
-    usageInfo.value = result
-    _usageCache.set(props.account.id, { data: result, ts: Date.now() })
+    const result = await adminAPI.accounts.getUsage(id, 'active', true)
+    if (props.account.id === id) usageInfo.value = result
+    _usageCache.set(id, { data: result, ts: Date.now() })
   } catch (e: any) {
     console.error('Failed to load active usage:', e)
   } finally {
@@ -1951,6 +1952,20 @@ const quotaTotalBar = computed((): QuotaBarInfo | null => {
 
 const handleQuotaResetAccountUpdated = (account: Account) => {
   emit('account-updated', account)
+}
+
+const handleGLMReset = async () => {
+  const id = props.account.id
+  // The GLM console also waits for the upstream quota update to settle.
+  await new Promise(resolve => setTimeout(resolve, 2000))
+  if (props.account.id !== id || unmounted.value) return
+  await loadActiveUsage()
+  try {
+    const account = await adminAPI.accounts.getById(id)
+    if (props.account.id === id) emit('account-updated', account)
+  } catch (e) {
+    console.error('Failed to refresh GLM account:', e)
+  }
 }
 
 const handleOllamaCloudUsageUpdated = (state: NonNullable<Account['ollama_cloud_usage']>) => {

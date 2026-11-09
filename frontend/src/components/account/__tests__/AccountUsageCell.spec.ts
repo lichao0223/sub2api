@@ -139,7 +139,9 @@ describe('AccountUsageCell', () => {
     vi.mocked(refreshGLMResetCredits).mockResolvedValue({
       rate_limit_reset_credits: {
         available_count: 3,
-        credits: Array.from({ length: 3 }, () => ({ expires_at: '2099-12-22T23:59:59+08:00' }))
+        credits: Array.from({ length: 3 }, (_, i) => ({
+          expires_at: '2099-12-22T23:59:59+08:00', record_id: i + 1, reset_type: 'WEEK', grant_type: 'GLOBAL'
+        }))
       },
       cache_persisted: true
     })
@@ -159,7 +161,7 @@ describe('AccountUsageCell', () => {
     await wrapper.get('[data-testid="reset-credit-expiry-toggle"]').trigger('click')
     expect(wrapper.get('[data-testid="reset-credit-expiry-details"]').findAll('span.truncate')).toHaveLength(3)
     expect(wrapper.find('[data-testid="codex-credits"]').exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('admin.accounts.openaiQuotaReset.reset')
+    expect(wrapper.get('[data-testid="reset-credit-use"]').attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
 

@@ -1,7 +1,11 @@
 package admin
 
 import (
+	"context"
+	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -65,6 +69,36 @@ func (h *CNProviderHandler) RefreshGLMResetCredits(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func (h *CNProviderHandler) UseGLMResetCredit(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h == nil || h.quotaService == nil {
+		response.BadRequest(c, "cn provider quota service is not enabled")
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 4096)
+	var req struct {
+		RecordID  int64  `json:"record_id" binding:"required,gt=0"`
+		ResetType string `json:"reset_type" binding:"required,oneof=FIVE_HOUR WEEK"`
+		GrantType string `json:"grant_type" binding:"required,max=64"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid reset credit request")
+		return
+	}
+	requestID := strings.TrimSpace(c.GetHeader("Idempotency-Key"))
+	payload := struct {
+		AccountID int64
+		Request   any
+	}{accountID, req}
+	executeAdminIdempotentJSONWithTimeout(c, "admin.glm-reset-credits.use", payload, service.DefaultWriteIdempotencyTTL(), time.Minute, func(ctx context.Context) (any, error) {
+		return h.quotaService.UseGLMResetCredit(ctx, accountID, req.RecordID, req.ResetType, req.GrantType, requestID)
+	})
 }
 
 // QueryBalance 查询 payg 账号余额。

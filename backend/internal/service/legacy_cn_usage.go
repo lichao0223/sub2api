@@ -123,30 +123,31 @@ func legacyKimiUsageURL(baseURL string) string {
 
 func parseLegacyGLMUsage(body []byte) (*UsageInfo, error) {
 	var payload struct {
-		Code int    `json:"code"`
-		Msg  string `json:"msg"`
-		Data struct {
+		Code    int    `json:"code"`
+		Msg     string `json:"msg"`
+		Success *bool  `json:"success"`
+		Data    struct {
 			Limits []struct {
-				Type          string  `json:"type"`
-				Unit          int     `json:"unit"`
-				Percentage    float64 `json:"percentage"`
-				NextResetTime int64   `json:"nextResetTime"`
+				Type          string   `json:"type"`
+				Unit          int      `json:"unit"`
+				Percentage    *float64 `json:"percentage"`
+				NextResetTime int64    `json:"nextResetTime"`
 			} `json:"limits"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("decode GLM usage response: %w", err)
 	}
-	if payload.Code != 0 && payload.Code != http.StatusOK {
+	if (payload.Code != 0 && payload.Code != http.StatusOK) || (payload.Success != nil && !*payload.Success) {
 		return nil, fmt.Errorf("GLM usage returned code %d: %s", payload.Code, payload.Msg)
 	}
 	now := time.Now()
 	usage := &UsageInfo{Source: "active", UpdatedAt: &now}
 	for _, limit := range payload.Data.Limits {
-		if limit.Type != "TOKENS_LIMIT" {
+		if limit.Type != "TOKENS_LIMIT" || limit.Percentage == nil || *limit.Percentage < 0 {
 			continue
 		}
-		progress := &UsageProgress{Utilization: limit.Percentage}
+		progress := &UsageProgress{Utilization: *limit.Percentage}
 		if limit.NextResetTime > 0 {
 			reset := time.UnixMilli(limit.NextResetTime)
 			progress.ResetsAt = &reset
@@ -185,8 +186,9 @@ func (s *AccountUsageService) persistLegacyGLMQuota(ctx context.Context, account
 			updates["codex_"+window.name+"_reset_at"] = window.value.ResetsAt.UTC().Format(time.RFC3339)
 		}
 	}
-	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
-		slog.Warn("legacy_glm_quota_snapshot_persist_failed", "account_id", account.ID, "error", err)
+	persistErr := s.accountRepo.UpdateExtra(ctx, account.ID, updates)
+	if persistErr != nil {
+		slog.Warn("legacy_glm_quota_snapshot_persist_failed", "account_id", account.ID, "error", persistErr)
 	}
 	if resetAt := legacyGLMRateLimitReset(usage, now); resetAt != nil {
 		if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
@@ -195,6 +197,31 @@ func (s *AccountUsageService) persistLegacyGLMQuota(ctx context.Context, account
 		}
 		account.RateLimitedAt = &now
 		account.RateLimitResetAt = resetAt
+	} else if persistErr == nil && usage.FiveHour != nil && usage.SevenDay != nil &&
+		usage.FiveHour.Utilization < 100 && usage.SevenDay.Utilization < 100 {
+		s.clearRecoveredLegacyGLMQuotaLimit(ctx, account)
+	}
+}
+
+func (s *AccountUsageService) clearRecoveredLegacyGLMQuotaLimit(ctx context.Context, account *Account) {
+	repo, ok := s.accountRepo.(observedRateLimitRecoveryRepository)
+	if !ok || account.RateLimitedAt == nil || account.RateLimitResetAt == nil {
+		return
+	}
+	// Match the saved exhausted window so unrelated 429s keep their cooldown.
+	for _, window := range []string{"5h", "7d"} {
+		reset, err := time.Parse(time.RFC3339, account.GetExtraString("codex_"+window+"_reset_at"))
+		if err != nil || !reset.Equal(account.RateLimitResetAt.Truncate(time.Second)) ||
+			parseExtraFloat64(account.Extra["codex_"+window+"_used_percent"]) < 100 {
+			continue
+		}
+		cleared, err := repo.ClearRateLimitIfObserved(ctx, account.ID, *account.RateLimitedAt, *account.RateLimitResetAt)
+		if err != nil {
+			slog.Warn("legacy_glm_quota_recovery_failed", "account_id", account.ID, "error", err)
+		} else if cleared {
+			account.RateLimitedAt, account.RateLimitResetAt = nil, nil
+		}
+		return
 	}
 }
 

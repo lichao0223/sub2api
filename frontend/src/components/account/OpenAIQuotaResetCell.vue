@@ -9,8 +9,7 @@
       The 5h / 7d window bars are deliberately NOT rendered here — the local
       active-sampling display (UsageProgressBar in AccountUsageCell) already
       owns that real estate. This cell queries Codex points and reset credits,
-      and lets the operator consume a reset credit if needed. GLM shares the
-      read-only count and expiration display.
+      and lets the operator consume a reset credit if needed.
     -->
     <div class="flex flex-wrap items-center gap-1.5">
       <slot name="pre-actions" />
@@ -41,8 +40,8 @@
       </button>
 
       <button
-        v-if="!glm"
         type="button"
+        data-testid="reset-credit-use"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="resetting || loading || !canReset"
         :title="resetButtonTitle"
@@ -172,10 +171,9 @@
     </div>
 
     <ConfirmDialog
-      v-if="!glm"
       :show="showResetConfirm"
-      :title="t('admin.accounts.openaiQuotaReset.confirmTitle')"
-      :message="t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCount })"
+      :title="t(glm ? 'admin.accounts.openaiQuotaReset.glmConfirmTitle' : 'admin.accounts.openaiQuotaReset.confirmTitle')"
+      :message="resetConfirmMessage"
       :confirm-text="t('admin.accounts.openaiQuotaReset.reset')"
       :cancel-text="t('common.cancel')"
       danger
@@ -192,11 +190,12 @@ import type { Account } from '@/types'
 import {
   refreshOpenAIQuota,
   resetOpenAIQuota,
+  type OpenAIRateLimitResetCreditDetail,
   type OpenAIRateLimitResetCredits,
   type OpenAIQuotaUsage,
   type OpenAIQuotaResetResult
 } from '@/api/admin/accounts'
-import { refreshGLMResetCredits } from '@/api/admin/cnProviders'
+import { refreshGLMResetCredits, useGLMResetCredit } from '@/api/admin/cnProviders'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import OpenAIReferralCell from '@/components/account/OpenAIReferralCell.vue'
 
@@ -207,6 +206,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'account-updated': [account: Account]
+  'glm-reset': []
 }>()
 
 const { t } = useI18n()
@@ -307,17 +307,22 @@ const readCachedResetCredits = (account: Account): OpenAIRateLimitResetCredits |
   if (typeof count !== 'number' || !Number.isFinite(count)) return null
 
   const now = Date.now()
-  const credits: { expires_at?: string }[] = []
+  const credits: OpenAIRateLimitResetCreditDetail[] = []
   if (Array.isArray(rawCredits)) {
     for (const credit of rawCredits) {
       if (!credit || typeof credit !== 'object') continue
-      const expiresAt = (credit as { expires_at?: unknown }).expires_at
+      const { expires_at: expiresAt, record_id: recordID, reset_type: resetType, grant_type: grantType } = credit as Record<string, unknown>
       if (typeof expiresAt !== 'string' || expiresAt.trim() === '') continue
       const expiryTime = new Date(expiresAt).getTime()
       // Unparsable timestamps are kept: they are already rendered verbatim and
       // dropping them would silently understate the available count.
       if (!Number.isNaN(expiryTime) && expiryTime <= now) continue
-      credits.push({ expires_at: expiresAt })
+      credits.push({
+        expires_at: expiresAt,
+        record_id: props.glm && typeof recordID === 'number' && Number.isSafeInteger(recordID) ? recordID : undefined,
+        reset_type: props.glm && (resetType === 'WEEK' || resetType === 'FIVE_HOUR') ? resetType : undefined,
+        grant_type: props.glm && typeof grantType === 'string' ? grantType : undefined
+      })
     }
   }
   const availableCount = Math.min(Math.max(count, 0), credits.length)
@@ -346,7 +351,22 @@ const resetCreditExpirations = computed(() =>
 )
 const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
 const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
-const canReset = computed(() => !props.glm && availableResetCount.value > 0 && !isShadow.value)
+type GLMResetCard = Required<OpenAIRateLimitResetCreditDetail>
+const selectedGLMCard = ref<GLMResetCard | null>(null)
+let pendingGLMReset: { card: GLMResetCard; requestID: string } | null = null
+const nextGLMCard = computed(() => (data.value?.credits ?? [])
+  .filter((card): card is GLMResetCard => !!card.record_id && Number.isSafeInteger(card.record_id) && card.record_id > 0 &&
+    (card.reset_type === 'WEEK' || card.reset_type === 'FIVE_HOUR') && !!card.grant_type && !!card.expires_at && Date.parse(card.expires_at) > Date.now())
+  .sort((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at))[0])
+const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value && (!props.glm || !!nextGLMCard.value))
+const resetConfirmMessage = computed(() => props.glm
+  ? t('admin.accounts.openaiQuotaReset.glmConfirmMessage', {
+    windows: t(selectedGLMCard.value?.reset_type === 'WEEK'
+      ? 'admin.accounts.openaiQuotaReset.glmWeeklyWindows'
+      : 'admin.accounts.openaiQuotaReset.glmFiveHourWindow'),
+    count: Math.max(availableResetCount.value - 1, 0)
+  })
+  : t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCount.value }))
 
 const resetCreditDetailsTitle = computed(() =>
   resetCreditExpirations.value
@@ -363,7 +383,7 @@ const resetCreditDetailsToggleLabel = computed(() => {
 
 const resetButtonTitle = computed(() => {
   if (isShadow.value) return t('admin.accounts.openaiQuotaReset.resetTooltipShadow')
-  if (!data.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNeedQuery')
+  if (!data.value || (props.glm && availableResetCount.value > 0 && !nextGLMCard.value)) return t('admin.accounts.openaiQuotaReset.resetTooltipNeedQuery')
   if (!canReset.value) return t('admin.accounts.openaiQuotaReset.resetTooltipNoCredits')
   return t('admin.accounts.openaiQuotaReset.resetTooltipReady')
 })
@@ -475,10 +495,21 @@ const openResetConfirm = () => {
     error.value = t('admin.accounts.openaiQuotaReset.noCreditsAvailable')
     return
   }
+  selectedGLMCard.value = props.glm ? nextGLMCard.value ?? null : null
   showResetConfirm.value = true
 }
 
+const newGLMResetRequestID = () => {
+  if (globalThis.crypto.randomUUID) return globalThis.crypto.randomUUID()
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, n => n.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+}
+
 const confirmReset = async () => {
+  if (props.glm && !showResetConfirm.value) return
   showResetConfirm.value = false
   if (resetting.value) return
   if (!canReset.value) {
@@ -492,6 +523,25 @@ const confirmReset = async () => {
   resetMessage.value = null
   resetWarning.value = null
   try {
+    if (props.glm) {
+      const card = selectedGLMCard.value
+      if (!card || Date.parse(card.expires_at) <= Date.now()) return
+      if (pendingGLMReset?.card.record_id !== card.record_id || pendingGLMReset?.card.reset_type !== card.reset_type || pendingGLMReset?.card.grant_type !== card.grant_type) {
+        pendingGLMReset = { card, requestID: newGLMResetRequestID() }
+      }
+      const result = await useGLMResetCredit(accountID, card, pendingGLMReset.requestID)
+      if (props.account.id !== accountID) return
+      pendingGLMReset = null
+      selectedGLMCard.value = null
+      data.value = result.rate_limit_reset_credits
+      cachedData.value = data.value
+      showResetCreditDetails.value = false
+      if (!data.value) resetWarning.value = t('admin.accounts.openaiQuotaReset.glmResetRefreshFailed')
+      else if (!result.cache_persisted) resetWarning.value = t('admin.accounts.openaiQuotaReset.glmResetCacheFailed')
+      else resetMessage.value = t('admin.accounts.openaiQuotaReset.glmResetSuccess')
+      emit('glm-reset')
+      return
+    }
     const result: OpenAIQuotaResetResult = await resetOpenAIQuota(accountID)
     if (props.account.id !== accountID) return
     updateCredits(result.quota ?? null)
@@ -520,6 +570,10 @@ const confirmReset = async () => {
     }
   } catch (e) {
     if (props.account.id !== accountID) return
+    if (props.glm) {
+      data.value = null
+      cachedData.value = null
+    }
     error.value = extractErrorMessage(e)
   } finally {
     if (props.account.id === accountID) resetting.value = false
@@ -540,6 +594,8 @@ watch(
     loading.value = false
     resetting.value = false
     showResetConfirm.value = false
+    selectedGLMCard.value = null
+    pendingGLMReset = null
     showResetCreditDetails.value = false
   }
 )

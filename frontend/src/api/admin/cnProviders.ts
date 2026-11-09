@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../client'
-import type { OpenAIRateLimitResetCredits } from './accounts'
+import type { OpenAIRateLimitResetCreditDetail, OpenAIRateLimitResetCredits } from './accounts'
 
 /** 滚动用量窗口档（5 小时 / 每周），对齐后端 service.CNQuotaTier。 */
 export interface CNQuotaTier {
@@ -59,11 +59,22 @@ export async function queryQuota(id: number): Promise<CNProviderQuotaProbeResult
   return data
 }
 
-export async function refreshGLMResetCredits(id: number): Promise<{
-  rate_limit_reset_credits: OpenAIRateLimitResetCredits
+interface GLMResetCreditsResult {
+  rate_limit_reset_credits: OpenAIRateLimitResetCredits | null
   cache_persisted: boolean
-}> {
-  const { data } = await apiClient.post(`/admin/cn-providers/accounts/${id}/glm-reset-credits/refresh`)
+}
+
+export async function refreshGLMResetCredits(id: number): Promise<GLMResetCreditsResult> {
+  const { data } = await apiClient.post<GLMResetCreditsResult>(`/admin/cn-providers/accounts/${id}/glm-reset-credits/refresh`)
+  return data
+}
+
+export async function useGLMResetCredit(id: number, card: Required<OpenAIRateLimitResetCreditDetail>, requestID: string): Promise<GLMResetCreditsResult> {
+  const { data } = await apiClient.post<GLMResetCreditsResult>(`/admin/cn-providers/accounts/${id}/glm-reset-credits/use`, {
+    record_id: card.record_id,
+    reset_type: card.reset_type,
+    grant_type: card.grant_type
+  }, { headers: { 'Idempotency-Key': requestID }, timeout: 65000 })
   return data
 }
 

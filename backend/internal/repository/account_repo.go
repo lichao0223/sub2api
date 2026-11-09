@@ -2446,15 +2446,19 @@ func (r *accountRepository) SetRateLimitedIfLater(ctx context.Context, id int64,
 	return nil
 }
 
-// ClearRateLimitIfObserved clears exactly the Grok rate-limit generation seen
-// by a successful request. Matching both timestamps prevents a stale success
+// ClearRateLimitIfObserved clears the Grok or GLM limit seen by a successful
+// probe. Matching both timestamps prevents a stale success
 // from erasing a later clear/re-arm generation with an equal or shorter reset.
 func (r *accountRepository) ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error) {
 	updated, err := r.client.Account.Update().
 		Where(
 			dbaccount.IDEQ(id),
-			dbaccount.PlatformEQ(service.PlatformGrok),
-			dbaccount.TypeEQ(service.AccountTypeOAuth),
+			dbaccount.Or(
+				dbaccount.And(dbaccount.PlatformEQ(service.PlatformGrok), dbaccount.TypeEQ(service.AccountTypeOAuth)),
+				dbaccount.And(dbaccount.PlatformIn(service.PlatformOpenAI, service.PlatformAnthropic), dbaccount.TypeEQ(service.AccountTypeAPIKey), func(s *entsql.Selector) {
+					s.Where(sqljson.ValueEQ(dbaccount.FieldExtra, "glm", sqljson.Path("model_provider")))
+				}),
+			),
 			dbaccount.RateLimitedAtEQ(observedLimitedAt),
 			dbaccount.RateLimitResetAtEQ(observedResetAt),
 		).

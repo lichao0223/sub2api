@@ -1826,7 +1826,7 @@ type grokRateLimitExtendingRepository interface {
 	SetRateLimitedIfLater(ctx context.Context, id int64, resetAt time.Time) error
 }
 
-type grokRateLimitRecoveryRepository interface {
+type observedRateLimitRecoveryRepository interface {
 	ClearRateLimitIfObserved(ctx context.Context, id int64, observedLimitedAt, observedResetAt time.Time) (bool, error)
 }
 
@@ -1843,7 +1843,7 @@ func clearGrokRateLimitAfterRecovery(ctx context.Context, repo AccountRepository
 	if repo == nil || account == nil || account.RateLimitedAt == nil || account.RateLimitResetAt == nil || ctx.Err() != nil {
 		return
 	}
-	recoveryRepo, ok := repo.(grokRateLimitRecoveryRepository)
+	recoveryRepo, ok := repo.(observedRateLimitRecoveryRepository)
 	if !ok {
 		return
 	}

@@ -4,9 +4,9 @@ import OpenAIQuotaResetCell from '../OpenAIQuotaResetCell.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type { Account } from '@/types'
 import { refreshOpenAIQuota, resetOpenAIQuota, type OpenAIQuotaRefreshResult } from '@/api/admin/accounts'
-import { refreshGLMResetCredits } from '@/api/admin/cnProviders'
+import { refreshGLMResetCredits, useGLMResetCredit } from '@/api/admin/cnProviders'
 
-vi.mock('@/api/admin/cnProviders', () => ({ refreshGLMResetCredits: vi.fn() }))
+vi.mock('@/api/admin/cnProviders', () => ({ refreshGLMResetCredits: vi.fn(), useGLMResetCredit: vi.fn() }))
 
 vi.mock('@/api/admin/accounts', () => ({
   refreshOpenAIQuota: vi.fn(),
@@ -68,6 +68,7 @@ beforeEach(() => {
   vi.mocked(refreshOpenAIQuota).mockReset()
   vi.mocked(resetOpenAIQuota).mockReset()
   vi.mocked(refreshGLMResetCredits).mockReset()
+  vi.mocked(useGLMResetCredit).mockReset()
 })
 
 describe('OpenAIQuotaResetCell — GLM display', () => {
@@ -85,8 +86,44 @@ describe('OpenAIQuotaResetCell — GLM display', () => {
     }) } })
     expect(wrapper.get('[data-testid="reset-credit-count"]').text()).toContain('2')
     expect(wrapper.text()).toContain('+1')
+    expect(wrapper.get('[data-testid="reset-credit-use"]').attributes('disabled')).toBeDefined()
     expect(refreshGLMResetCredits).not.toHaveBeenCalled()
     expect(refreshOpenAIQuota).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('uses the earliest card only after confirmation and reuses its request ID on retry', async () => {
+    const early = { expires_at: FUTURE_EXPIRY_EARLY, record_id: 9, reset_type: 'WEEK', grant_type: 'GLOBAL' } as const
+    const late = { expires_at: FUTURE_EXPIRY_LATE, record_id: 10, reset_type: 'FIVE_HOUR', grant_type: 'GLOBAL' } as const
+    const credits = { available_count: 2, credits: [late, early] }
+    vi.mocked(refreshGLMResetCredits).mockResolvedValue({ rate_limit_reset_credits: credits, cache_persisted: true })
+    vi.mocked(useGLMResetCredit).mockRejectedValueOnce(new Error('connection lost')).mockResolvedValueOnce({
+      rate_limit_reset_credits: { available_count: 1, credits: [late] }, cache_persisted: true
+    })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { glm: true, account: makeAccount({
+      type: 'apikey', extra: { glm_reset_credit_snapshot: credits }
+    }) } })
+    const dialog = wrapper.getComponent(ConfirmDialog)
+    const button = wrapper.get('[data-testid="reset-credit-use"]')
+    await button.trigger('click')
+    expect(dialog.props('show')).toBe(true)
+    expect(useGLMResetCredit).not.toHaveBeenCalled()
+    dialog.vm.$emit('cancel')
+    await button.trigger('click')
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(useGLMResetCredit).toHaveBeenCalledWith(1, early, expect.any(String))
+    expect(button.attributes('disabled')).toBeDefined()
+
+    await wrapper.get('[data-testid="reset-credit-count"]').trigger('click')
+    await flushPromises()
+    await button.trigger('click')
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(vi.mocked(useGLMResetCredit).mock.calls[1]).toEqual(vi.mocked(useGLMResetCredit).mock.calls[0])
+    expect(wrapper.get('[data-testid="reset-credit-count"]').text()).toContain('1')
+    expect(wrapper.emitted('glm-reset')).toHaveLength(1)
+    expect(resetOpenAIQuota).not.toHaveBeenCalled()
     wrapper.unmount()
   })
 

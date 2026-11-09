@@ -101,3 +101,52 @@ func TestRefreshGLMResetCreditsRejectsUnsupportedAccountsAndBlockedHost(t *testi
 	require.ErrorContains(t, err, "GLM_RESET_CREDITS_URL_REJECTED")
 	require.Zero(t, upstream.calls)
 }
+
+func TestUseGLMResetCredit(t *testing.T) {
+	const cards = `{"code":200,"success":true,"data":{"fiveHourResets":[],"weekResets":[{"recordId":9,"grantType":"GLOBAL","available":true,"expireTime":"2099-12-22 23:59:59"},{"recordId":10,"grantType":"GLOBAL","available":true,"expireTime":"2099-12-23 23:59:59"}]}}`
+	for _, tc := range []struct {
+		name, grant, useResponse, readBack string
+		wantRequests                       int
+		wantError                          string
+	}{
+		{"spent card removed even if list lags", "GLOBAL", `{"code":200,"success":true}`, cards, 3, ""},
+		{"refresh failure after success", "GLOBAL", `{"code":200,"success":true}`, `{`, 3, ""},
+		{"upstream rejected the reset", "GLOBAL", `{"code":400,"msg":"Credit cannot be used","success":false}`, "", 2, "Credit cannot be used"},
+		{"stale grant is never sent", "OTHER", "", "", 1, "GLM_RESET_CREDIT_UNAVAILABLE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &glmResetCreditsRepo{account: &Account{
+				ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+				Extra: map[string]any{"model_provider": "glm"}, Credentials: map[string]any{"api_key": "fake-glm-key"},
+			}}
+			upstream := &httpUpstreamRecorder{}
+			for _, body := range []string{cards, tc.useResponse, tc.readBack} {
+				upstream.responses = append(upstream.responses, &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))})
+			}
+			result, err := NewCNProviderQuotaService(repo, nil, upstream, nil).UseGLMResetCredit(t.Context(), 1, 9, "WEEK", tc.grant, "operation-1")
+			require.Len(t, upstream.requests, tc.wantRequests)
+			if tc.wantRequests >= 2 {
+				require.Equal(t, http.MethodPost, upstream.requests[1].Method)
+				require.Equal(t, glmUseResetCreditURL, upstream.requests[1].URL.String())
+				require.Equal(t, "fake-glm-key", upstream.requests[1].Header.Get("Authorization"))
+				body, err := io.ReadAll(upstream.requests[1].Body)
+				require.NoError(t, err)
+				require.JSONEq(t, `{"targetType":"PERSONAL","recordId":9,"grantType":"GLOBAL","resetType":"WEEK","requestId":"operation-1"}`, string(body))
+			}
+			if tc.wantError != "" {
+				require.ErrorContains(t, err, tc.wantError)
+				require.Nil(t, repo.updates)
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, result.CachePersisted)
+			require.Equal(t, result.ResetCredits, repo.updates["glm_reset_credit_snapshot"])
+			if tc.readBack == cards {
+				require.Equal(t, 1, result.ResetCredits.AvailableCount)
+				require.Equal(t, int64(10), result.ResetCredits.Credits[0].RecordID)
+			} else {
+				require.Nil(t, result.ResetCredits)
+			}
+		})
+	}
+}

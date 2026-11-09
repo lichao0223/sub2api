@@ -914,6 +914,9 @@ export interface OpenAIAdditionalRateLimit {
 
 export interface OpenAIRateLimitResetCreditDetail {
   expires_at?: string
+  record_id?: number
+  reset_type?: 'FIVE_HOUR' | 'WEEK'
+  grant_type?: string
 }
 
 export interface OpenAIRateLimitResetCredits {

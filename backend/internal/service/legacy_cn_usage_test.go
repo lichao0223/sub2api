@@ -1,11 +1,22 @@
 package service
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+type glmQuotaRecoveryRepo struct {
+	accountUsageCodexProbeRepo
+	clearedAt time.Time
+}
+
+func (r *glmQuotaRecoveryRepo) ClearRateLimitIfObserved(_ context.Context, _ int64, _ time.Time, resetAt time.Time) (bool, error) {
+	r.clearedAt = resetAt
+	return true, nil
+}
 
 func TestLegacyCNUsageParsersRestoreWindowsAndBalance(t *testing.T) {
 	glm, err := parseLegacyGLMUsage([]byte(`{"code":0,"data":{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":25},{"type":"TOKENS_LIMIT","unit":6,"percentage":75}]}}`))
@@ -39,5 +50,29 @@ func TestLegacyGLMQuotaPersistsRateLimitAtExhaustion(t *testing.T) {
 		require.Equal(t, sevenDayReset, got)
 	case <-time.After(time.Second):
 		t.Fatal("expected exhausted GLM quota to rate limit account")
+	}
+}
+
+func TestLegacyGLMQuotaRecoversOnlyObservedExhaustion(t *testing.T) {
+	now := time.Now().UTC()
+	resetAt := now.Add(time.Hour)
+	for _, matched := range []bool{true, false} {
+		repo := &glmQuotaRecoveryRepo{}
+		svc := &AccountUsageService{accountRepo: repo}
+		observed := resetAt
+		if !matched {
+			observed = observed.Add(time.Minute)
+		}
+		account := &Account{ID: 7, RateLimitedAt: &now, RateLimitResetAt: &observed, Extra: map[string]any{
+			"codex_5h_used_percent": 100, "codex_5h_reset_at": resetAt.Format(time.RFC3339),
+		}}
+		svc.persistLegacyGLMQuota(t.Context(), account, &UsageInfo{FiveHour: &UsageProgress{}, SevenDay: &UsageProgress{}})
+		if matched {
+			require.Equal(t, resetAt, repo.clearedAt)
+			require.Nil(t, account.RateLimitResetAt)
+		} else {
+			require.True(t, repo.clearedAt.IsZero())
+			require.NotNil(t, account.RateLimitResetAt)
+		}
 	}
 }
