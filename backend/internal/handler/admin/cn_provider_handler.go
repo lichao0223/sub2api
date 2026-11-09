@@ -49,6 +49,24 @@ func (h *CNProviderHandler) QueryQuota(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *CNProviderHandler) RefreshGLMResetCredits(c *gin.Context) {
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	if h == nil || h.quotaService == nil {
+		response.BadRequest(c, "cn provider quota service is not enabled")
+		return
+	}
+	result, err := h.quotaService.RefreshGLMResetCredits(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 // QueryBalance 查询 payg 账号余额。
 func (h *CNProviderHandler) QueryBalance(c *gin.Context) {
 	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)

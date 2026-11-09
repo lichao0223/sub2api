@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import type { OpenAIRateLimitResetCredits } from './accounts'
 
 /** 滚动用量窗口档（5 小时 / 每周），对齐后端 service.CNQuotaTier。 */
 export interface CNQuotaTier {
@@ -55,6 +56,14 @@ export async function queryQuota(id: number): Promise<CNProviderQuotaProbeResult
   const { data } = await apiClient.get<CNProviderQuotaProbeResult>(
     `/admin/cn-providers/accounts/${id}/quota`
   )
+  return data
+}
+
+export async function refreshGLMResetCredits(id: number): Promise<{
+  rate_limit_reset_credits: OpenAIRateLimitResetCredits
+  cache_persisted: boolean
+}> {
+  const { data } = await apiClient.post(`/admin/cn-providers/accounts/${id}/glm-reset-credits/refresh`)
   return data
 }
 

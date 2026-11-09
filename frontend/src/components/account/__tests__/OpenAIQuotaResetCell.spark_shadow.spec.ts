@@ -4,6 +4,9 @@ import OpenAIQuotaResetCell from '../OpenAIQuotaResetCell.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import type { Account } from '@/types'
 import { refreshOpenAIQuota, resetOpenAIQuota, type OpenAIQuotaRefreshResult } from '@/api/admin/accounts'
+import { refreshGLMResetCredits } from '@/api/admin/cnProviders'
+
+vi.mock('@/api/admin/cnProviders', () => ({ refreshGLMResetCredits: vi.fn() }))
 
 vi.mock('@/api/admin/accounts', () => ({
   refreshOpenAIQuota: vi.fn(),
@@ -64,6 +67,46 @@ const resetButton = (wrapper: ReturnType<typeof mount>) =>
 beforeEach(() => {
   vi.mocked(refreshOpenAIQuota).mockReset()
   vi.mocked(resetOpenAIQuota).mockReset()
+  vi.mocked(refreshGLMResetCredits).mockReset()
+})
+
+describe('OpenAIQuotaResetCell — GLM display', () => {
+  it('hydrates only the GLM snapshot and filters expired cards', () => {
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { glm: true, account: makeAccount({
+      type: 'apikey',
+      extra: {
+        model_provider: 'glm',
+        codex_reset_credit_snapshot: { available_count: 9, credits: [] },
+        glm_reset_credit_snapshot: {
+          available_count: 3,
+          credits: [{ expires_at: FUTURE_EXPIRY_EARLY }, { expires_at: FUTURE_EXPIRY_LATE }, { expires_at: PAST_EXPIRY }]
+        }
+      }
+    }) } })
+    expect(wrapper.get('[data-testid="reset-credit-count"]').text()).toContain('2')
+    expect(wrapper.text()).toContain('+1')
+    expect(refreshGLMResetCredits).not.toHaveBeenCalled()
+    expect(refreshOpenAIQuota).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('keeps the live GLM count when persistence fails and shows query errors', async () => {
+    vi.mocked(refreshGLMResetCredits).mockResolvedValueOnce({
+      rate_limit_reset_credits: { available_count: 0, credits: [] },
+      cache_persisted: false
+    }).mockRejectedValueOnce({ message: 'GLM unavailable' })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { glm: true, account: makeAccount({ type: 'apikey' }) } })
+    const query = wrapper.get('[data-testid="reset-credit-count"]')
+    await query.trigger('click')
+    await flushPromises()
+    expect(query.text()).toContain('0')
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.glmCachePersistFailed')
+    await query.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('GLM unavailable')
+    expect(resetOpenAIQuota).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
 })
 
 describe('OpenAIQuotaResetCell — Codex 点数', () => {

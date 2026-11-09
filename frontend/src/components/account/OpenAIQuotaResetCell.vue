@@ -9,13 +9,15 @@
       The 5h / 7d window bars are deliberately NOT rendered here — the local
       active-sampling display (UsageProgressBar in AccountUsageCell) already
       owns that real estate. This cell queries Codex points and reset credits,
-      and lets the operator consume a reset credit if needed.
+      and lets the operator consume a reset credit if needed. GLM shares the
+      read-only count and expiration display.
     -->
     <div class="flex flex-wrap items-center gap-1.5">
       <slot name="pre-actions" />
 
       <button
         type="button"
+        data-testid="reset-credit-count"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
         :disabled="loading || resetting"
         :title="countButtonTitle"
@@ -39,6 +41,7 @@
       </button>
 
       <button
+        v-if="!glm"
         type="button"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-orange-600 transition-colors hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-orange-400 dark:hover:bg-orange-900/30"
         :disabled="resetting || loading || !canReset"
@@ -63,6 +66,7 @@
       </button>
 
       <button
+        v-if="!glm"
         type="button"
         data-testid="codex-credits"
         class="inline-flex max-w-full items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
@@ -73,7 +77,7 @@
         {{ t('admin.accounts.openaiQuotaReset.points') }}
         <span class="truncate tabular-nums">{{ creditsDisplay }}</span>
       </button>
-      <OpenAIReferralCell :account="account" />
+      <OpenAIReferralCell v-if="!glm" :account="account" />
     </div>
 
     <div v-if="creditsCacheWarning" class="text-[10px] text-amber-600 dark:text-amber-400">
@@ -168,6 +172,7 @@
     </div>
 
     <ConfirmDialog
+      v-if="!glm"
       :show="showResetConfirm"
       :title="t('admin.accounts.openaiQuotaReset.confirmTitle')"
       :message="t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCount })"
@@ -187,14 +192,17 @@ import type { Account } from '@/types'
 import {
   refreshOpenAIQuota,
   resetOpenAIQuota,
+  type OpenAIRateLimitResetCredits,
   type OpenAIQuotaUsage,
   type OpenAIQuotaResetResult
 } from '@/api/admin/accounts'
+import { refreshGLMResetCredits } from '@/api/admin/cnProviders'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import OpenAIReferralCell from '@/components/account/OpenAIReferralCell.vue'
 
 const props = defineProps<{
   account: Account
+  glm?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -203,14 +211,13 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-// Visible only for OpenAI OAuth accounts.
-const visible = computed(() => props.account.platform === 'openai' && props.account.type === 'oauth')
+const visible = computed(() => props.glm || (props.account.platform === 'openai' && props.account.type === 'oauth'))
 
 const loading = ref(false)
 const resetting = ref(false)
 const error = ref<string | null>(null)
-const data = ref<OpenAIQuotaUsage | null>(null)
-const cachedData = ref<OpenAIQuotaUsage | null>(null)
+const data = ref<OpenAIRateLimitResetCredits | null>(null)
+const cachedData = ref<OpenAIRateLimitResetCredits | null>(null)
 const resetMessage = ref<string | null>(null)
 const resetWarning = ref<string | null>(null)
 const showResetConfirm = ref(false)
@@ -251,7 +258,7 @@ const updateCredits = (usage: OpenAIQuotaUsage | null) => {
 type AutoResetCreditState = NonNullable<NonNullable<Account['extra']>['codex_auto_reset_credit_state']>
 const validAutoResetStatuses = new Set(['checking', 'available', 'resetting', 'success', 'no_credit', 'failed'])
 const autoResetState = computed<AutoResetCreditState | null>(() => {
-  if (props.account.extra?.auto_reset_credit_enabled !== true) return null
+  if (props.glm || props.account.extra?.auto_reset_credit_enabled !== true) return null
   const state = props.account.extra?.codex_auto_reset_credit_state
   if (!state || typeof state !== 'object' || !validAutoResetStatuses.has(String(state.status))) return null
   return state
@@ -289,8 +296,8 @@ const autoResetStateClass = computed(() => {
 // freshness signal, so an unfiltered read would offer to consume credits that no
 // longer exist. A snapshot claiming credits with no usable expiration left is
 // treated as absent, which keeps the reset button gated on a live query.
-const readCachedResetCredits = (account: Account): OpenAIQuotaUsage | null => {
-  const cached = account.extra?.codex_reset_credit_snapshot
+const readCachedResetCredits = (account: Account): OpenAIRateLimitResetCredits | null => {
+  const cached = props.glm ? account.extra?.glm_reset_credit_snapshot : account.extra?.codex_reset_credit_snapshot
   if (!cached || typeof cached !== 'object' || Array.isArray(cached)) return null
 
   const { available_count: count, credits: rawCredits } = cached as {
@@ -317,13 +324,7 @@ const readCachedResetCredits = (account: Account): OpenAIQuotaUsage | null => {
   // A snapshot that claimed credits but has none left is no longer informative;
   // report "unknown" so the operator re-queries instead of trusting it.
   if (count > 0 && availableCount <= 0) return null
-  return {
-    fetched_at: 0,
-    rate_limit_reset_credits: {
-      available_count: availableCount,
-      credits
-    }
-  }
+  return { available_count: availableCount, credits }
 }
 
 cachedData.value = readCachedResetCredits(props.account)
@@ -333,19 +334,19 @@ data.value = cachedData.value
 // 重置必须在母账号上进行。前端据此禁用影子的重置入口(外审 F6)。
 const isShadow = computed(() => props.account.parent_account_id != null)
 
-const availableResetCount = computed(() => data.value?.rate_limit_reset_credits?.available_count ?? 0)
+const availableResetCount = computed(() => data.value?.available_count ?? 0)
 // Prefer the live payload and fall back to the persisted snapshot only when the
 // live state is unknown, so the count and the expirations never come from two
 // different generations of the same data.
 const resetCreditExpirations = computed(() =>
-  ((data.value ?? cachedData.value)?.rate_limit_reset_credits?.credits ?? [])
+  ((data.value ?? cachedData.value)?.credits ?? [])
     .map((credit) => credit.expires_at?.trim() ?? '')
     .filter((expiresAt) => expiresAt.length > 0)
     .sort(compareResetCreditExpiry)
 )
 const primaryResetCreditExpiry = computed(() => resetCreditExpirations.value[0] ?? '')
 const hiddenResetCreditCount = computed(() => Math.max(resetCreditExpirations.value.length - 1, 0))
-const canReset = computed(() => availableResetCount.value > 0 && !isShadow.value)
+const canReset = computed(() => !props.glm && availableResetCount.value > 0 && !isShadow.value)
 
 const resetCreditDetailsTitle = computed(() =>
   resetCreditExpirations.value
@@ -370,6 +371,7 @@ const resetButtonTitle = computed(() => {
 // "次数" button doubles as the upstream-query trigger and the count display.
 // Tooltip differs between "click to load" (no data yet) and "click to refresh".
 const countButtonTitle = computed(() => {
+  if (props.glm) return t('admin.accounts.openaiQuotaReset.glmCountTooltip')
   if (!data.value) return t('admin.accounts.openaiQuotaReset.countTooltipLoad')
   return t('admin.accounts.openaiQuotaReset.countTooltipRefresh')
 })
@@ -442,18 +444,22 @@ const handleQuery = async () => {
   resetWarning.value = null
   showResetCreditDetails.value = false
   try {
-    const result = await refreshOpenAIQuota(accountID)
+    const result = props.glm ? await refreshGLMResetCredits(accountID) : await refreshOpenAIQuota(accountID)
     if (props.account.id !== accountID) return
-    updateCredits(result)
-    creditsCacheWarning.value = result.credits_cache_persisted === false
+    if ('fetched_at' in result) {
+      updateCredits(result)
+      creditsCacheWarning.value = result.credits_cache_persisted === false
+    }
     // The upstream read succeeded even when the snapshot write was rejected, so
     // the live count is always adopted. Only the persisted view is left alone,
     // which keeps the displayed expirations consistent with what is stored.
-    data.value = result
+    data.value = result.rate_limit_reset_credits ?? { available_count: 0 }
     if (result.cache_persisted) {
-      cachedData.value = result
+      cachedData.value = data.value
     } else {
-      resetWarning.value = t('admin.accounts.openaiQuotaReset.refreshCachePersistFailed')
+      resetWarning.value = t(props.glm
+        ? 'admin.accounts.openaiQuotaReset.glmCachePersistFailed'
+        : 'admin.accounts.openaiQuotaReset.refreshCachePersistFailed')
     }
   } catch (e) {
     if (props.account.id !== accountID) return
@@ -491,8 +497,8 @@ const confirmReset = async () => {
     updateCredits(result.quota ?? null)
     showResetCreditDetails.value = false
     if (result.cache_refreshed && result.quota) {
-      data.value = result.quota
-      cachedData.value = result.quota
+      data.value = result.quota.rate_limit_reset_credits ?? { available_count: 0 }
+      cachedData.value = data.value
     } else {
       // A credit was consumed but the post-reset count could not be read back.
       // Whatever we still hold is one generation stale, so report the count as
@@ -521,7 +527,7 @@ const confirmReset = async () => {
 }
 
 watch(
-  () => props.account.id,
+  () => [props.account.id, props.glm],
   () => {
     // Account row may be reused across paginated lists; reset local state.
     cachedData.value = readCachedResetCredits(props.account)

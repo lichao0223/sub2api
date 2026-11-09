@@ -40,7 +40,7 @@
             <option value="volcengine">火山方舟 Agent Plan</option>
             <option v-if="!['none', 'glm', 'deepseek', 'volcengine'].includes(editModelProvider)" :value="editModelProvider">{{ editModelProvider }}</option>
           </select>
-          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额和重置卡，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
         </div>
         <!-- MERGE KEEP: both native Volcengine and legacy model_provider accounts need editable AK/SK. -->
         <div v-if="(account.platform === 'volcengine' && editAccountMode === 'coding') || ((account.platform === 'anthropic' || account.platform === 'openai') && editModelProvider === 'volcengine')" class="rounded-lg border border-orange-200 bg-orange-50/50 p-4 dark:border-orange-900/40 dark:bg-orange-900/10">

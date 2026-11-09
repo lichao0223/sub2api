@@ -1536,7 +1536,7 @@
             <option value="deepseek">DeepSeek</option>
             <option value="volcengine">火山方舟 Agent Plan</option>
           </select>
-          <p class="input-hint">GLM 可查询 Coding Plan 限额，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
+          <p class="input-hint">GLM 可查询 Coding Plan 限额和重置卡，DeepSeek 可查询账户余额，火山方舟可查询 Agent Plan 限额。</p>
           <div v-if="modelProvider === 'volcengine'" class="mt-3 grid gap-3 sm:grid-cols-2">
             <input v-model="volcengineAccessKeyID" type="text" class="input" placeholder="AccessKey ID" />
             <input v-model="volcengineSecretAccessKey" type="password" class="input" placeholder="Secret AccessKey" />

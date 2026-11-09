@@ -605,6 +605,7 @@ func registerCNProviderRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	{
 		// Coding Plan 滚动窗口用量（kimi/zhipu coding 账号）。
 		cn.GET("/accounts/:id/quota", h.Admin.CNProvider.QueryQuota)
+		cn.POST("/accounts/:id/glm-reset-credits/refresh", h.Admin.CNProvider.RefreshGLMResetCredits)
 		// payg 账号余额（kimi/deepseek；zhipu 无余额端点）。
 		cn.GET("/accounts/:id/balance", h.Admin.CNProvider.QueryBalance)
 	}

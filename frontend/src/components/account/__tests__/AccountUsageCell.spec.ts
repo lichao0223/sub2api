@@ -2,6 +2,9 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
 import type { Account } from '@/types'
+import { refreshGLMResetCredits } from '@/api/admin/cnProviders'
+
+vi.mock('@/api/admin/cnProviders', () => ({ refreshGLMResetCredits: vi.fn() }))
 
 const { getUsage } = vi.hoisted(() => ({
   getUsage: vi.fn()
@@ -115,6 +118,7 @@ const cnUsageCellStubs = {
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
+    vi.mocked(refreshGLMResetCredits).mockReset()
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: vi.fn().mockImplementation(() => ({
@@ -128,6 +132,35 @@ describe('AccountUsageCell', () => {
         dispatchEvent: vi.fn(),
       }))
     })
+  })
+
+  it.each(['openai', 'anthropic'] as const)('shows GLM reset credits below usage for %s API key accounts', async (platform) => {
+    getUsage.mockResolvedValue({ five_hour: { utilization: 100 }, seven_day: { utilization: 71 } })
+    vi.mocked(refreshGLMResetCredits).mockResolvedValue({
+      rate_limit_reset_credits: {
+        available_count: 3,
+        credits: Array.from({ length: 3 }, () => ({ expires_at: '2099-12-22T23:59:59+08:00' }))
+      },
+      cache_persisted: true
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: platform === 'openai' ? 9801 : 9802, platform, type: 'apikey', extra: { model_provider: 'glm' } }) },
+      global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    expect(refreshGLMResetCredits).not.toHaveBeenCalled()
+    const query = wrapper.get('[data-testid="reset-credit-count"]')
+    await query.trigger('click')
+    await flushPromises()
+    expect(refreshGLMResetCredits).toHaveBeenCalledWith(wrapper.props('account').id)
+    expect(query.text()).toContain('3')
+    expect(wrapper.text()).toContain('admin.accounts.openaiQuotaReset.expiresAt')
+    expect(wrapper.text()).toContain('+2')
+    await wrapper.get('[data-testid="reset-credit-expiry-toggle"]').trigger('click')
+    expect(wrapper.get('[data-testid="reset-credit-expiry-details"]').findAll('span.truncate')).toHaveLength(3)
+    expect(wrapper.find('[data-testid="codex-credits"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.accounts.openaiQuotaReset.reset')
+    wrapper.unmount()
   })
 
   it.each(['oauth', 'setup-token'] as const)('renders Codex ticket status for OpenAI %s accounts', async (type) => {

@@ -578,6 +578,8 @@ export default {
       },
       openaiQuotaReset: {
         count: '次数',
+        glmCountTooltip: '点击查询 GLM 剩余重置次数',
+        glmCachePersistFailed: '已显示实时重置次数，但缓存保存失败。',
         points: '点数',
         pointsUnlimited: '无限',
         pointsAvailable: '可用',

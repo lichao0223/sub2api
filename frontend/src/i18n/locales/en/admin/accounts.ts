@@ -1784,6 +1784,8 @@ export default {
       },
       openaiQuotaReset: {
         count: 'Resets',
+        glmCountTooltip: 'Click to query available GLM reset credits',
+        glmCachePersistFailed: 'Showing live reset credits, but the cache could not be saved.',
         points: 'Points',
         pointsUnlimited: 'Unlimited',
         pointsAvailable: 'Available',
