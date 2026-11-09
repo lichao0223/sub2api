@@ -74,7 +74,7 @@ export interface CostJob {
 const base='/admin/cost-management'
 export const costManagementAPI={
   overview:async(params:{start_date:string;end_date:string})=>(await apiClient.get<CostOverview>(`${base}/overview`,{params})).data,
-  breakdown:async(params:{start_date:string;end_date:string;scope:'total'|'metered'|'fixed'})=>(await apiClient.get<CostBreakdown>(`${base}/breakdown`,{params})).data,
+  breakdown:async(params:{start_date:string;end_date:string;scope:'total'|'metered'|'fixed'},signal?:AbortSignal)=>(await apiClient.get<CostBreakdown>(`${base}/breakdown`,{params,signal})).data,
   requestDetails:async(params:{start_date:string;end_date:string;account_id:number})=>(await apiClient.get<CostRequestDetails>(`${base}/request-details`,{params})).data,
   pendingDetails:async(params:{start_date:string;end_date:string;account_id?:number})=>(await apiClient.get<PendingCostDetails>(`${base}/pending-details`,{params})).data,
   analysis:async(params:{start_date:string;end_date:string;period?:string})=>(await apiClient.get<CostAnalysis>(`${base}/analysis`,{params})).data,

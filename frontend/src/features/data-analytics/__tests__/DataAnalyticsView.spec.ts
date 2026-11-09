@@ -4,7 +4,7 @@ import DataAnalyticsView from '../DataAnalyticsView.vue'
 import type { AnalyticsQuery, AnalyticsReport, AnalyticsValues } from '@/api/admin/dataAnalytics'
 
 const api = vi.hoisted(()=>({report:vi.fn(),directory:vi.fn(),export:vi.fn()}))
-vi.mock('@/api/admin/dataAnalytics',()=>({dataAnalyticsAPI:api}))
+vi.mock('@/api/admin/dataAnalytics',()=>({dataAnalyticsAPI:api,analyticsTasksAPI:{status:vi.fn(),setEnabled:vi.fn()}}))
 vi.mock('@/stores/app',()=>({useAppStore:()=>({showError:vi.fn(),showSuccess:vi.fn()})}))
 vi.mock('../export',()=>({exportAnalytics:api.export}))
 vi.mock('chart.js/auto',()=>({Chart:class {destroy(){}}}))
@@ -19,7 +19,7 @@ const Select = {props:['modelValue','options','ariaLabel'],emits:['update:modelV
 function mountView(){
   return mount(DataAnalyticsView,{global:{stubs:{
     AppLayout:{template:'<main><slot/></main>'},
-    AnalyticsTaskControl:{name:'AnalyticsTaskControl',emits:['loaded'],template:'<div />'},
+    AnalyticsProgress:{name:'AnalyticsProgress',emits:['loaded'],template:'<section aria-label="总体核算进度" />'},
     DirectoryPanel:{name:'DirectoryPanel',props:['enabled'],template:'<section :data-enabled="enabled">维护最新组织与人员目录</section>'},
     PersonDrawer:{props:['person'],template:'<aside v-if="person">个人使用详情 {{person.name}}</aside>'},
     Icon:true,Pagination:true,Select,
@@ -47,6 +47,7 @@ describe('prototype analytics workflow',()=>{
       expect(wrapper.findAll('[role="tab"]')).toHaveLength(4)
       expect(wrapper.findAll('.analytics-stat')).toHaveLength(4)
       expect(wrapper.find('[aria-label="组织架构"]').exists()).toBe(true)
+      expect(wrapper.find('[aria-label="总体核算进度"]').exists()).toBe(true)
       expect(wrapper.text()).toContain('部门用量排行')
       expect(wrapper.text()).toContain('趋势按天')
       expect(wrapper.text()).toContain('1M')
@@ -58,6 +59,7 @@ describe('prototype analytics workflow',()=>{
       await wrapper.get('#analytics-tab-maintenance').trigger('click')
       expect(wrapper.text()).toContain('维护最新组织与人员目录')
       expect(wrapper.find('[aria-label="组织架构"]').exists()).toBe(false)
+      expect(wrapper.find('[aria-label="总体核算进度"]').exists()).toBe(true)
     }finally{wrapper.unmount()}
   })
   it('scopes real data by the organization tree and opens a person from the personnel tab',async()=>{
@@ -107,7 +109,7 @@ describe('prototype analytics workflow',()=>{
       await flushPromises()
       await wrapper.get('#analytics-tab-maintenance').trigger('click')
       const count=api.report.mock.calls.length
-      const control=wrapper.findComponent({name:'AnalyticsTaskControl'})
+      const control=wrapper.findComponent({name:'AnalyticsProgress'})
       control.vm.$emit('loaded',null)
       await flushPromises()
       expect(wrapper.get('[data-enabled]').attributes('data-enabled')).toBe('false')

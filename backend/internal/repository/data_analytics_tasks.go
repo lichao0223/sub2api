@@ -64,13 +64,14 @@ func (r *analyticsTaskRepository) RecordAnalyticsTaskWorker(ctx context.Context,
 	), control AS MATERIALIZED (
 	  SELECT value::jsonb config FROM settings WHERE key='data_analytics.tasks_enabled' FOR SHARE
 	)
-	INSERT INTO analytics_task_workers(instance_id,running,observed_version,last_seen_at,last_success_at)
-	SELECT $1::varchar,$2::integer,$3::bigint,$4::timestamptz,$5::timestamptz WHERE $2::integer=0 OR EXISTS(
+	INSERT INTO analytics_task_workers(instance_id,running,observed_version,last_seen_at,last_success_at,analytics_day,analytics_started_at)
+	SELECT $1::varchar,$2::integer,$3::bigint,$4::timestamptz,$5::timestamptz,$6::text,$7::timestamptz WHERE $2::integer=0 OR EXISTS(
 	  SELECT 1 FROM control WHERE (config->>'enabled')::boolean AND (config->>'version')::bigint=$3
 	) ON CONFLICT(instance_id) DO UPDATE SET
 	  running=EXCLUDED.running,observed_version=EXCLUDED.observed_version,last_seen_at=EXCLUDED.last_seen_at,
-	  last_success_at=COALESCE(EXCLUDED.last_success_at,analytics_task_workers.last_success_at)`,
-		worker.InstanceID, worker.Running, worker.ObservedVersion, worker.LastSeenAt, worker.LastSuccessAt)
+	  last_success_at=COALESCE(EXCLUDED.last_success_at,analytics_task_workers.last_success_at),
+	  analytics_day=EXCLUDED.analytics_day,analytics_started_at=EXCLUDED.analytics_started_at`,
+		worker.InstanceID, worker.Running, worker.ObservedVersion, worker.LastSeenAt, worker.LastSuccessAt, worker.AnalyticsDay, worker.AnalyticsStartedAt)
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func (r *analyticsTaskRepository) RecordAnalyticsTaskWorker(ctx context.Context,
 }
 
 func (r *analyticsTaskRepository) ListAnalyticsTaskWorkers(ctx context.Context) ([]service.AnalyticsTaskWorker, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT instance_id,running,observed_version,last_seen_at,last_success_at FROM analytics_task_workers`)
+	rows, err := r.db.QueryContext(ctx, `SELECT instance_id,running,observed_version,last_seen_at,last_success_at,analytics_day,analytics_started_at FROM analytics_task_workers`)
 	if err != nil {
 		return nil, err
 	}
@@ -90,13 +91,34 @@ func (r *analyticsTaskRepository) ListAnalyticsTaskWorkers(ctx context.Context) 
 	workers := make([]service.AnalyticsTaskWorker, 0)
 	for rows.Next() {
 		var worker service.AnalyticsTaskWorker
-		if err := rows.Scan(&worker.InstanceID, &worker.Running, &worker.ObservedVersion, &worker.LastSeenAt, &worker.LastSuccessAt); err != nil {
+		if err := rows.Scan(&worker.InstanceID, &worker.Running, &worker.ObservedVersion, &worker.LastSeenAt, &worker.LastSuccessAt, &worker.AnalyticsDay, &worker.AnalyticsStartedAt); err != nil {
 			return nil, err
 		}
 		workers = append(workers, worker)
 	}
 	return workers, rows.Err()
 }
+
+func (r *analyticsTaskRepository) GetAnalyticsProgress(ctx context.Context) (*service.AnalyticsProgress, error) {
+	progress := &service.AnalyticsProgress{}
+	err := r.db.QueryRowContext(ctx, analyticsProgressQuery).Scan(
+		&progress.DirectoryReady, &progress.Seeded, &progress.TotalDays, &progress.CompletedDays,
+		&progress.BacklogDays, &progress.FailedDays, &progress.PendingRequests, &progress.RetryAt,
+		&progress.LastSuccessAt, &progress.LastError)
+	return progress, err
+}
+
+const analyticsProgressQuery = `WITH days AS (
+	  SELECT s.day completed,d.day pending,d.attempts,d.retry_after,d.changed_at
+	  FROM analytics_bucket_state s FULL JOIN analytics_dirty_days d ON d.day=s.day
+	), counts AS (
+	  SELECT COUNT(*) total,COUNT(*) FILTER(WHERE pending IS NULL) completed,
+	    COUNT(pending) backlog,COUNT(*) FILTER(WHERE attempts>0) failed,
+	    MIN(COALESCE(retry_after,changed_at+INTERVAL '1 hour')) FILTER(WHERE attempts>0) retry_at FROM days
+	)
+	SELECT EXISTS(SELECT 1 FROM analytics_directory_versions),r.seeded,c.total,c.completed,c.backlog,c.failed,
+	  COALESCE((SELECT SUM(pending_count) FROM analytics_bucket_state),0),c.retry_at,r.last_success_at,r.last_error
+	FROM analytics_runtime_state r CROSS JOIN counts c WHERE r.id=1`
 
 type analyticsControlQuerier interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row

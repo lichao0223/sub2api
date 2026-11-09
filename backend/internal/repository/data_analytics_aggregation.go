@@ -34,12 +34,16 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	var failedVersion int64
 	defer func() {
 		_ = tx.Rollback()
+		if runErr != nil && ctx.Err() != nil {
+			runErr = ctx.Err()
+		}
 		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, service.ErrAnalyticsTasksPaused) && !errors.Is(runErr, service.ErrCostAggregationBusy) {
+			message, retryDelay := analyticsBatchFailure(runErr)
 			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			_, _ = r.db.ExecContext(cleanup, `UPDATE analytics_runtime_state SET last_error=$1 WHERE id=1`, runErr.Error())
+			_, _ = r.db.ExecContext(cleanup, `UPDATE analytics_runtime_state SET last_error=$1 WHERE id=1`, message)
 			if failedDay != "" {
-				_, _ = r.db.ExecContext(cleanup, `UPDATE analytics_dirty_days SET attempts=attempts+1,changed_at=NOW(),last_error=$3 WHERE day=$1::date AND version=$2`, failedDay, failedVersion, runErr.Error())
+				_, _ = r.db.ExecContext(cleanup, `UPDATE analytics_dirty_days SET attempts=attempts+1,changed_at=NOW(),last_error=$3,retry_after=$4 WHERE day=$1::date AND version=$2`, failedDay, failedVersion, message, time.Now().Add(retryDelay))
 			}
 		}
 	}()
@@ -135,7 +139,7 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	var reason string
 	var changeFrom sql.NullTime
 	err = tx.QueryRowContext(ctx, `SELECT day,version,reason,source_change_from FROM analytics_dirty_days
-		WHERE attempts=0 OR changed_at<NOW()-INTERVAL '1 hour'
+		WHERE attempts=0 OR COALESCE(retry_after,changed_at+INTERVAL '1 hour')<=NOW()
 		ORDER BY attempts>0,(day>=DATE_TRUNC('month',NOW())::date) DESC,day LIMIT 1`).Scan(&day, &version, &reason, &changeFrom)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, tx.Commit()
@@ -145,6 +149,9 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	}
 	date := day.Format("2006-01-02")
 	failedDay, failedVersion = date, version
+	if err := service.ReportAnalyticsDay(ctx, date); err != nil {
+		return false, err
+	}
 	var pruned bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analytics_bucket_state WHERE detail_pruned AND DATE_TRUNC('month',day)=DATE_TRUNC('month',$1::date))`, date).Scan(&pruned); err != nil {
 		return false, err
@@ -163,7 +170,7 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 		return true, tx.Commit()
 	}
 	if pruned {
-		_, err = tx.ExecContext(ctx, `UPDATE analytics_dirty_days SET attempts=attempts+1,changed_at=NOW(),last_error='日明细已到期，不能重新发布该月；保留原月统计' WHERE day=$1::date`, date)
+		_, err = tx.ExecContext(ctx, `UPDATE analytics_dirty_days SET attempts=attempts+1,changed_at=NOW(),retry_after=NOW()+INTERVAL '1 hour',last_error='日明细已到期，不能重新发布该月；保留原月统计' WHERE day=$1::date`, date)
 		if err != nil {
 			return false, err
 		}
@@ -179,7 +186,7 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 		return false, err
 	}
 	if archived > 0 && (reason == "cost" || reason == "directory" || reason == "rebuild") && (!changeFrom.Valid || !archivedUntil.Valid || !changeFrom.Time.After(archivedUntil.Time)) {
-		_, err = tx.ExecContext(ctx, `UPDATE analytics_dirty_days SET attempts=attempts+1,changed_at=NOW(),
+		_, err = tx.ExecContext(ctx, `UPDATE analytics_dirty_days SET attempts=attempts+1,changed_at=NOW(),retry_after=NOW()+INTERVAL '1 hour',
 			last_error='源数据已清理，历史价格或归属不能完整重算；保留原统计' WHERE day=$1::date`, date)
 		if err != nil {
 			return false, err
@@ -245,6 +252,17 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 		return false, err
 	}
 	return true, nil
+}
+
+func analyticsBatchFailure(err error) (string, time.Duration) {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "单日核算超过4分钟，已回滚本批结果，5分钟后自动重试；持续超时请检查数据库负载与锁等待", 5 * time.Minute
+	}
+	var pgErr *pq.Error
+	if errors.As(err, &pgErr) && pgErr.Code == "57014" {
+		return "核算查询被取消，已回滚本批结果，5分钟后自动重试", 5 * time.Minute
+	}
+	return err.Error(), time.Hour
 }
 
 func (r *dataAnalyticsRepository) publishAnalyticsMonth(ctx context.Context, tx *sql.Tx, month, now time.Time, fromPublished bool) error {

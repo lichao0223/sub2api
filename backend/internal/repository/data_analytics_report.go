@@ -363,7 +363,8 @@ func (r *dataAnalyticsRepository) AnalyticsReport(ctx context.Context, q service
 		}
 	}
 	issues := []map[string]string{}
-	rows, err = tx.QueryContext(ctx, `SELECT day::text,last_error FROM analytics_dirty_days WHERE last_error<>'' ORDER BY day LIMIT 5`)
+	rows, err = tx.QueryContext(ctx, `SELECT day::text,last_error FROM analytics_dirty_days
+		WHERE last_error<>'' AND DATE_TRUNC('month',day)::date=ANY($1::date[]) ORDER BY day LIMIT 5`, pq.Array(q.Period.Keys))
 	if err != nil {
 		return nil, err
 	}

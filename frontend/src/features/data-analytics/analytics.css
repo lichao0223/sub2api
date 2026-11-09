@@ -281,3 +281,17 @@
   .analytics-model-heading { align-items: flex-start; flex-direction: column; }
   .analytics-month-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
+.analytics-progress{margin:16px 0;padding:18px 20px}
+.analytics-progress>.analytics-panel-heading{padding:0;flex-wrap:wrap}
+.analytics-progress .analytics-panel-heading h2{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.analytics-progress-summary{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:14px;font-size:12px;color:var(--analytics-muted)}
+.analytics-progress-summary strong{font-size:18px;color:var(--analytics-ink)}
+.analytics-progress-summary strong span{font-size:12px;font-weight:400}
+.analytics-progress progress{display:block;width:100%;height:8px;margin:10px 0 14px;accent-color:var(--analytics-green);border:0;border-radius:8px;overflow:hidden;background:var(--analytics-line)}
+.analytics-progress progress::-webkit-progress-bar{background:var(--analytics-line)}
+.analytics-progress progress::-webkit-progress-value{background:var(--analytics-green)}
+.analytics-progress progress::-moz-progress-bar{background:var(--analytics-green)}
+.analytics-progress-details{display:flex;gap:8px 24px;flex-wrap:wrap;font-size:11px;color:var(--analytics-muted)}
+.analytics-progress p{margin-top:10px;font-size:12px;line-height:1.6}
+.analytics-progress-warning{color:#b45309}
+.dark .analytics-progress-warning{color:#fbbf24}

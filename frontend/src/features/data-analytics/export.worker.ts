@@ -1,8 +1,7 @@
-import { buildAnalyticsWorkbook } from './exportWorkbook'
-import type { AnalyticsReport } from '@/api/admin/dataAnalytics'
+import { buildAnalyticsWorkbook, type AnalyticsExportData } from './exportWorkbook'
 
 const worker = globalThis as unknown as {
-  onmessage: (event: MessageEvent<AnalyticsReport>) => void
+  onmessage: (event: MessageEvent<AnalyticsExportData>) => void
   postMessage: (data: unknown, transfer?: Transferable[]) => void
 }
 worker.onmessage = async event => {

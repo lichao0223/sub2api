@@ -33,6 +33,9 @@ func (*analyticsHandlerRepo) RecordAnalyticsTaskWorker(context.Context, service.
 func (*analyticsHandlerRepo) ListAnalyticsTaskWorkers(context.Context) ([]service.AnalyticsTaskWorker, error) {
 	return nil, nil
 }
+func (*analyticsHandlerRepo) GetAnalyticsProgress(context.Context) (*service.AnalyticsProgress, error) {
+	return &service.AnalyticsProgress{}, nil
+}
 
 func TestAnalyticsTaskSettingsValidateAndHandleConflicts(t *testing.T) {
 	for _, tc := range []struct {

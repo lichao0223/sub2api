@@ -27,18 +27,37 @@ type AnalyticsTaskControl struct {
 }
 
 type AnalyticsTaskWorker struct {
-	InstanceID      string     `json:"instance_id"`
-	Running         int        `json:"running"`
-	ObservedVersion int64      `json:"observed_version"`
-	LastSeenAt      time.Time  `json:"last_seen_at"`
+	InstanceID         string     `json:"instance_id"`
+	Running            int        `json:"running"`
+	ObservedVersion    int64      `json:"observed_version"`
+	LastSeenAt         time.Time  `json:"last_seen_at"`
+	LastSuccessAt      *time.Time `json:"last_success_at"`
+	AnalyticsDay       string     `json:"analytics_day"`
+	AnalyticsStartedAt *time.Time `json:"analytics_started_at"`
+}
+
+type AnalyticsProgress struct {
+	DirectoryReady  bool       `json:"directory_ready"`
+	Seeded          bool       `json:"seeded"`
+	TotalDays       int64      `json:"total_days"`
+	CompletedDays   int64      `json:"completed_days"`
+	BacklogDays     int64      `json:"backlog_days"`
+	FailedDays      int64      `json:"failed_days"`
+	PendingRequests int64      `json:"pending_requests"`
+	RetryAt         *time.Time `json:"retry_at"`
 	LastSuccessAt   *time.Time `json:"last_success_at"`
+	LastError       string     `json:"last_error"`
 }
 
 type AnalyticsTaskStatus struct {
-	Control       AnalyticsTaskControl `json:"control"`
-	State         string               `json:"state"`
-	Running       int                  `json:"running"`
-	LastSuccessAt *time.Time           `json:"last_success_at"`
+	Control            AnalyticsTaskControl `json:"control"`
+	State              string               `json:"state"`
+	Running            int                  `json:"running"`
+	LastSuccessAt      *time.Time           `json:"last_success_at"`
+	LastSeenAt         *time.Time           `json:"last_seen_at"`
+	AnalyticsDay       string               `json:"analytics_day"`
+	AnalyticsStartedAt *time.Time           `json:"analytics_started_at"`
+	Progress           *AnalyticsProgress   `json:"progress"`
 }
 
 type AnalyticsTaskRepository interface {
@@ -46,16 +65,18 @@ type AnalyticsTaskRepository interface {
 	UpdateAnalyticsTaskControl(context.Context, bool, int64, int64) (AnalyticsTaskControl, error)
 	RecordAnalyticsTaskWorker(context.Context, AnalyticsTaskWorker) error
 	ListAnalyticsTaskWorkers(context.Context) ([]AnalyticsTaskWorker, error)
+	GetAnalyticsProgress(context.Context) (*AnalyticsProgress, error)
 }
 
 // mu serializes control reads, registration and completion, so an older read
 // cannot start work after a local pause has been acknowledged.
 type AnalyticsTaskService struct {
-	repo   AnalyticsTaskRepository
-	mu     sync.Mutex
-	worker AnalyticsTaskWorker
-	tasks  map[uint64]context.CancelFunc
-	nextID uint64
+	repo            AnalyticsTaskRepository
+	mu              sync.Mutex
+	worker          AnalyticsTaskWorker
+	tasks           map[uint64]context.CancelFunc
+	nextID          uint64
+	analyticsTaskID uint64
 }
 
 func NewAnalyticsTaskService(repo AnalyticsTaskRepository, instanceID string) *AnalyticsTaskService {
@@ -78,6 +99,15 @@ func ProvideAnalyticsTaskService(repo AnalyticsTaskRepository, wheel *TimingWhee
 }
 
 type analyticsTaskVersionKey struct{}
+type analyticsDayReporterKey struct{}
+
+// Report outside the publishing transaction so readers can see the day while it runs.
+func ReportAnalyticsDay(ctx context.Context, day string) error {
+	if report, ok := ctx.Value(analyticsDayReporterKey{}).(func(context.Context, string) error); ok {
+		return report(ctx, day)
+	}
+	return nil
+}
 
 func AnalyticsTaskVersion(ctx context.Context) (int64, bool) {
 	version, ok := ctx.Value(analyticsTaskVersionKey{}).(int64)
@@ -168,6 +198,17 @@ func (s *AnalyticsTaskService) Run(ctx context.Context, work func(context.Contex
 	s.nextID++
 	id := s.nextID
 	s.tasks[id] = cancel
+	taskCtx = context.WithValue(taskCtx, analyticsDayReporterKey{}, func(reportCtx context.Context, day string) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if err := reportCtx.Err(); err != nil {
+			return err
+		}
+		now := time.Now().UTC()
+		s.analyticsTaskID = id
+		s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = day, &now
+		return s.recordLocked(reportCtx)
+	})
 	err = s.recordLocked(ctx)
 	if err != nil {
 		delete(s.tasks, id)
@@ -182,6 +223,10 @@ func (s *AnalyticsTaskService) Run(ctx context.Context, work func(context.Contex
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		delete(s.tasks, id)
+		if s.analyticsTaskID == id {
+			s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = "", nil
+			s.analyticsTaskID = 0
+		}
 		cancel()
 		recordCtx, recordCancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer recordCancel()
@@ -217,11 +262,23 @@ func (s *AnalyticsTaskService) Status(ctx context.Context) (*AnalyticsTaskStatus
 		return nil, err
 	}
 	status := &AnalyticsTaskStatus{Control: control, State: "paused"}
+	status.Progress, err = s.repo.GetAnalyticsProgress(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if control.Enabled {
 		status.State = "idle"
 	}
 	unknown, unacknowledged := false, false
 	for _, worker := range workers {
+		if status.LastSeenAt == nil || worker.LastSeenAt.After(*status.LastSeenAt) {
+			seen := worker.LastSeenAt
+			status.LastSeenAt = &seen
+		}
+		if worker.AnalyticsDay != "" && worker.AnalyticsStartedAt != nil &&
+			(status.AnalyticsStartedAt == nil || worker.AnalyticsStartedAt.After(*status.AnalyticsStartedAt)) {
+			status.AnalyticsDay, status.AnalyticsStartedAt = worker.AnalyticsDay, worker.AnalyticsStartedAt
+		}
 		status.Running += worker.Running
 		if worker.LastSuccessAt != nil && (status.LastSuccessAt == nil || worker.LastSuccessAt.After(*status.LastSuccessAt)) {
 			status.LastSuccessAt = worker.LastSuccessAt
@@ -241,7 +298,7 @@ func (s *AnalyticsTaskService) Status(ctx context.Context) (*AnalyticsTaskStatus
 			status.State = "pausing"
 		}
 	}
-	if unknown {
+	if unknown || (control.Enabled && (status.LastSeenAt == nil || time.Since(*status.LastSeenAt) > 15*time.Second)) {
 		status.State = "unknown"
 	}
 	return status, nil

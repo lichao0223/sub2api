@@ -161,8 +161,9 @@ import Select from '@/components/common/Select.vue'
 import TimePricingSection from '@/components/admin/channel/TimePricingSection.vue'
 import { apiTimePricingToForm, formTimePricingToAPI, validateTimePricing, type TimePricingFormEntry } from '@/components/admin/channel/types'
 import { useAppStore } from '@/stores'
-import costManagementAPI, { type AccountCostInput, type AccountCostRow, type CostAnalysis, type CostBreakdown, type CostBreakdownItem, type CostJob, type CostOverview, type PendingCostDetails, type CostPlan, type CostPriceVersion, type CostRequestDetails, type CostSubscriptionUnit } from '@/api/admin/costManagement'
+import costManagementAPI, { type AccountCostInput, type AccountCostRow, type CostAnalysis, type CostBreakdown, type CostJob, type CostOverview, type PendingCostDetails, type CostPlan, type CostPriceVersion, type CostRequestDetails, type CostSubscriptionUnit } from '@/api/admin/costManagement'
 import { formatCompactNumber, formatDateLocalInput } from '@/utils/format'
+import { groupBreakdownItems, priceMoney, pricingText } from './breakdown'
 
 const app=useAppStore(),tab=ref<'overview'|'accounts'|'plans'>('overview'),tabs=[{key:'overview',label:'成本总览'},{key:'accounts',label:'账号成本'},{key:'plans',label:'成本方案'}] as const
 const today=formatDateLocalInput(new Date()),month=today.slice(0,7),range=reactive({start:month+'-01',end:today})
@@ -170,8 +171,6 @@ const overview=reactive<CostOverview>({dynamic_cost_cny:'0',fixed_cost_cny:'0',t
 const lastUpdated=computed(()=>overview.last_success_at?new Date(overview.last_success_at).toLocaleString():'尚未聚合')
 const aggregationDelayed=computed(()=>!overview.last_success_at||Date.now()-new Date(overview.last_success_at).getTime()>10*60*1000)
 const money=(v:string|number)=>'¥'+Number(v||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
-// Token rates can be smaller than ¥0.01; keep their precision instead of rounding them as totals.
-const priceMoney=(v:string|number)=>'¥'+Number(v||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:12})
 const comparisonText=computed(()=>{if(!overview.previous_coverage_complete)return '上一周期数据不完整';const current=Number(overview.total_cost_cny),previous=Number(overview.previous_total_cost_cny);if(!previous)return current?'新增 '+money(current):'持平';const percent=(current-previous)/previous*100;return `${percent>=0?'增加':'减少'} ${Math.abs(percent).toFixed(1)}%`})
 const coverageText=computed(()=>overview.coverage_complete?'数据覆盖完整':`数据不完整 · 当前覆盖 ${date(overview.coverage_start)} 至 ${date(overview.coverage_end)}`)
 const isCurrentMonth=computed(()=>range.start===month+'-01'&&range.end===today)
@@ -184,14 +183,9 @@ const overviewCards=computed(()=>[
 ])
 const breakdownDialog=ref(false),breakdownExporting=ref(false),breakdownScope=ref<'total'|'metered'|'fixed'>('total'),costBreakdown=reactive<CostBreakdown>({total_cost_cny:'0',items:[]})
 const breakdownTitle=computed(()=>({total:'真实总成本组成',metered:'按量成本组成',fixed:'固定成本组成'}[breakdownScope.value]))
-const groupedBreakdownItems=computed(()=>{
-  const groups=new Map<string,CostBreakdownItem[]>()
-  for(const item of costBreakdown.items){const key=`${item.cost_mode}\0${item.plan_name}`;const group=groups.get(key);group?group.push(item):groups.set(key,[item])}
-  return [...groups.values()].sort((a,b)=>b.reduce((sum,item)=>sum+Number(item.amount_cny),0)-a.reduce((sum,item)=>sum+Number(item.amount_cny),0)).flatMap(group=>group.map((item,index)=>({item,rowspan:index?0:group.length})))
-})
+const groupedBreakdownItems=computed(()=>groupBreakdownItems(costBreakdown.items))
 const tokenText=(value:number)=>value?formatCompactNumber(value).toLowerCase():'-'
 const tokenTitle=(value:number)=>Number(value||0).toLocaleString('zh-CN')
-const pricingText=(item:CostBreakdownItem)=>item.cost_mode==='fixed'?`${item.billing_cycle==='yearly'?'年付':'月付'} ${money(item.fixed_unit_cost_cny)}（月均 ${money(item.monthly_unit_cost_cny)}），按订阅有效时长分摊`:`输入 ${priceMoney(item.input_price_cny)}/MTok · 缓存写入 ${priceMoney(item.cache_write_price_cny)}/MTok · 缓存读取 ${priceMoney(item.cache_read_price_cny)}/MTok · 输出 ${priceMoney(item.output_price_cny)}/MTok${Number(item.per_request_price_cny)?` · 请求 ${priceMoney(item.per_request_price_cny)}/次`:''}`
 async function openCostBreakdown(scope:'total'|'metered'|'fixed'){breakdownScope.value=scope;breakdownDialog.value=true;try{Object.assign(costBreakdown,await costManagementAPI.breakdown({start_date:range.start,end_date:range.end,scope}))}catch(e:any){app.showError(e.message||'加载成本组成失败')}}
 async function exportCostBreakdown(){
   if(!costBreakdown.items.length||breakdownExporting.value)return

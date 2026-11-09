@@ -267,22 +267,7 @@ func ProvideDataAnalyticsService(repo DataAnalyticsRepository, tasks *AnalyticsT
 			return
 		}
 		defer s.running.Store(false)
-		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
-		defer cancel()
-		err := tasks.Run(ctx, func(ctx context.Context) error {
-			for i := 0; i < 31; i++ {
-				batchCtx, batchCancel := context.WithTimeout(ctx, 30*time.Second)
-				more, err := repo.RunAnalyticsBatch(batchCtx)
-				batchCancel()
-				if err != nil {
-					return err
-				}
-				if !more {
-					break
-				}
-			}
-			return nil
-		})
+		err := tasks.Run(context.Background(), s.runBatches)
 		if err != nil && !errors.Is(err, ErrAnalyticsTasksPaused) && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrCostAggregationBusy) {
 			logger.LegacyPrintf("service.data_analytics", "aggregation stopped: %v", err)
 		}
@@ -302,6 +287,25 @@ func ProvideDataAnalyticsService(repo DataAnalyticsRepository, tasks *AnalyticsT
 	wheel.ScheduleRecurring("analytics:aggregation", 5*time.Minute, run)
 	wheel.ScheduleRecurring("analytics:retention", time.Hour, maintenance)
 	return s
+}
+
+const analyticsBatchTimeout = 4 * time.Minute
+
+func (s *DataAnalyticsService) runBatches(ctx context.Context) error {
+	started := time.Now()
+	for i := 0; i < 31; i++ {
+		// Give each day a full window; a nearly exhausted run must not cancel the next day.
+		batchCtx, cancel := context.WithTimeout(ctx, analyticsBatchTimeout)
+		more, err := s.repo.RunAnalyticsBatch(batchCtx)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if !more || time.Since(started) >= analyticsBatchTimeout {
+			break
+		}
+	}
+	return nil
 }
 
 func (s *DataAnalyticsService) Directory(ctx context.Context) (*AnalyticsDirectoryState, error) {

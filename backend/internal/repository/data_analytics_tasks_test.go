@@ -75,14 +75,17 @@ func (*analyticsGuardRepo) RecordAnalyticsTaskWorker(context.Context, service.An
 func (*analyticsGuardRepo) ListAnalyticsTaskWorkers(context.Context) ([]service.AnalyticsTaskWorker, error) {
 	return nil, nil
 }
+func (*analyticsGuardRepo) GetAnalyticsProgress(context.Context) (*service.AnalyticsProgress, error) {
+	return &service.AnalyticsProgress{}, nil
+}
 
 func TestAnalyticsWorkerPersistenceKeepsLatestSuccessAndPrunesOldInstances(t *testing.T) {
 	db, mock := newSQLMock(t)
 	now := time.Now().UTC()
 	mock.ExpectExec("(?s)WITH expired AS.*DELETE FROM analytics_task_workers.*INSERT INTO analytics_task_workers.*COALESCE").
-		WithArgs("a", 1, int64(3), now, nil).WillReturnResult(sqlmock.NewResult(0, 1))
+		WithArgs("a", 1, int64(3), now, nil, "2026-11-01", now).WillReturnResult(sqlmock.NewResult(0, 1))
 	err := (&analyticsTaskRepository{db: db}).RecordAnalyticsTaskWorker(context.Background(),
-		service.AnalyticsTaskWorker{InstanceID: "a", Running: 1, ObservedVersion: 3, LastSeenAt: now})
+		service.AnalyticsTaskWorker{InstanceID: "a", Running: 1, ObservedVersion: 3, LastSeenAt: now, AnalyticsDay: "2026-11-01", AnalyticsStartedAt: &now})
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -91,7 +94,7 @@ func TestAnalyticsWorkerRegistrationRejectsPauseBetweenReadAndStart(t *testing.T
 	db, mock := newSQLMock(t)
 	now := time.Now().UTC()
 	mock.ExpectExec("(?s)WITH expired AS.*FOR SHARE.*INSERT INTO analytics_task_workers.*WHERE .*EXISTS").
-		WithArgs("a", 1, int64(3), now, nil).WillReturnResult(sqlmock.NewResult(0, 0))
+		WithArgs("a", 1, int64(3), now, nil, "", nil).WillReturnResult(sqlmock.NewResult(0, 0))
 	err := (&analyticsTaskRepository{db: db}).RecordAnalyticsTaskWorker(context.Background(),
 		service.AnalyticsTaskWorker{InstanceID: "a", Running: 1, ObservedVersion: 3, LastSeenAt: now})
 	require.ErrorIs(t, err, service.ErrAnalyticsTasksPaused)

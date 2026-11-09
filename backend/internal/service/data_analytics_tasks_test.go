@@ -59,6 +59,43 @@ func (r *analyticsTaskMemoryRepo) ListAnalyticsTaskWorkers(context.Context) ([]A
 	return out, nil
 }
 
+func (*analyticsTaskMemoryRepo) GetAnalyticsProgress(context.Context) (*AnalyticsProgress, error) {
+	return &AnalyticsProgress{}, nil
+}
+
+func TestAnalyticsDayProgressIsVisibleDuringWorkAndClearedOnCancellation(t *testing.T) {
+	repo := newAnalyticsTaskMemoryRepo()
+	repo.control.Enabled = true
+	s := NewAnalyticsTaskService(repo, "progress")
+	err := s.Run(context.Background(), func(ctx context.Context) error {
+		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-01"))
+		status, err := s.Status(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "running", status.State)
+		require.Equal(t, "2026-11-01", status.AnalyticsDay)
+		require.NotNil(t, status.AnalyticsStartedAt)
+		require.NotNil(t, status.LastSeenAt)
+		_, err = s.SetEnabled(context.Background(), false, 1, 7)
+		require.NoError(t, err)
+		return ctx.Err()
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	status, err := s.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "paused", status.State)
+	require.Empty(t, status.AnalyticsDay)
+	require.Nil(t, status.AnalyticsStartedAt)
+}
+
+func TestAnalyticsEnabledWithoutWorkerHeartbeatIsUnknown(t *testing.T) {
+	repo := newAnalyticsTaskMemoryRepo()
+	repo.control.Enabled = true
+	s := NewAnalyticsTaskService(repo, "no-worker")
+	status, err := s.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "unknown", status.State)
+}
+
 func TestAnalyticsTasksDisabledDoesNotExecute(t *testing.T) {
 	repo := newAnalyticsTaskMemoryRepo()
 	s := NewAnalyticsTaskService(repo, "a")

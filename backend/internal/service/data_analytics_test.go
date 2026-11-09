@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -118,6 +119,43 @@ type analyticsFeatureRepo struct {
 	DataAnalyticsRepository
 	called     bool
 	controlled bool
+	batch      func(context.Context) (bool, error)
+}
+
+func (r *analyticsFeatureRepo) RunAnalyticsBatch(ctx context.Context) (bool, error) {
+	return r.batch(ctx)
+}
+
+func TestAnalyticsBatchesFinishEachDayBeforeYielding(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		calls := 0
+		repo := &analyticsFeatureRepo{batch: func(ctx context.Context) (bool, error) {
+			calls++
+			select {
+			case <-time.After(3 * time.Minute):
+				return true, nil
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+		}}
+		s := NewDataAnalyticsService(repo, nil)
+		require.NoError(t, s.runBatches(context.Background()))
+		require.Equal(t, 2, calls)
+	})
+}
+
+func TestAnalyticsBatchStopsOnFailure(t *testing.T) {
+	calls := 0
+	repo := &analyticsFeatureRepo{batch: func(ctx context.Context) (bool, error) {
+		calls++
+		if calls == 2 {
+			return false, context.DeadlineExceeded
+		}
+		return true, nil
+	}}
+	s := NewDataAnalyticsService(repo, nil)
+	require.ErrorIs(t, s.runBatches(context.Background()), context.DeadlineExceeded)
+	require.Equal(t, 2, calls)
 }
 
 func (r *analyticsFeatureRepo) ApplyAnalyticsDirectory(ctx context.Context, _ string, _ time.Time, _, _ int64) error {

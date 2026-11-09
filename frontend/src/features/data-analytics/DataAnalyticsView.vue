@@ -26,6 +26,8 @@
       </div>
       <p v-if="error" role="alert" class="analytics-alert error">{{ error }}<button type="button" class="analytics-text-button" @click="load(true)">重新加载</button></p>
 
+      <AnalyticsProgress @loaded="taskStatus=$event" />
+
       <nav class="analytics-tabs" role="tablist" aria-label="数据分析视图">
         <button v-for="item in tabs" :id="`analytics-tab-${item.id}`" :key="item.id" type="button" role="tab" :class="{ active: tab===item.id }" :aria-selected="tab===item.id" :aria-controls="`analytics-panel-${item.id}`" :tabindex="tab===item.id ? 0 : -1" @click="setTab(item.id)" @keydown="tabKeydown($event,item.id)">
           {{ item.label }}<span v-if="item.id==='people' && directory" class="analytics-count">{{ directory.directory.people.length }}</span><span v-if="item.id==='maintenance' && directoryView.pending" class="analytics-count">{{ directoryView.pending }}</span>
@@ -41,12 +43,11 @@
           <span>{{ rangeLabel }} · 趋势{{ mode==='month' ? '按天' : '按月' }} · 北京时间</span>
         </div>
 
-        <div v-if="report && (!report.coverage.complete || report.coverage.last_error)" class="analytics-alert warning" role="status">
+        <div v-if="report && !report.coverage.complete" class="analytics-alert warning" role="status">
           <span v-if="!report.coverage.directory_ready">请先在「数据维护」预检并应用两份 SQL。启用前已经清理的原始历史无法恢复。</span>
-          <template v-else>已完成 {{ report.coverage.completed_days }} / {{ report.coverage.expected_days }} 天；待处理 {{ report.coverage.backlog_days }} 天，失败 {{ report.coverage.failed_days }} 天，待核算价格 {{ report.coverage.pending_requests }} 条。当前展示已发布结果。</template>
+          <template v-else>所选月份已完成 {{ report.coverage.completed_days }} / {{ report.coverage.expected_days }} 天；价格待补 {{ report.coverage.pending_requests }} 条请求。当前展示已发布结果，总体任务进度见上方。</template>
           <p v-if="report.coverage.history_gap">可用请求起于 {{ report.coverage.raw_history_start?.slice(0,10) }}，此前已清理的用量无法恢复。</p>
           <p v-for="issue in report.coverage.issues" :key="issue.day">{{ issue.day }}：{{ issue.message }}</p>
-          <p v-if="report.coverage.last_error">{{ report.coverage.last_error }}</p>
         </div>
         <p v-if="report && !enabled" class="analytics-paused"><Icon name="clock" size="sm" />后台统计已暂停，页面保留已发布结果。<a href="/admin/settings">前往系统设置</a></p>
 
@@ -140,7 +141,6 @@
       </div>
 
       <div v-else-if="tab==='maintenance'" id="analytics-panel-maintenance" role="tabpanel" aria-labelledby="analytics-tab-maintenance">
-        <AnalyticsTaskControl @loaded="taskStatus=$event" />
         <DirectoryPanel :enabled="enabled" :initial-state="directory" @loaded="directory=$event" @changed="directoryChanged" />
       </div>
       <div v-else id="analytics-panel-rules" role="tabpanel" aria-labelledby="analytics-tab-rules">
@@ -176,7 +176,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import Pagination from '@/components/common/Pagination.vue'
-import AnalyticsTaskControl from '@/components/admin/settings/AnalyticsTaskControl.vue'
+import AnalyticsProgress from './AnalyticsProgress.vue'
 import DirectoryPanel from './DirectoryPanel.vue'
 import PersonDrawer from './PersonDrawer.vue'
 import { dataAnalyticsAPI, type AnalyticsDirectoryState, type AnalyticsQuery, type AnalyticsReport, type AnalyticsRow, type AnalyticsTaskStatus } from '@/api/admin/dataAnalytics'
@@ -321,7 +321,8 @@ async function load(refreshDirectory=false){
   try{
     const data=await dataAnalyticsAPI.report(params,controller.signal)
     if(disposed||current!==sequence)return
-    report.value=data;appliedQuery.value=params;taskStatus.value=data.task_status
+    report.value=data;appliedQuery.value=params
+    if(taskStatus.value===undefined)taskStatus.value=data.task_status
     if(refreshDirectory||!directory.value){const state=await dataAnalyticsAPI.directory();if(disposed||current!==sequence)return;directory.value=state}
     await nextTick();if(current===sequence&&!disposed)draw()
   }catch(cause){if(current===sequence&&!controller.signal.aborted)error.value=cause instanceof Error?cause.message:'报表加载失败'}
@@ -344,7 +345,7 @@ async function download(){
   if(!report.value||!appliedQuery.value)return
   exporting.value=true;exportAbort=new AbortController()
   const params={...appliedQuery.value,search:'',page:1,export:true,versions:JSON.stringify(report.value.versions)}
-  try{await exportAnalytics(await dataAnalyticsAPI.report(params,exportAbort.signal));if(!disposed)app.showSuccess('分析报表已导出（8个工作表）')}
+  try{await exportAnalytics(await dataAnalyticsAPI.report(params,exportAbort.signal),exportAbort.signal);if(!disposed)app.showSuccess('分析报表已导出（含趋势图和成本组成）')}
   catch(cause){if(!disposed&&!exportAbort?.signal.aborted)app.showError(cause instanceof Error?cause.message:'导出失败，请刷新报表后重试')}
   finally{exporting.value=false}
 }

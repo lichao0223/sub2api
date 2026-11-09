@@ -12,11 +12,19 @@ export interface AnalyticsTaskStatus {
   state: 'idle' | 'running' | 'pausing' | 'paused' | 'unknown'
   running: number
   last_success_at: string | null
+  last_seen_at?: string | null
+  analytics_day?: string
+  analytics_started_at?: string | null
+  progress?: {
+    directory_ready: boolean; seeded: boolean; total_days: number; completed_days: number
+    backlog_days: number; failed_days: number; pending_requests: number; retry_at: string | null
+    last_success_at: string | null; last_error: string
+  }
 }
 
 export const analyticsTasksAPI = {
-  async status(): Promise<AnalyticsTaskStatus> {
-    return (await apiClient.get<AnalyticsTaskStatus>('/admin/settings/data-analytics')).data
+  async status(signal?: AbortSignal): Promise<AnalyticsTaskStatus> {
+    return (await apiClient.get<AnalyticsTaskStatus>('/admin/settings/data-analytics', { signal, timeout: 10000 })).data
   },
   async setEnabled(enabled: boolean, version: number): Promise<AnalyticsTaskControl> {
     return (await apiClient.put<AnalyticsTaskControl>('/admin/settings/data-analytics', { enabled, version })).data

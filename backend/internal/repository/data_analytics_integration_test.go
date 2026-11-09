@@ -57,7 +57,56 @@ func analyticsMigrationFixture(t *testing.T, partitioned bool) (*sql.Tx, context
 	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, string(migration))
 	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `CREATE TABLE analytics_task_workers(instance_id text PRIMARY KEY)`)
+	require.NoError(t, err)
+	migration, err = migrations.FS.ReadFile("923_data_analytics_progress.sql")
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, string(migration))
+	require.NoError(t, err)
 	return tx, ctx
+}
+
+func TestAnalyticsOverallProgressCountsDirtyPublishedDaysOnce(t *testing.T) {
+	tx, ctx := analyticsMigrationFixture(t, false)
+	_, err := tx.ExecContext(ctx, `
+      UPDATE analytics_runtime_state SET seeded=TRUE;
+      INSERT INTO analytics_bucket_state(day,computed_at,request_count,pending_count)
+        VALUES('2026-11-01',NOW(),1,10),('2026-11-02',NOW(),1,20);
+      INSERT INTO analytics_dirty_days(day,attempts,last_error,retry_after)
+        VALUES('2026-11-02',1,'timeout',NOW()+INTERVAL '5 minutes'),('2026-11-03',0,'',NULL);`)
+	require.NoError(t, err)
+	progress := &service.AnalyticsProgress{}
+	require.NoError(t, tx.QueryRowContext(ctx, analyticsProgressQuery).Scan(
+		&progress.DirectoryReady, &progress.Seeded, &progress.TotalDays, &progress.CompletedDays,
+		&progress.BacklogDays, &progress.FailedDays, &progress.PendingRequests, &progress.RetryAt,
+		&progress.LastSuccessAt, &progress.LastError))
+	require.True(t, progress.Seeded)
+	require.EqualValues(t, 3, progress.TotalDays)
+	require.EqualValues(t, 1, progress.CompletedDays)
+	require.EqualValues(t, 2, progress.BacklogDays)
+	require.EqualValues(t, 1, progress.FailedDays)
+	require.EqualValues(t, 30, progress.PendingRequests)
+	require.NotNil(t, progress.RetryAt)
+}
+
+func TestAnalyticsProgressMigrationRequeuesOldCanceledDaysAndIsIdempotent(t *testing.T) {
+	tx, ctx := analyticsMigrationFixture(t, false)
+	_, err := tx.ExecContext(ctx, `INSERT INTO analytics_dirty_days(day,attempts,last_error)
+      VALUES('2026-11-01',1,'pq: canceling statement due to user request'),('2026-11-02',1,'invalid price');`)
+	require.NoError(t, err)
+	migration, err := migrations.FS.ReadFile("923_data_analytics_progress.sql")
+	require.NoError(t, err)
+	for i := 0; i < 2; i++ {
+		_, err = tx.ExecContext(ctx, string(migration))
+		require.NoError(t, err)
+	}
+	var retry time.Time
+	var message string
+	require.NoError(t, tx.QueryRowContext(ctx, `SELECT retry_after,last_error FROM analytics_dirty_days WHERE day='2026-11-01'`).Scan(&retry, &message))
+	require.Contains(t, message, "已安排重试")
+	var untouched bool
+	require.NoError(t, tx.QueryRowContext(ctx, `SELECT retry_after IS NULL AND last_error='invalid price' FROM analytics_dirty_days WHERE day='2026-11-02'`).Scan(&untouched))
+	require.True(t, untouched)
 }
 
 func TestAnalyticsAllModesAndRetentionPreserveFacts(t *testing.T) {
