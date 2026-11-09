@@ -69,8 +69,12 @@ func TestAnalyticsDayProgressIsVisibleDuringWorkAndClearedOnCancellation(t *test
 	s := NewAnalyticsTaskService(repo, "progress")
 	err := s.Run(context.Background(), func(ctx context.Context) error {
 		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-01"))
+		first, err := s.Status(ctx)
+		require.NoError(t, err)
+		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-01"))
 		status, err := s.Status(ctx)
 		require.NoError(t, err)
+		require.Equal(t, first.AnalyticsStartedAt, status.AnalyticsStartedAt)
 		require.Equal(t, "running", status.State)
 		require.Equal(t, "2026-11-01", status.AnalyticsDay)
 		require.NotNil(t, status.AnalyticsStartedAt)

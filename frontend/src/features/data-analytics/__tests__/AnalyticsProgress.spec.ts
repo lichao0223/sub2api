@@ -24,7 +24,7 @@ describe('overall analytics progress',()=>{
     expect(wrapper.text()).toContain('25%')
     expect(wrapper.text()).toContain('正在核算')
     expect(wrapper.text()).toContain('2026-11-01')
-    expect(wrapper.text()).toContain('已用 1 分 0 秒')
+    expect(wrapper.text()).toContain('本批已用 1 分 0 秒')
     expect(wrapper.text()).toContain('实例心跳')
     expect(wrapper.text()).toContain('价格待补：100 条请求')
     expect(wrapper.get('progress').attributes()).toMatchObject({value:'10',max:'40'})

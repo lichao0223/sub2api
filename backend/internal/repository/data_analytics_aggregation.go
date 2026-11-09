@@ -17,6 +17,13 @@ import (
 const analyticsDimensions = "day,user_id,attribution,model,mode,source_id,source,issue"
 const analyticsMeasures = "input,output,cache_write,cache_read,requests,valid_requests,input_cost,output_cost,write_cost,read_cost,image_cost,request_cost"
 
+// shortcut: today's refresh waits behind ready history; interleave if backfills need a live freshness guarantee.
+const analyticsNextDayQuery = `SELECT d.day,d.version,d.reason,d.source_change_from
+	FROM analytics_dirty_days d LEFT JOIN analytics_bucket_state b ON b.day=d.day
+	WHERE (d.attempts=0 OR COALESCE(d.retry_after,d.changed_at+INTERVAL '1 hour')<=NOW())
+	  AND (d.day<>$1::date OR d.reason<>'usage' OR b.computed_at IS NULL OR b.computed_at<=NOW()-INTERVAL '5 minutes')
+	ORDER BY (d.day=$1::date),d.attempts>0,(d.day>=DATE_TRUNC('month',$1::date::timestamp)::date) DESC,d.day LIMIT 1`
+
 func analyticsSums(prefix string) string {
 	var fields []string
 	for _, field := range strings.Split(analyticsMeasures, ",") {
@@ -138,9 +145,7 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	var version int64
 	var reason string
 	var changeFrom sql.NullTime
-	err = tx.QueryRowContext(ctx, `SELECT day,version,reason,source_change_from FROM analytics_dirty_days
-		WHERE attempts=0 OR COALESCE(retry_after,changed_at+INTERVAL '1 hour')<=NOW()
-		ORDER BY attempts>0,(day>=DATE_TRUNC('month',NOW())::date) DESC,day LIMIT 1`).Scan(&day, &version, &reason, &changeFrom)
+	err = tx.QueryRowContext(ctx, analyticsNextDayQuery, now.Format("2006-01-02")).Scan(&day, &version, &reason, &changeFrom)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, tx.Commit()
 	}
@@ -229,14 +234,14 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 		GROUP BY d.day,COALESCE(a.org_ids[x.n],'0'),x.n`, date); err != nil {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_bucket_state(day,computed_at,request_count,pending_count,archived_count)
-		SELECT $1::date,NOW(),COALESCE(SUM(requests),0),COALESCE(SUM(requests) FILTER(WHERE issue<>''),0),$2
-		FROM analytics_daily WHERE day=$1::date ON CONFLICT(day) DO UPDATE SET
-		computed_at=NOW(),request_count=EXCLUDED.request_count,pending_count=EXCLUDED.pending_count`, date, archived); err != nil {
-		return false, err
-	}
 	month := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, loc)
 	if err := r.publishAnalyticsMonth(ctx, tx, month, now, false); err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_bucket_state(day,computed_at,request_count,pending_count,archived_count)
+	SELECT $1::date,clock_timestamp(),COALESCE(SUM(requests),0),COALESCE(SUM(requests) FILTER(WHERE issue<>''),0),$2
+	FROM analytics_daily WHERE day=$1::date ON CONFLICT(day) DO UPDATE SET
+	computed_at=EXCLUDED.computed_at,request_count=EXCLUDED.request_count,pending_count=EXCLUDED.pending_count`, date, archived); err != nil {
 		return false, err
 	}
 	if err := checkAnalyticsPublication(ctx, tx); err != nil {
@@ -245,7 +250,7 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	if _, err := tx.ExecContext(ctx, `DELETE FROM analytics_dirty_days WHERE day=$1::date AND version=$2`, date, version); err != nil {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE analytics_runtime_state SET last_success_at=NOW(),last_error='' WHERE id=1`); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE analytics_runtime_state SET last_success_at=clock_timestamp(),last_error='' WHERE id=1`); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

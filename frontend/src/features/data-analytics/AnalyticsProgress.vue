@@ -8,7 +8,7 @@
       <div class="analytics-progress-summary"><strong>{{ progress.completed_days }} / {{ progress.total_days }} 天 <span>（{{ percent }}%）</span></strong><span>全部历史范围 · 待处理 {{ progress.backlog_days }} 天，其中失败 {{ progress.failed_days }} 天</span></div>
       <progress :value="progress.completed_days" :max="Math.max(progress.total_days,1)" aria-label="全部历史核算完成天数"></progress>
       <div class="analytics-progress-details">
-        <span>当前核算：{{ status?.analytics_day || '—' }}<template v-if="status?.analytics_started_at"> · 已用 {{ elapsed(status.analytics_started_at) }}</template></span>
+        <span>当前核算：{{ status?.analytics_day || '—' }}<template v-if="status?.analytics_started_at"> · 本批已用 {{ elapsed(status.analytics_started_at) }}</template></span>
         <span>最近发布：{{ dateTime(progress.last_success_at) }}</span>
         <span>实例心跳：{{ dateTime(status?.last_seen_at) }}</span>
         <span v-if="progress.failed_days && progress.retry_at">重试时间：{{ dateTime(progress.retry_at) }}<template v-if="new Date(progress.retry_at).getTime()<=checkedAt">（等待下一轮调度）</template></span>

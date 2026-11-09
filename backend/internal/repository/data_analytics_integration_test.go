@@ -89,6 +89,41 @@ func TestAnalyticsOverallProgressCountsDirtyPublishedDaysOnce(t *testing.T) {
 	require.NotNil(t, progress.RetryAt)
 }
 
+func TestAnalyticsNextDayLetsHistoryAdvanceDuringLiveTraffic(t *testing.T) {
+	tx, ctx := analyticsMigrationFixture(t, false)
+	_, err := tx.ExecContext(ctx, `
+	  INSERT INTO analytics_dirty_days(day) VALUES('2026-10-31'),('2026-11-09');
+	  INSERT INTO analytics_dirty_days(day,attempts,retry_after) VALUES('2026-11-01',1,NOW()+INTERVAL '1 hour');
+	  INSERT INTO analytics_bucket_state(day,computed_at,request_count,pending_count)
+	    VALUES('2026-11-09',NOW()-INTERVAL '6 minutes',10,0);`)
+	require.NoError(t, err)
+	next := func() (string, error) {
+		var day time.Time
+		var version int64
+		var reason string
+		var changeFrom sql.NullTime
+		err := tx.QueryRowContext(ctx, analyticsNextDayQuery, "2026-11-09").Scan(&day, &version, &reason, &changeFrom)
+		return day.Format("2006-01-02"), err
+	}
+	day, err := next()
+	require.NoError(t, err)
+	require.Equal(t, "2026-10-31", day)
+	_, err = tx.ExecContext(ctx, `DELETE FROM analytics_dirty_days WHERE day='2026-10-31'`)
+	require.NoError(t, err)
+	day, err = next()
+	require.NoError(t, err)
+	require.Equal(t, "2026-11-09", day)
+	_, err = tx.ExecContext(ctx, `UPDATE analytics_bucket_state SET computed_at=NOW() WHERE day='2026-11-09'`)
+	require.NoError(t, err)
+	_, err = next()
+	require.ErrorIs(t, err, sql.ErrNoRows)
+	_, err = tx.ExecContext(ctx, `UPDATE analytics_dirty_days SET reason='rebuild' WHERE day='2026-11-09'`)
+	require.NoError(t, err)
+	day, err = next()
+	require.NoError(t, err)
+	require.Equal(t, "2026-11-09", day)
+}
+
 func TestAnalyticsProgressMigrationRequeuesOldCanceledDaysAndIsIdempotent(t *testing.T) {
 	tx, ctx := analyticsMigrationFixture(t, false)
 	_, err := tx.ExecContext(ctx, `INSERT INTO analytics_dirty_days(day,attempts,last_error)

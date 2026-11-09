@@ -204,9 +204,11 @@ func (s *AnalyticsTaskService) Run(ctx context.Context, work func(context.Contex
 		if err := reportCtx.Err(); err != nil {
 			return err
 		}
-		now := time.Now().UTC()
 		s.analyticsTaskID = id
-		s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = day, &now
+		if s.worker.AnalyticsDay != day || s.worker.AnalyticsStartedAt == nil {
+			now := time.Now().UTC()
+			s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = day, &now
+		}
 		return s.recordLocked(reportCtx)
 	})
 	err = s.recordLocked(ctx)
