@@ -68,10 +68,15 @@ func TestAnalyticsDayProgressIsVisibleDuringWorkAndClearedOnCancellation(t *test
 	repo.control.Enabled = true
 	s := NewAnalyticsTaskService(repo, "progress")
 	err := s.Run(context.Background(), func(ctx context.Context) error {
-		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-01"))
+		require.NoError(t, ReportAnalyticsStage(ctx, "prepare", ""))
+		preparing, err := s.Status(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "prepare", preparing.AnalyticsStage)
+		require.NotNil(t, preparing.AnalyticsStartedAt)
+		require.NoError(t, ReportAnalyticsStage(ctx, "aggregate", "2026-11-01"))
 		first, err := s.Status(ctx)
 		require.NoError(t, err)
-		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-01"))
+		require.NoError(t, ReportAnalyticsStage(ctx, "aggregate", "2026-11-01"))
 		status, err := s.Status(ctx)
 		require.NoError(t, err)
 		require.Equal(t, first.AnalyticsStartedAt, status.AnalyticsStartedAt)
@@ -79,6 +84,11 @@ func TestAnalyticsDayProgressIsVisibleDuringWorkAndClearedOnCancellation(t *test
 		require.Equal(t, "2026-11-01", status.AnalyticsDay)
 		require.NotNil(t, status.AnalyticsStartedAt)
 		require.NotNil(t, status.LastSeenAt)
+		require.NoError(t, ReportAnalyticsStage(ctx, "publish", "2026-11-01"))
+		publishing, err := s.Status(ctx)
+		require.NoError(t, err)
+		require.Equal(t, "publish", publishing.AnalyticsStage)
+		require.Equal(t, status.AnalyticsStartedAt, publishing.AnalyticsStartedAt)
 		_, err = s.SetEnabled(context.Background(), false, 1, 7)
 		require.NoError(t, err)
 		return ctx.Err()
@@ -88,6 +98,7 @@ func TestAnalyticsDayProgressIsVisibleDuringWorkAndClearedOnCancellation(t *test
 	require.NoError(t, err)
 	require.Equal(t, "paused", status.State)
 	require.Empty(t, status.AnalyticsDay)
+	require.Empty(t, status.AnalyticsStage)
 	require.Nil(t, status.AnalyticsStartedAt)
 }
 
@@ -115,7 +126,7 @@ func TestAnalyticsTasksRestartIgnoresStaleRunningWorker(t *testing.T) {
 	require.Zero(t, idle.Running)
 	require.Empty(t, idle.AnalyticsDay)
 	require.NoError(t, s.Run(ctx, func(ctx context.Context) error {
-		require.NoError(t, ReportAnalyticsDay(ctx, "2026-11-09"))
+		require.NoError(t, ReportAnalyticsStage(ctx, "aggregate", "2026-11-09"))
 		status, err := s.Status(ctx)
 		require.NoError(t, err)
 		require.Equal(t, "running", status.State)

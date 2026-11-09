@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"testing"
 	"time"
 
@@ -27,11 +28,17 @@ func analyticsMigrationFixture(t *testing.T, partitioned bool) (*sql.Tx, context
 	schema := fmt.Sprintf("analytics_fixture_%d", time.Now().UnixNano())
 	_, err = tx.ExecContext(ctx, `CREATE SCHEMA `+schema+`; SET LOCAL search_path TO `+schema)
 	require.NoError(t, err)
+	seedAnalyticsFixture(t, ctx, tx, partitioned)
+	return tx, ctx
+}
+
+func seedAnalyticsFixture(t *testing.T, ctx context.Context, tx *sql.Tx, partitioned bool) {
+	t.Helper()
 	suffix := ""
 	if partitioned {
 		suffix = " PARTITION BY RANGE(created_at)"
 	}
-	_, err = tx.ExecContext(ctx, `CREATE TABLE usage_logs(
+	_, err := tx.ExecContext(ctx, `CREATE TABLE usage_logs(
       id bigint,user_id bigint,account_id bigint,model text,upstream_model text,created_at timestamptz,
       input_tokens integer DEFAULT 0,output_tokens integer DEFAULT 0,cache_creation_tokens integer DEFAULT 0,cache_read_tokens integer DEFAULT 0,
       image_input_tokens integer DEFAULT 0,image_output_tokens integer DEFAULT 0,image_count integer DEFAULT 0,video_count integer DEFAULT 0,
@@ -57,13 +64,97 @@ func analyticsMigrationFixture(t *testing.T, partitioned bool) (*sql.Tx, context
 	require.NoError(t, err)
 	_, err = tx.ExecContext(ctx, string(migration))
 	require.NoError(t, err)
-	_, err = tx.ExecContext(ctx, `CREATE TABLE analytics_task_workers(instance_id text PRIMARY KEY)`)
+	_, err = tx.ExecContext(ctx, `CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT,updated_at TIMESTAMPTZ);
+		CREATE TABLE cost_jobs(job_key TEXT,last_success_at TIMESTAMPTZ)`)
 	require.NoError(t, err)
-	migration, err = migrations.FS.ReadFile("923_data_analytics_progress.sql")
+	for _, name := range []string{"921_data_analytics_task_control.sql", "923_data_analytics_progress.sql", "924_data_analytics_stage.sql"} {
+		migration, err = migrations.FS.ReadFile(name)
+		require.NoError(t, err)
+		_, err = tx.ExecContext(ctx, string(migration))
+		require.NoError(t, err)
+	}
+}
+
+func TestAnalyticsHistoryPublishesWhileTodayInsertIsUncommitted(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	schema := fmt.Sprintf("analytics_concurrent_%d", time.Now().UnixNano())
+	_, err := integrationDB.ExecContext(ctx, `CREATE SCHEMA `+schema)
 	require.NoError(t, err)
-	_, err = tx.ExecContext(ctx, string(migration))
+	t.Cleanup(func() { _, _ = integrationDB.ExecContext(context.Background(), `DROP SCHEMA `+schema+` CASCADE`) })
+	dsn, err := url.Parse(integrationPostgresDSN)
 	require.NoError(t, err)
-	return tx, ctx
+	query := dsn.Query()
+	query.Set("search_path", schema)
+	dsn.RawQuery = query.Encode()
+	db, err := sql.Open("postgres", dsn.String())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = tx.Rollback() })
+	seedAnalyticsFixture(t, ctx, tx, false)
+	_, err = tx.ExecContext(ctx, `UPDATE settings SET value='{"enabled":true,"version":1}';
+		UPDATE analytics_runtime_state SET seeded=TRUE,directory_synced_at=NOW();
+		INSERT INTO analytics_directory_versions(digest,data,effective_at,actor_id) VALUES('test','{}',NOW(),0);
+		INSERT INTO analytics_dirty_days(day) SELECT (NOW() AT TIME ZONE 'Asia/Shanghai')::date-i FROM generate_series(1,2) i`)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+	writer, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = writer.Rollback() })
+	_, err = writer.ExecContext(ctx, `INSERT INTO analytics_dirty_days(day) VALUES((NOW() AT TIME ZONE 'Asia/Shanghai')::date)`)
+	require.NoError(t, err)
+
+	// Hold publication to check the stage through a separate, real database connection.
+	blocker, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = blocker.Rollback() })
+	_, err = blocker.ExecContext(ctx, `LOCK TABLE analytics_monthly IN ACCESS EXCLUSIVE MODE`)
+	require.NoError(t, err)
+	tasks := service.NewAnalyticsTaskService(NewAnalyticsTaskRepository(db), "concurrent-test")
+	repo := &dataAnalyticsRepository{db: db}
+	finished := make(chan error, 1)
+	go func() {
+		finished <- tasks.Run(ctx, func(ctx context.Context) error {
+			more, err := repo.RunAnalyticsBatch(ctx)
+			if err == nil && !more {
+				return fmt.Errorf("historical batch did not run")
+			}
+			return err
+		})
+	}()
+	var live *service.AnalyticsTaskStatus
+	require.Eventually(t, func() bool {
+		live, err = tasks.Status(ctx)
+		return err == nil && live.AnalyticsStage == "publish"
+	}, 5*time.Second, 20*time.Millisecond, "history must reach publication without waiting for today's insert")
+	require.NotEmpty(t, live.AnalyticsDay)
+	require.NotNil(t, live.AnalyticsStartedAt)
+	require.NoError(t, blocker.Rollback())
+	require.NoError(t, <-finished)
+	progress, err := tasks.Status(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, progress.Progress.CompletedDays)
+	require.EqualValues(t, 1, progress.Progress.BacklogDays)
+	require.Empty(t, progress.AnalyticsStage)
+	require.Empty(t, progress.AnalyticsDay)
+	// A second historical day also publishes while today's transaction remains open.
+	more, err := repo.RunAnalyticsBatch(ctx)
+	require.NoError(t, err)
+	require.True(t, more)
+	progress, err = tasks.Status(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, progress.Progress.CompletedDays)
+	require.Zero(t, progress.Progress.BacklogDays)
+	require.NoError(t, writer.Rollback())
+	// An idle day still accrues fixed purchases without any requests.
+	more, err = repo.RunAnalyticsBatch(ctx)
+	require.NoError(t, err)
+	require.True(t, more)
+	more, err = repo.RunAnalyticsBatch(ctx)
+	require.NoError(t, err)
+	require.False(t, more, "today must retain its five-minute refresh cooldown")
 }
 
 func TestAnalyticsOverallProgressCountsDirtyPublishedDaysOnce(t *testing.T) {

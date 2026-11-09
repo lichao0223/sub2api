@@ -284,7 +284,7 @@ func ProvideDataAnalyticsService(repo DataAnalyticsRepository, tasks *AnalyticsT
 		}
 	}
 	go run()
-	wheel.ScheduleRecurring("analytics:aggregation", 5*time.Minute, run)
+	wheel.ScheduleRecurring("analytics:aggregation", 30*time.Second, run)
 	wheel.ScheduleRecurring("analytics:retention", time.Hour, maintenance)
 	return s
 }

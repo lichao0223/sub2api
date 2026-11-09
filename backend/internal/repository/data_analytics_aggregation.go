@@ -33,6 +33,10 @@ func analyticsSums(prefix string) string {
 }
 
 func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more bool, runErr error) {
+	stage := "prepare"
+	if err := service.ReportAnalyticsStage(ctx, stage, ""); err != nil {
+		return false, err
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -46,6 +50,13 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 		}
 		if runErr != nil && !errors.Is(runErr, context.Canceled) && !errors.Is(runErr, service.ErrAnalyticsTasksPaused) && !errors.Is(runErr, service.ErrCostAggregationBusy) {
 			message, retryDelay := analyticsBatchFailure(runErr)
+			if failedDay == "" {
+				message = "准备核算队列或同步目录失败：" + runErr.Error()
+			} else if stage == "publish" {
+				message = failedDay + " 发布统计：" + message
+			} else {
+				message = failedDay + " 汇总日用量：" + message
+			}
 			cleanup, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			_, _ = r.db.ExecContext(cleanup, `UPDATE analytics_runtime_state SET last_error=$1 WHERE id=1`, message)
@@ -100,8 +111,9 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
       SELECT d::date,'catchup' FROM generate_series(
         GREATEST((DATE_TRUNC('month',NOW() AT TIME ZONE 'Asia/Shanghai')-INTERVAL '59 months')::date,
           COALESCE((SELECT MAX(day)+1 FROM analytics_bucket_state),(NOW() AT TIME ZONE 'Asia/Shanghai')::date)),
-        (NOW() AT TIME ZONE 'Asia/Shanghai')::date,INTERVAL '1 day') d
-      WHERE NOT EXISTS(SELECT 1 FROM analytics_bucket_state s WHERE s.day=d::date) ON CONFLICT DO NOTHING`); err != nil {
+        (NOW() AT TIME ZONE 'Asia/Shanghai')::date-1,INTERVAL '1 day') d
+      WHERE NOT EXISTS(SELECT 1 FROM analytics_bucket_state s WHERE s.day=d::date)
+        AND NOT EXISTS(SELECT 1 FROM analytics_dirty_days q WHERE q.day=d::date) ON CONFLICT DO NOTHING`); err != nil {
 		return false, err
 	}
 	var syncDirectory bool
@@ -135,17 +147,25 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 			return false, err
 		}
 	}
-	// Today must accrue fixed purchases even when there were no model calls.
-	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_dirty_days(day) SELECT $1::date
-		WHERE NOT EXISTS(SELECT 1 FROM analytics_bucket_state WHERE day=$1::date AND computed_at>NOW()-INTERVAL '5 minutes')
-		ON CONFLICT DO NOTHING`, now.Format("2006-01-02")); err != nil {
-		return false, err
-	}
 	var day time.Time
 	var version int64
 	var reason string
 	var changeFrom sql.NullTime
-	err = tx.QueryRowContext(ctx, analyticsNextDayQuery, now.Format("2006-01-02")).Scan(&day, &version, &reason, &changeFrom)
+	today := now.Format("2006-01-02")
+	nextDay := func() error {
+		return tx.QueryRowContext(ctx, analyticsNextDayQuery, today).Scan(&day, &version, &reason, &changeFrom)
+	}
+	err = nextDay()
+	if errors.Is(err, sql.ErrNoRows) {
+		// Do not touch today's queue row while historical work can proceed: live writes may hold it.
+		if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_dirty_days(day) SELECT $1::date
+			WHERE NOT EXISTS(SELECT 1 FROM analytics_dirty_days WHERE day=$1::date)
+			  AND NOT EXISTS(SELECT 1 FROM analytics_bucket_state WHERE day=$1::date AND computed_at>NOW()-INTERVAL '5 minutes')
+			ON CONFLICT DO NOTHING`, today); err != nil {
+			return false, err
+		}
+		err = nextDay()
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, tx.Commit()
 	}
@@ -154,7 +174,8 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	}
 	date := day.Format("2006-01-02")
 	failedDay, failedVersion = date, version
-	if err := service.ReportAnalyticsDay(ctx, date); err != nil {
+	stage = "aggregate"
+	if err := service.ReportAnalyticsStage(ctx, stage, date); err != nil {
 		return false, err
 	}
 	var pruned bool
@@ -163,6 +184,10 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	}
 	if pruned && reason == "identity" {
 		month := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, loc)
+		stage = "publish"
+		if err := service.ReportAnalyticsStage(ctx, stage, date); err != nil {
+			return false, err
+		}
 		if err := r.publishAnalyticsMonth(ctx, tx, month, now, true); err != nil {
 			return false, err
 		}
@@ -235,6 +260,10 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 		return false, err
 	}
 	month := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, loc)
+	stage = "publish"
+	if err := service.ReportAnalyticsStage(ctx, stage, date); err != nil {
+		return false, err
+	}
 	if err := r.publishAnalyticsMonth(ctx, tx, month, now, false); err != nil {
 		return false, err
 	}

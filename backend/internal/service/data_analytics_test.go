@@ -158,6 +158,27 @@ func TestAnalyticsBatchStopsOnFailure(t *testing.T) {
 	require.Equal(t, 2, calls)
 }
 
+func TestAnalyticsSchedulerContinuesBacklogWithinThirtySeconds(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		control := newAnalyticsTaskMemoryRepo()
+		control.control.Enabled = true
+		calls := 0
+		repo := &analyticsFeatureRepo{batch: func(context.Context) (bool, error) {
+			calls++
+			return calls < 40, nil
+		}}
+		wheel, err := NewTimingWheelService()
+		require.NoError(t, err)
+		defer wheel.Stop()
+		ProvideDataAnalyticsService(repo, NewAnalyticsTaskService(control, "scheduler"), wheel)
+		synctest.Wait()
+		require.Equal(t, 31, calls)
+		time.Sleep(31 * time.Second)
+		synctest.Wait()
+		require.Equal(t, 40, calls, "backlog must resume without the old five-minute gap")
+	})
+}
+
 func (r *analyticsFeatureRepo) ApplyAnalyticsDirectory(ctx context.Context, _ string, _ time.Time, _, _ int64) error {
 	r.called = true
 	_, r.controlled = AnalyticsTaskVersion(ctx)

@@ -14,6 +14,7 @@ export interface AnalyticsTaskStatus {
   last_success_at: string | null
   last_seen_at?: string | null
   analytics_day?: string
+  analytics_stage?: string
   analytics_started_at?: string | null
   progress?: {
     directory_ready: boolean; seeded: boolean; total_days: number; completed_days: number

@@ -8,7 +8,7 @@ vi.mock('@/api/admin/dataAnalytics',()=>({analyticsTasksAPI:api}))
 function status():AnalyticsTaskStatus {
   return {
     control:{enabled:true,version:1,updated_at:null,updated_by:0},state:'running',running:1,last_success_at:null,
-    last_seen_at:'2026-11-09T02:00:00Z',analytics_day:'2026-11-01',analytics_started_at:'2026-11-09T01:59:00Z',
+    last_seen_at:'2026-11-09T02:00:00Z',analytics_stage:'aggregate',analytics_day:'2026-11-01',analytics_started_at:'2026-11-09T01:59:00Z',
     progress:{directory_ready:true,seeded:true,total_days:40,completed_days:10,backlog_days:30,failed_days:1,
       pending_requests:100,retry_at:'2026-11-09T02:05:00Z',last_success_at:'2026-11-09T01:58:00Z',last_error:''},
   }
@@ -18,6 +18,30 @@ function render(){const wrapper=mount(AnalyticsProgress);wrappers.push(wrapper);
 beforeEach(()=>{vi.useFakeTimers();vi.setSystemTime(new Date('2026-11-09T02:00:00Z'));api.status.mockReset();api.status.mockResolvedValue(status())})
 afterEach(()=>{wrappers.forEach(wrapper=>wrapper.unmount());wrappers.length=0;vi.useRealTimers()})
 describe('overall analytics progress',()=>{
+  it('shows preparation before a day is selected, then the publication stage',async()=>{
+    const preparing=status();preparing.analytics_stage='prepare';preparing.analytics_day=''
+    api.status.mockResolvedValue(preparing)
+    const wrapper=render();await flushPromises()
+    expect(wrapper.text()).toContain('当前核算：准备队列、同步目录')
+    expect(wrapper.text()).toContain('本批已用 1 分 0 秒')
+    expect(wrapper.text()).not.toContain('当前核算：—')
+    const publishing=status();publishing.analytics_stage='publish'
+    api.status.mockResolvedValue(publishing)
+    await vi.advanceTimersByTimeAsync(10_000);await flushPromises()
+    expect(wrapper.text()).toContain('2026-11-01 · 发布统计')
+  })
+  it('does not mistake other background work or a paused instance for active day calculation',async()=>{
+    const other=status();other.analytics_stage='';other.analytics_day='';other.analytics_started_at=null
+    api.status.mockResolvedValue(other)
+    const wrapper=render();await flushPromises()
+    expect(wrapper.text()).toContain('当前核算：等待调度')
+    expect(wrapper.text()).not.toContain('后台任务运行中')
+    const paused=status();paused.control.enabled=false;paused.state='pausing'
+    api.status.mockResolvedValue(paused)
+    await vi.advanceTimersByTimeAsync(10_000);await flushPromises()
+    expect(wrapper.text()).toContain('当前核算：正在暂停')
+    expect(wrapper.text()).not.toContain('本批已用')
+  })
   it('shows global completion, current day, elapsed time, heartbeat and separate missing prices',async()=>{
     const wrapper=render();await flushPromises()
     expect(wrapper.text()).toContain('10 / 40 天')

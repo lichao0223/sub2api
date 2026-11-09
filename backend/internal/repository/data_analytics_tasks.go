@@ -64,14 +64,14 @@ func (r *analyticsTaskRepository) RecordAnalyticsTaskWorker(ctx context.Context,
 	), control AS MATERIALIZED (
 	  SELECT value::jsonb config FROM settings WHERE key='data_analytics.tasks_enabled' FOR SHARE
 	)
-	INSERT INTO analytics_task_workers(instance_id,running,observed_version,last_seen_at,last_success_at,analytics_day,analytics_started_at)
-	SELECT $1::varchar,$2::integer,$3::bigint,$4::timestamptz,$5::timestamptz,$6::text,$7::timestamptz WHERE $2::integer=0 OR EXISTS(
+	INSERT INTO analytics_task_workers(instance_id,running,observed_version,last_seen_at,last_success_at,analytics_day,analytics_started_at,analytics_stage)
+	SELECT $1::varchar,$2::integer,$3::bigint,$4::timestamptz,$5::timestamptz,$6::text,$7::timestamptz,$8::text WHERE $2::integer=0 OR EXISTS(
 	  SELECT 1 FROM control WHERE (config->>'enabled')::boolean AND (config->>'version')::bigint=$3
 	) ON CONFLICT(instance_id) DO UPDATE SET
 	  running=EXCLUDED.running,observed_version=EXCLUDED.observed_version,last_seen_at=EXCLUDED.last_seen_at,
 	  last_success_at=COALESCE(EXCLUDED.last_success_at,analytics_task_workers.last_success_at),
-	  analytics_day=EXCLUDED.analytics_day,analytics_started_at=EXCLUDED.analytics_started_at`,
-		worker.InstanceID, worker.Running, worker.ObservedVersion, worker.LastSeenAt, worker.LastSuccessAt, worker.AnalyticsDay, worker.AnalyticsStartedAt)
+	  analytics_day=EXCLUDED.analytics_day,analytics_started_at=EXCLUDED.analytics_started_at,analytics_stage=EXCLUDED.analytics_stage`,
+		worker.InstanceID, worker.Running, worker.ObservedVersion, worker.LastSeenAt, worker.LastSuccessAt, worker.AnalyticsDay, worker.AnalyticsStartedAt, worker.AnalyticsStage)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (r *analyticsTaskRepository) RecordAnalyticsTaskWorker(ctx context.Context,
 }
 
 func (r *analyticsTaskRepository) ListAnalyticsTaskWorkers(ctx context.Context) ([]service.AnalyticsTaskWorker, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT instance_id,running,observed_version,last_seen_at,last_success_at,analytics_day,analytics_started_at FROM analytics_task_workers`)
+	rows, err := r.db.QueryContext(ctx, `SELECT instance_id,running,observed_version,last_seen_at,last_success_at,analytics_day,analytics_started_at,analytics_stage FROM analytics_task_workers`)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (r *analyticsTaskRepository) ListAnalyticsTaskWorkers(ctx context.Context) 
 	workers := make([]service.AnalyticsTaskWorker, 0)
 	for rows.Next() {
 		var worker service.AnalyticsTaskWorker
-		if err := rows.Scan(&worker.InstanceID, &worker.Running, &worker.ObservedVersion, &worker.LastSeenAt, &worker.LastSuccessAt, &worker.AnalyticsDay, &worker.AnalyticsStartedAt); err != nil {
+		if err := rows.Scan(&worker.InstanceID, &worker.Running, &worker.ObservedVersion, &worker.LastSeenAt, &worker.LastSuccessAt, &worker.AnalyticsDay, &worker.AnalyticsStartedAt, &worker.AnalyticsStage); err != nil {
 			return nil, err
 		}
 		workers = append(workers, worker)

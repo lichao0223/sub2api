@@ -33,6 +33,7 @@ type AnalyticsTaskWorker struct {
 	LastSeenAt         time.Time  `json:"last_seen_at"`
 	LastSuccessAt      *time.Time `json:"last_success_at"`
 	AnalyticsDay       string     `json:"analytics_day"`
+	AnalyticsStage     string     `json:"analytics_stage"`
 	AnalyticsStartedAt *time.Time `json:"analytics_started_at"`
 }
 
@@ -56,6 +57,7 @@ type AnalyticsTaskStatus struct {
 	LastSuccessAt      *time.Time           `json:"last_success_at"`
 	LastSeenAt         *time.Time           `json:"last_seen_at"`
 	AnalyticsDay       string               `json:"analytics_day"`
+	AnalyticsStage     string               `json:"analytics_stage"`
 	AnalyticsStartedAt *time.Time           `json:"analytics_started_at"`
 	Progress           *AnalyticsProgress   `json:"progress"`
 }
@@ -99,12 +101,12 @@ func ProvideAnalyticsTaskService(repo AnalyticsTaskRepository, wheel *TimingWhee
 }
 
 type analyticsTaskVersionKey struct{}
-type analyticsDayReporterKey struct{}
+type analyticsStageReporterKey struct{}
 
-// Report outside the publishing transaction so readers can see the day while it runs.
-func ReportAnalyticsDay(ctx context.Context, day string) error {
-	if report, ok := ctx.Value(analyticsDayReporterKey{}).(func(context.Context, string) error); ok {
-		return report(ctx, day)
+// Report outside the publishing transaction so readers can see work before it commits.
+func ReportAnalyticsStage(ctx context.Context, stage, day string) error {
+	if report, ok := ctx.Value(analyticsStageReporterKey{}).(func(context.Context, string, string) error); ok {
+		return report(ctx, stage, day)
 	}
 	return nil
 }
@@ -198,13 +200,14 @@ func (s *AnalyticsTaskService) Run(ctx context.Context, work func(context.Contex
 	s.nextID++
 	id := s.nextID
 	s.tasks[id] = cancel
-	taskCtx = context.WithValue(taskCtx, analyticsDayReporterKey{}, func(reportCtx context.Context, day string) error {
+	taskCtx = context.WithValue(taskCtx, analyticsStageReporterKey{}, func(reportCtx context.Context, stage, day string) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if err := reportCtx.Err(); err != nil {
 			return err
 		}
 		s.analyticsTaskID = id
+		s.worker.AnalyticsStage = stage
 		if s.worker.AnalyticsDay != day || s.worker.AnalyticsStartedAt == nil {
 			now := time.Now().UTC()
 			s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = day, &now
@@ -226,7 +229,7 @@ func (s *AnalyticsTaskService) Run(ctx context.Context, work func(context.Contex
 		defer s.mu.Unlock()
 		delete(s.tasks, id)
 		if s.analyticsTaskID == id {
-			s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = "", nil
+			s.worker.AnalyticsStage, s.worker.AnalyticsDay, s.worker.AnalyticsStartedAt = "", "", nil
 			s.analyticsTaskID = 0
 		}
 		cancel()
@@ -285,9 +288,11 @@ func (s *AnalyticsTaskService) Status(ctx context.Context) (*AnalyticsTaskStatus
 			staleRunning = staleRunning || worker.Running > 0
 			continue
 		}
-		if worker.AnalyticsDay != "" && worker.AnalyticsStartedAt != nil &&
-			(status.AnalyticsStartedAt == nil || worker.AnalyticsStartedAt.After(*status.AnalyticsStartedAt)) {
+		if worker.Running > 0 && worker.ObservedVersion == control.Version && worker.AnalyticsStartedAt != nil &&
+			(status.AnalyticsStartedAt == nil || (worker.AnalyticsDay != "" && status.AnalyticsDay == "") ||
+				((worker.AnalyticsDay != "") == (status.AnalyticsDay != "") && worker.AnalyticsStartedAt.After(*status.AnalyticsStartedAt))) {
 			status.AnalyticsDay, status.AnalyticsStartedAt = worker.AnalyticsDay, worker.AnalyticsStartedAt
+			status.AnalyticsStage = worker.AnalyticsStage
 		}
 		status.Running += worker.Running
 		if !control.Enabled && worker.ObservedVersion != control.Version {
