@@ -17,11 +17,11 @@ import (
 const analyticsDimensions = "day,user_id,attribution,model,mode,source_id,source,issue"
 const analyticsMeasures = "input,output,cache_write,cache_read,requests,valid_requests,input_cost,output_cost,write_cost,read_cost,image_cost,request_cost"
 
-// shortcut: today's refresh waits behind ready history; interleave if backfills need a live freshness guarantee.
+// shortcut: live cost changes may lag up to 5 minutes; use incremental buckets for tighter freshness.
 const analyticsNextDayQuery = `SELECT d.day,d.version,d.reason,d.source_change_from
 	FROM analytics_dirty_days d LEFT JOIN analytics_bucket_state b ON b.day=d.day
 	WHERE (d.attempts=0 OR COALESCE(d.retry_after,d.changed_at+INTERVAL '1 hour')<=NOW())
-	  AND (d.day<>$1::date OR d.reason<>'usage' OR b.computed_at IS NULL OR b.computed_at<=NOW()-INTERVAL '5 minutes')
+	  AND (d.day<>$1::date OR d.reason NOT IN('usage','cost') OR b.computed_at IS NULL OR b.computed_at<=NOW()-INTERVAL '5 minutes')
 	ORDER BY (d.day=$1::date),d.attempts>0,(d.day>=DATE_TRUNC('month',$1::date::timestamp)::date) DESC,d.day LIMIT 1`
 
 func analyticsSums(prefix string) string {
