@@ -9,6 +9,7 @@ const appStoreMocks = vi.hoisted(() => ({
   showError: vi.fn(),
   cachedPublicSettings: {
     usage_display_currency: 'USD',
+    usage_display_usd_to_cny_rate: 8,
   },
 }))
 
@@ -184,6 +185,7 @@ describe('admin UsageTable tooltip', () => {
 
   beforeEach(() => {
     locale = 'en'
+    appStoreMocks.cachedPublicSettings.usage_display_currency = 'USD'
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
       y: 0,
@@ -322,12 +324,17 @@ describe('admin UsageTable tooltip', () => {
     wrapper.unmount()
   })
 
-  it('shows service tier and billing breakdown in cost tooltip', async () => {
+  it.each([
+    { currency: 'USD', symbol: '$', userCost: '0.092883', accountCost: '0.015000', cacheCost: '0.06956800', inputPrice: '5.0000', outputPrice: '30.0000' },
+    { currency: 'CNY', symbol: '¥', userCost: '0.743064', accountCost: '0.120000', cacheCost: '0.55654400', inputPrice: '40.0000', outputPrice: '240.0000' },
+  ])('shows service tier and billing breakdown in $currency', async ({ currency, symbol, userCost, accountCost, cacheCost, inputPrice, outputPrice }) => {
+    appStoreMocks.cachedPublicSettings.usage_display_currency = currency
     const row = {
       request_id: 'req-admin-1',
       actual_cost: 0.092883,
       total_cost: 0.092883,
-      account_rate_multiplier: 1,
+      account_stats_cost: 0.01,
+      account_rate_multiplier: 1.5,
       rate_multiplier: 1,
       service_tier: 'priority',
       input_cost: 0.020285,
@@ -366,10 +373,15 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('Account rate')
     expect(text).toContain('User billed')
     expect(text).toContain('Account billed')
-    expect(text).toContain('$0.092883')
-    expect(text).toContain('$5.0000 / 1M tokens')
-    expect(text).toContain('$30.0000 / 1M tokens')
-    expect(text).toContain('$0.069568')
+    expect(text).toContain(`${symbol}${userCost}`)
+    expect(text).toContain(`A ${symbol}${accountCost}`)
+    const tooltip = wrapper.get('.fixed').text()
+    expect(tooltip).toContain(`Account billed${symbol}${accountCost}00`)
+    expect(tooltip).toContain(`${symbol}${inputPrice} / 1M tokens`)
+    expect(tooltip).toContain(`${symbol}${outputPrice} / 1M tokens`)
+    expect(tooltip).toContain(`${symbol}${cacheCost}`)
+    expect(tooltip).not.toContain(currency === 'CNY' ? '$' : '¥')
+    wrapper.unmount()
   })
 
   it.each(['token', 'image', 'per_request'])('keeps eight decimal places in %s cost details', async (billingMode) => {

@@ -30,6 +30,10 @@ export function usageCurrencySymbol(): string {
   return usageDisplayCurrency() === 'CNY' ? '¥' : '$'
 }
 
+export function formatUsageAmount(value: number | null | undefined, fractionDigits = 4): string {
+  return `${usageCurrencySymbol()}${formatUsageCost(value, 7.2, fractionDigits)}`
+}
+
 /**
  * 格式化相对时间
  * @param date 日期字符串或 Date 对象
