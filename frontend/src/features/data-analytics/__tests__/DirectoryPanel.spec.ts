@@ -20,6 +20,54 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks())
 
 describe('directory maintenance panel', () => {
+  it('only lists unmatched, conflicting or missing directory identities and searches within them', async () => {
+    const wrapper = mount(DirectoryPanel, {
+      props: { enabled: true, initialState: {
+        ...state,
+        directory: { orgs: [], people: [{ id: 'person-1', name: '已匹配', org: 'org-1', active: true }] },
+        identities: [
+          ...['unique_name', 'manual', 'external_id'].map((basis, index) => ({ user_id: index + 1, username: `已匹配${basis}`, person_id: 'person-1', basis })),
+          { user_id: 4, username: '未匹配', person_id: '', basis: '' },
+          { user_id: 5, username: '绑定冲突用户', person_id: 'person-1', basis: 'conflict' },
+          { user_id: 6, username: '目录已删除', person_id: 'missing', basis: 'manual' },
+        ],
+      } },
+      global: { stubs },
+    })
+    try {
+      expect(wrapper.findAll('table.table tbody tr')).toHaveLength(3)
+      expect(wrapper.text()).toContain('3 人待确认')
+      expect(wrapper.text()).not.toContain('已匹配unique_name')
+      expect(wrapper.text()).not.toContain('已匹配manual')
+      expect(wrapper.text()).not.toContain('已匹配external_id')
+      await wrapper.get('input[placeholder="搜索平台姓名"]').setValue('绑定冲突用户')
+      expect(wrapper.findAll('table.table tbody tr')).toHaveLength(1)
+      await wrapper.get('input[placeholder="搜索平台姓名"]').setValue('已匹配')
+      expect(wrapper.findAll('table.table tbody tr')).toHaveLength(0)
+      expect(wrapper.text()).toContain('没有符合搜索条件的待确认人员')
+    } finally { wrapper.unmount() }
+  })
+
+  it('removes a resolved identity after saving and shows the empty state', async () => {
+    const pending = { ...state, identities: [{ user_id: 7, username: '张三', person_id: 'person-1', basis: 'conflict' }] }
+    api.map.mockResolvedValueOnce(undefined)
+    api.directory.mockResolvedValueOnce({
+      ...pending,
+      directory: { orgs: [], people: [{ id: 'person-1', name: '张三', org: 'org-1', active: true }] },
+      identities: [{ ...pending.identities[0], basis: 'manual' }],
+    })
+    const wrapper = mount(DirectoryPanel, { props: { enabled: true, initialState: pending }, global: { stubs } })
+    try {
+      await button(wrapper, '选择人员').trigger('click')
+      await button(wrapper, '确认匹配').trigger('click')
+      await flushPromises()
+      expect(api.map).toHaveBeenCalledWith(7, 'person-1', 1)
+      expect(wrapper.findAll('table.table tbody tr')).toHaveLength(0)
+      expect(wrapper.text()).toContain('0 人待确认')
+      expect(wrapper.text()).toContain('暂无待确认人员')
+    } finally { wrapper.unmount() }
+  })
+
   it.each([
     { error: { status: 400, message: '缺少字段dev_org_id' }, message: '缺少字段dev_org_id' },
     { error: { status: 413, message: 'SQL文件超过20MiB' }, message: 'SQL文件超过20MiB' },

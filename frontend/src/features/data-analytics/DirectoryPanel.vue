@@ -26,11 +26,11 @@
       <article class="analytics-panel"><span>缺少组织人员</span><strong>{{ missingPeople.length }}</strong><p>保留用量和成本，暂入待确认归属池</p></article>
     </section>
     <section v-if="state" class="analytics-panel analytics-maintenance-card space-y-3">
-        <div class="flex flex-wrap items-center justify-between gap-3"><h3 class="font-semibold">当前目录与身份匹配 <span class="text-sm font-normal text-gray-500">版本 {{ state.version }} · {{ state.directory.people.length }} 人</span></h3><input v-model="search" class="input" placeholder="搜索平台姓名"></div>
+        <div class="flex flex-wrap items-center justify-between gap-3"><h3 class="font-semibold">待确认的身份匹配 <span class="text-sm font-normal text-gray-500">版本 {{ state.version }} · {{ pendingIdentities.length }} 人待确认</span></h3><input v-model="search" class="input" placeholder="搜索平台姓名"></div>
         <div class="max-h-80 overflow-auto"><table class="table"><thead class="sticky top-0 bg-white dark:bg-dark-900"><tr><th>平台用户</th><th>目录人员 / 组织</th><th>匹配依据</th><th>确认归属</th></tr></thead><tbody>
           <tr v-for="i in visibleIdentities" :key="i.user_id"><td>{{ i.username }} <span class="text-gray-400">#{{ i.user_id }}</span></td><td>{{ personLabel(i.person_id) }}</td><td>{{ basisLabel(i.basis) }}</td><td><button class="text-primary-600" :disabled="!enabled || busy || !state.version" @click="mappingUser=i.user_id;mappingPerson=i.person_id">选择人员</button></td></tr>
-        </tbody></table><p v-if="!visibleIdentities.length" class="p-6 text-center text-gray-400">暂无匹配记录</p></div>
-        <p class="text-xs text-gray-500">显示前100条搜索结果。手动确认用于修复未归属的保留明细；已有组织归属的变更从确认时间开始生效。</p>
+        </tbody></table><p v-if="!visibleIdentities.length" class="p-6 text-center text-gray-400">{{ pendingIdentities.length ? '没有符合搜索条件的待确认人员' : '暂无待确认人员' }}</p></div>
+        <p class="text-xs text-gray-500">仅显示未匹配或绑定异常的人员，最多显示前100条搜索结果。手动确认用于修复未归属的保留明细；已有组织归属的变更从确认时间开始生效。</p>
         <div v-if="mappingUser" class="flex flex-wrap items-end gap-3 rounded border p-3 dark:border-dark-600"><label class="min-w-72 flex-1 text-sm">为平台用户 #{{ mappingUser }} 选择目录人员<Select v-model="mappingPerson" class="mt-1" :options="personOptions" searchable /></label><button class="btn btn-primary" :disabled="busy || !mappingPerson || !enabled" @click="saveMapping">确认匹配</button><button class="btn btn-secondary" @click="mappingUser=0">取消</button></div>
         <details><summary class="cursor-pointer text-sm text-gray-500">最近导入记录</summary><div v-for="item in state.imports" :key="item.id" class="mt-2 text-xs text-gray-500">{{ new Date(item.created_at).toLocaleString() }} · {{ item.applied_at ? '已应用' : '预检' }}</div></details>
     </section>
@@ -75,7 +75,8 @@ const uniquePeople = computed(() => (state.value?.directory.people.length || 0) 
 const missingPeople = computed(() => (state.value?.directory.people || []).filter(person => !orgNames.value.has(person.org)))
 const personLabel = (id: string) => { const p = peopleByID.value.get(id); return p ? `${p.name} · ${orgNames.value.get(p.org) || '缺少组织'} · ${p.id}` : '待确认归属' }
 const personOptions = computed(() => (state.value?.directory.people || []).map(p => ({ value: p.id, label: personLabel(p.id) })))
-const visibleIdentities = computed(() => (state.value?.identities || []).filter(i => i.username.includes(search.value)).sort((a,b) => Number(!!a.person_id)-Number(!!b.person_id)).slice(0,100))
+const pendingIdentities = computed(() => (state.value?.identities || []).filter(i => !peopleByID.value.has(i.person_id) || i.basis === 'conflict'))
+const visibleIdentities = computed(() => pendingIdentities.value.filter(i => i.username.includes(search.value)).slice(0,100))
 const basisLabels: Record<string,string> = { manual: '人工确认', unique_name: '唯一姓名', external_id: '外部稳定ID', conflict: '绑定冲突' }
 const basisLabel = (basis: string) => basisLabels[basis] || '待确认'
 async function load() { state.value = await dataAnalyticsAPI.directory(); emit('loaded', state.value) }
