@@ -469,6 +469,36 @@ describe('CostManagementView', () => {
     expect(wrapper.get('[data-test="dialog"]').text()).toContain('历史价格不会被覆盖')
   })
 
+  it('prevents duplicate price changes and lets a busy save be retried', async () => {
+    let rejectSave!: (error: Error) => void
+    api.changePlanPrice.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectSave = reject }))
+    const wrapper = mountView()
+    try {
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === '成本方案')!.trigger('click')
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text() === '价格变更')!.trigger('click')
+      await flushPromises()
+      const dialog = wrapper.get('[data-test="dialog"]')
+      const submit = dialog.findAll('button').find(button => button.text() === '确认变更')!
+      await submit.trigger('click')
+      expect(submit.text()).toBe('保存中…')
+      expect(submit.attributes('disabled')).toBeDefined()
+      await submit.trigger('click')
+      expect(api.changePlanPrice).toHaveBeenCalledTimes(1)
+      rejectSave(new Error('后台正在核算，本次未保存，请稍后重试'))
+      await flushPromises()
+      expect(app.showError).toHaveBeenCalledWith(expect.stringContaining('本次未保存'))
+      expect(dialog.exists()).toBe(true)
+      expect(submit.text()).toBe('确认变更')
+      expect(submit.attributes('disabled')).toBeUndefined()
+      await submit.trigger('click')
+      await flushPromises()
+      expect(api.changePlanPrice).toHaveBeenCalledTimes(2)
+      expect(wrapper.find('[data-test="dialog"]').exists()).toBe(false)
+    } finally { wrapper.unmount() }
+  })
+
   it('shows complete token prices and time rules in price history', async () => {
     api.priceHistory.mockResolvedValue([{
       id: 21, plan_id: 11, version_no: 1, effective_from: '2026-08-01T00:00:00+08:00',

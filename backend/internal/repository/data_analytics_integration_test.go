@@ -67,7 +67,7 @@ func seedAnalyticsFixture(t *testing.T, ctx context.Context, tx *sql.Tx, partiti
 	_, err = tx.ExecContext(ctx, `CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT,updated_at TIMESTAMPTZ);
 		CREATE TABLE cost_jobs(job_key TEXT,last_success_at TIMESTAMPTZ)`)
 	require.NoError(t, err)
-	for _, name := range []string{"921_data_analytics_task_control.sql", "923_data_analytics_progress.sql", "924_data_analytics_stage.sql"} {
+	for _, name := range []string{"921_data_analytics_task_control.sql", "923_data_analytics_progress.sql", "924_data_analytics_stage.sql", "925_data_analytics_trend_models.sql", "926_cost_save_fail_fast.sql"} {
 		migration, err = migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		_, err = tx.ExecContext(ctx, string(migration))

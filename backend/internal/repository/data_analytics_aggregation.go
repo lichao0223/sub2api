@@ -251,12 +251,18 @@ func (r *dataAnalyticsRepository) RunAnalyticsBatch(ctx context.Context) (more b
 	if _, err := tx.ExecContext(ctx, `DELETE FROM analytics_org_daily WHERE day=$1::date`, date); err != nil {
 		return false, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_org_daily(day,org_id,level,tokens)
-		SELECT d.day,COALESCE(a.org_ids[x.n],'0'),x.n,SUM(d.input+d.output+d.cache_write+d.cache_read)
+	if _, err := tx.ExecContext(ctx, `WITH models AS (
+		SELECT d.day,COALESCE(a.org_ids[x.n],'0') org_id,x.n level,d.model,d.mode,
+			SUM(d.input::numeric+d.output+d.cache_write+d.cache_read) tokens
 		FROM analytics_daily d LEFT JOIN analytics_assignments a ON a.id=d.attribution
 		CROSS JOIN generate_series(1,3) x(n)
 		WHERE d.day=$1::date AND (a.org_ids[x.n] IS NOT NULL OR x.n=1)
-		GROUP BY d.day,COALESCE(a.org_ids[x.n],'0'),x.n`, date); err != nil {
+		GROUP BY d.day,COALESCE(a.org_ids[x.n],'0'),x.n,d.model,d.mode
+	)
+	INSERT INTO analytics_org_daily(day,org_id,level,tokens,model_tokens)
+	SELECT day,org_id,level,SUM(tokens),
+		jsonb_agg(jsonb_build_object('model',model,'mode',mode,'tokens',tokens::text) ORDER BY mode,model)
+	FROM models GROUP BY day,org_id,level`, date); err != nil {
 		return false, err
 	}
 	month := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, loc)
@@ -334,8 +340,7 @@ func (r *dataAnalyticsRepository) publishAnalyticsMonth(ctx context.Context, tx 
 	if err := r.allocateAnalyticsFixed(ctx, tx, month, now, generation); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO analytics_org_daily_versions
-		SELECT $1::date,$3,day,org_id,level,tokens FROM analytics_org_daily WHERE day>=$1::date AND day<$2::date`, key, end, generation); err != nil {
+	if err := publishAnalyticsTrend(ctx, tx, key, end, generation, previous); err != nil {
 		return err
 	}
 	// Readers can pin either of the last two complete, atomic publications.
@@ -351,6 +356,40 @@ func (r *dataAnalyticsRepository) publishAnalyticsMonth(ctx context.Context, tx 
 	}
 	_, err = tx.ExecContext(ctx, `DELETE FROM analytics_publications WHERE month=$1::date AND generation NOT IN(
 		SELECT generation FROM analytics_publications WHERE month=$1::date ORDER BY generation DESC LIMIT 2)`, key)
+	return err
+}
+
+func publishAnalyticsTrend(ctx context.Context, tx *sql.Tx, key, end string, generation, previous int64) error {
+	if previous > 0 {
+		_, err := tx.ExecContext(ctx, `INSERT INTO analytics_org_daily_versions(month,generation,day,org_id,level,tokens,model_tokens)
+			SELECT month,$2,day,org_id,level,tokens,model_tokens FROM analytics_org_daily_versions
+			WHERE month=$1::date AND generation=$3`, key, generation, previous)
+		return err
+	}
+	// Fill pre-upgrade caches once; normal publications only copy the per-day aggregates.
+	_, err := tx.ExecContext(ctx, `WITH missing AS MATERIALIZED (
+		SELECT day,org_id,level FROM analytics_org_daily
+		WHERE day>=$1::date AND day<$2::date AND model_tokens IS NULL
+	), models AS (
+		SELECT d.day,COALESCE(a.org_ids[x.n],'0') org_id,x.n level,d.model,d.mode,
+			SUM(d.input::numeric+d.output+d.cache_write+d.cache_read)::text tokens
+		FROM analytics_daily d LEFT JOIN analytics_assignments a ON a.id=d.attribution
+		CROSS JOIN generate_series(1,3) x(n)
+		JOIN missing o ON o.day=d.day AND o.org_id=COALESCE(a.org_ids[x.n],'0') AND o.level=x.n
+		WHERE d.day>=$1::date AND d.day<$2::date AND (a.org_ids[x.n] IS NOT NULL OR x.n=1)
+		GROUP BY d.day,COALESCE(a.org_ids[x.n],'0'),x.n,d.model,d.mode
+	), breakdown AS (
+		SELECT day,org_id,level,jsonb_agg(jsonb_build_object('model',model,'mode',mode,'tokens',tokens) ORDER BY mode,model) model_tokens
+		FROM models GROUP BY day,org_id,level
+	)
+	UPDATE analytics_org_daily d SET model_tokens=b.model_tokens FROM breakdown b
+	WHERE d.day=b.day AND d.org_id=b.org_id AND d.level=b.level`, key, end)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO analytics_org_daily_versions(month,generation,day,org_id,level,tokens,model_tokens)
+		SELECT $1::date,$3,day,org_id,level,tokens,model_tokens FROM analytics_org_daily
+		WHERE day>=$1::date AND day<$2::date`, key, end, generation)
 	return err
 }
 

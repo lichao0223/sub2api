@@ -61,9 +61,19 @@
         <section class="analytics-overview">
           <article class="analytics-panel analytics-trend">
             <div class="analytics-panel-heading"><h2>{{ mode==='month' ? '每日' : '每月' }} Token 使用趋势</h2><span>{{ rangeLabel }}</span></div>
-            <div v-if="hasTrend" class="analytics-chart"><canvas ref="canvas" role="img" :aria-label="`${rangeLabel} Token使用趋势`"></canvas></div>
+            <div v-if="hasTrend" class="analytics-chart" @mouseleave="hoveredTrend=undefined">
+              <canvas ref="canvas" role="img" :aria-label="`${rangeLabel} Token使用趋势`"></canvas>
+              <div v-if="hoveredTrend" class="analytics-trend-tooltip" :class="{'on-left':tooltipOnLeft}" tabindex="0" role="region" aria-label="Token 模型明细">
+                <strong>{{ hoveredTrend.bucket }}</strong>
+                <div v-for="series in trendSeries" :key="series.key" class="analytics-tooltip-group">
+                  <div class="analytics-tooltip-row"><span><i :style="{background:series.color}"></i>{{ series.label }}</span><strong>{{ hoveredTrend[series.key]===undefined ? '待补算' : tokenText(hoveredTrend[series.key]) }}</strong></div>
+                  <div v-for="model in hoveredTrend.models?.filter(model=>model.mode===series.mode)" :key="model.model" class="analytics-tooltip-row analytics-tooltip-model"><span>{{ model.model }}</span><span>{{ tokenText(model.tokens) }}</span></div>
+                </div>
+                <p v-if="hoveredTrend.metered_tokens===undefined">分类与模型明细待后台补算</p>
+              </div>
+            </div>
             <div v-else class="analytics-chart analytics-empty"><Icon name="trendingUp" size="xl" /><strong>{{ loading ? '正在加载用量趋势' : '当前范围暂无用量' }}</strong><span>{{ report?.coverage.directory_ready ? '完成后台核算后，趋势会随所选时间显示。' : '应用组织与人员目录后开始统计。' }}</span></div>
-            <p class="analytics-bottom-note">{{ rangeLabel }} · {{ mode==='month' ? '悬停查看每日 Token' : '点击月份下钻到每日趋势' }}<span v-if="report?.coverage.provisional"> · 当前月为暂估</span></p>
+            <p class="analytics-bottom-note">{{ rangeLabel }} · 悬停查看各方案与模型 Token<span v-if="mode!=='month'"> · 点击月份查看每日趋势</span><span v-if="report?.coverage.provisional"> · 当前月为暂估</span><span v-if="report?.trend.some(point=>point.metered_tokens===undefined && point.tokens!=='0')"> · 部分历史分类明细待补算</span></p>
           </article>
           <article class="analytics-panel analytics-ranking">
             <div class="analytics-panel-heading"><h2>部门用量排行</h2><span>Token · TOP 5</span></div>
@@ -179,7 +189,7 @@ import Pagination from '@/components/common/Pagination.vue'
 import AnalyticsProgress from './AnalyticsProgress.vue'
 import DirectoryPanel from './DirectoryPanel.vue'
 import PersonDrawer from './PersonDrawer.vue'
-import { dataAnalyticsAPI, type AnalyticsDirectoryState, type AnalyticsQuery, type AnalyticsReport, type AnalyticsRow, type AnalyticsTaskStatus } from '@/api/admin/dataAnalytics'
+import { dataAnalyticsAPI, type AnalyticsDirectoryState, type AnalyticsQuery, type AnalyticsReport, type AnalyticsRow, type AnalyticsTaskStatus, type AnalyticsTrend } from '@/api/admin/dataAnalytics'
 import { useAppStore } from '@/stores/app'
 import { moneyText, tokenText, sumDecimalStrings } from './format'
 import { organizationDirectory, tokenShare } from './organizations'
@@ -197,6 +207,13 @@ const taskStatus = shallowRef<AnalyticsTaskStatus | null>()
 const loading = ref(false), exporting = ref(false), error = ref(''), selectedPerson = shallowRef<AnalyticsRow>()
 const monthPickerOpen = ref(false), draftMonths = ref<number[]>([])
 const rebuildStart = ref(''), rebuildEnd = ref(''), rebuilding = ref(false), canvas = ref<HTMLCanvasElement>()
+const hoveredTrend = shallowRef<AnalyticsTrend>(), tooltipOnLeft = ref(false)
+const trendSeries = [
+  {key:'tokens',label:'Token 总数',color:'#0d9488',mode:''},
+  {key:'metered_tokens',label:'按量方案',color:'#3b82f6',mode:'metered'},
+  {key:'fixed_tokens',label:'固定成本',color:'#a855f7',mode:'fixed'},
+  {key:'excluded_tokens',label:'不纳入核算',color:'#f59e0b',mode:'excluded'},
+] as const
 const expanded = ref(new Set<string>())
 let chart: Chart | undefined, abort: AbortController | undefined, exportAbort: AbortController | undefined
 let timer: ReturnType<typeof setInterval> | undefined, searchTimer: ReturnType<typeof setTimeout> | undefined, sequence = 0, disposed = false
@@ -329,14 +346,19 @@ async function load(refreshDirectory=false){
   finally{if(current===sequence)loading.value=false}
 }
 function draw(){
-  chart?.destroy();chart=undefined
+  chart?.destroy();chart=undefined;hoveredTrend.value=undefined
   if(!canvas.value||!report.value||!hasTrend.value||(tab.value!=='org'&&tab.value!=='people'))return
   const points=report.value.trend, daily=report.value.period.grain==='day'
   const primary=getComputedStyle(canvas.value).getPropertyValue('--analytics-green').trim() || '#0d9488'
-  chart=new Chart(canvas.value,{type:daily?'line':'bar',data:{labels:points.map(point=>daily?`${Number(point.bucket.slice(5,7))}/${Number(point.bucket.slice(8,10))}`:`${Number(point.bucket.slice(5,7))}月`),datasets:[{label:'Token',data:points.map(point=>Number(point.tokens)),borderColor:primary,backgroundColor:daily?'rgba(13,148,136,.08)':primary,borderWidth:daily?2:0,borderRadius:daily?0:4,fill:daily,tension:.2,pointRadius:daily?2:0,maxBarThickness:30}]},options:{
+  chart=new Chart(canvas.value,{type:'line',data:{labels:points.map(point=>daily?`${Number(point.bucket.slice(5,7))}/${Number(point.bucket.slice(8,10))}`:`${Number(point.bucket.slice(5,7))}月`),datasets:trendSeries.map(series=>({label:series.label,data:points.map(point=>point[series.key]===undefined?null:Number(point[series.key])),borderColor:series.key==='tokens'?primary:series.color,backgroundColor:series.key==='tokens'?'rgba(13,148,136,.06)':series.color,borderWidth:2,fill:series.key==='tokens',tension:.2,pointRadius:2}))},options:{
     responsive:true,maintainAspectRatio:false,
+    interaction:{intersect:false,mode:'index'},
     onClick:(_event,elements)=>{if(daily||!elements.length)return;const point=points[elements[0]!.index];if(point){mode.value='month';month.value=Number(point.bucket.slice(5,7));changePeriod()}},
-    plugins:{legend:{display:false},tooltip:{callbacks:{title:items=>points[items[0]?.dataIndex ?? 0]?.bucket || '',label:item=>`Token ${tokenText(points[item.dataIndex]?.tokens)}`}}},
+    plugins:{legend:{position:'top',labels:{color:'#819394',usePointStyle:true,boxWidth:6,font:{size:11}}},tooltip:{enabled:false,external:({chart,tooltip})=>{
+      if(!tooltip.opacity||!tooltip.dataPoints.length)return
+      hoveredTrend.value=points[tooltip.dataPoints[0]!.dataIndex]
+      tooltipOnLeft.value=tooltip.caretX>chart.width/2
+    }}},
     scales:{x:{grid:{display:false},ticks:{maxTicksLimit:7,color:'#819394',font:{size:10}}},y:{beginAtZero:true,border:{display:false},grid:{color:'rgba(128,149,147,.12)'},ticks:{maxTicksLimit:5,color:'#819394',font:{size:10},callback:value=>tokenText(BigInt(Math.max(0,Math.trunc(Number(value)))).toString())}}},
   }})
 }

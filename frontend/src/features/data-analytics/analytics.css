@@ -93,6 +93,14 @@
 .analytics-panel-heading > span { color: var(--analytics-muted); font-size: 11px; }
 .analytics-chart { position: relative; height: 248px; min-width: 0; padding: 20px 18px 14px; }
 .analytics-chart canvas { max-width: 100%; }
+.analytics-trend-tooltip { position: absolute; top: 48px; right: 20px; z-index: 10; width: min(360px,calc(100% - 40px)); max-height: 188px; overflow: auto; padding: 12px; border: 1px solid var(--analytics-line); border-radius: 8px; background: var(--analytics-surface); color: var(--analytics-ink); box-shadow: 0 4px 16px #0002; font-size: 11px; }
+.analytics-trend-tooltip.on-left { left: 20px; right: auto; }
+.analytics-tooltip-group { margin-top: 8px; }
+.analytics-tooltip-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.analytics-tooltip-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.analytics-tooltip-row > :last-child { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.analytics-tooltip-row i { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+.analytics-tooltip-model { padding-left: 12px; color: var(--analytics-muted); }
 .analytics-bottom-note { margin: auto 19px 0 !important; padding: 10px 0; border-top: 1px solid var(--analytics-line); font-size: 10px; color: var(--analytics-muted); line-height: 1.8; }
 .analytics-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 10px; text-align: center; color: var(--analytics-muted); }
 .analytics-empty strong { color: var(--analytics-muted); font-size: 13px; font-weight: 500; }

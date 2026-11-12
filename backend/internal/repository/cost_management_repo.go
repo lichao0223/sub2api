@@ -704,7 +704,7 @@ func enqueueCostRecalculationTx(ctx context.Context, tx *sql.Tx, effectiveFrom t
 		FROM (
 		  SELECT GREATEST(
 		    $1::date,
-		    COALESCE((SELECT MIN((created_at AT TIME ZONE 'Asia/Shanghai')::date) FROM usage_logs),$1::date)
+		    COALESCE(((SELECT MIN(created_at) FROM usage_logs) AT TIME ZONE 'Asia/Shanghai')::date,$1::date)
 		  ) start_date
 		) x
 		WHERE start_date<=(NOW() AT TIME ZONE 'Asia/Shanghai')::date

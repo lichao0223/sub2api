@@ -548,7 +548,7 @@ func TestAutomaticCostRecalculationIncludesToday(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = tx.Rollback() })
 	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
-	mock.ExpectExec("SELECT 'recalculation','queued',start_date,\\(NOW\\(\\) AT TIME ZONE 'Asia/Shanghai'\\)::date,").
+	mock.ExpectExec("(?s)SELECT 'recalculation','queued',start_date,\\(NOW\\(\\) AT TIME ZONE 'Asia/Shanghai'\\)::date,.*SELECT MIN\\(created_at\\) FROM usage_logs").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
 	require.NoError(t, enqueueCostRecalculationTx(context.Background(), tx, time.Now().AddDate(0, -1, 0)))

@@ -58,11 +58,15 @@ export interface AnalyticsFixedShare {
   month: string; unit_id: number; name: string; user_id: number; total: string; participants: number; amount: string; public: string
 }
 export interface AnalyticsPersonMonth extends AnalyticsValues { month: string; generation: number }
+export interface AnalyticsTrend {
+  bucket: string; tokens: string; metered_tokens?: string; fixed_tokens?: string; excluded_tokens?: string
+  models?: { model: string; mode: string; tokens: string }[]
+}
 export interface AnalyticsReport {
   scope_org_id: string
   period: { year: number; mode: string; months: number[]; keys: string[]; grain: string }
   summary: AnalyticsValues; users: number; people: AnalyticsRow[]; people_total: number
-  departments: AnalyticsDepartment[]; trend: { bucket: string; tokens: string }[]; models: AnalyticsRow[]
+  departments: AnalyticsDepartment[]; trend: AnalyticsTrend[]; models: AnalyticsRow[]
   fixed_shares: AnalyticsFixedShare[]; public_cost: string; versions: Record<string, number>; task_status: AnalyticsTaskStatus
   person_months?: AnalyticsPersonMonth[]
   coverage: { backlog_days: number; failed_days: number; earliest_pending: string | null; last_updated: string | null

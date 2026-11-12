@@ -72,7 +72,7 @@
         <div><label class="input-label">账号归属开始时间</label><input v-model="accountForm.effective_from" type="datetime-local" class="input w-full"></div>
         <div><label class="input-label">账号归属结束时间（可选）</label><input v-model="accountForm.effective_to" type="datetime-local" class="input w-full"></div>
       </div>
-      <template #footer><button v-if="!batchMode&&editingAccountConfigured" class="btn btn-danger mr-auto" @click="endAccountCost">结束当前核算</button><button class="btn btn-secondary" @click="accountDialog=false">取消</button><button class="btn btn-primary" :disabled="accountFormSubmitting" @click="saveAccountForm">保存</button></template>
+      <template #footer><button v-if="!batchMode&&editingAccountConfigured" class="btn btn-danger mr-auto" @click="endAccountCost">结束当前核算</button><button class="btn btn-secondary" @click="accountDialog=false">取消</button><button class="btn btn-primary" :disabled="accountFormSubmitting" @click="saveAccountForm">{{ accountFormSubmitting?'保存中…':'保存' }}</button></template>
     </BaseDialog>
 
     <BaseDialog :show="planDialog" :title="planDialogTitle" width="wide" @close="planDialog=false">
@@ -111,7 +111,7 @@
           </div>
         </div>
       </div>
-      <template #footer><button class="btn btn-secondary" @click="planDialog=false">取消</button><button class="btn btn-primary" @click="savePlan">{{ planDialogMode==='price'?'确认变更':'保存' }}</button></template>
+      <template #footer><button class="btn btn-secondary" @click="planDialog=false">取消</button><button class="btn btn-primary" :disabled="planFormSubmitting" @click="savePlan">{{ planFormSubmitting?'保存中…':planDialogMode==='price'?'确认变更':'保存' }}</button></template>
     </BaseDialog>
 
     <BaseDialog :show="priceHistoryDialog" :title="`价格历史 · ${priceHistoryPlan?.name||''}`" width="extra-wide" @close="priceHistoryDialog=false">
@@ -286,6 +286,7 @@ async function saveAccountForm(){if(accountFormSubmitting.value)return;if(accoun
 async function endAccountCost(){if(!editingAccount.value||!confirm('确认结束当前账号的成本核算？历史成本不会改变。'))return;try{await costManagementAPI.endAccount(editingAccount.value);app.showSuccess('当前成本核算已结束');accountDialog.value=false;loadAccounts()}catch(e:any){app.showError(e.message||'结束失败')}}
 
 const plans=ref<CostPlan[]>([]),planTotal=ref(0),planPage=ref(1),planSearch=ref(''),planType=ref(''),planDialog=ref(false),planDialogMode=ref<'create'|'edit'|'price'>('create'),editingPlanId=ref<number>(),pricingPlan=ref<CostPlan>()
+const planFormSubmitting=ref(false)
 const planTypeOptions=[{value:'',label:'全部类型'},{value:'metered',label:'按量成本'},{value:'fixed',label:'固定成本'}],createPlanTypeOptions=planTypeOptions.slice(1),fixedCategoryOptions=[{value:'coding_plan',label:'订阅制'},{value:'self_hosted',label:'本地部署'},{value:'other',label:'其他'}],billingCycleOptions=[{value:'monthly',label:'月付'},{value:'yearly',label:'年付'}]
 const billingModeOptions=[{value:'token',label:'按 Token'},{value:'request',label:'按请求'},{value:'hybrid',label:'混合计价'}]
 const modelOptions=ref<Array<{value:string;label:string}>>([])
@@ -308,7 +309,7 @@ function addPrice(){planForm.prices.push(emptyPrice())}
 function copyPrice(price:any){planForm.prices.push({...price,upstream_model:'',time_pricing:{...price.time_pricing,periods:price.time_pricing.periods.map((period:any)=>({...period}))}})}
 const priceCostFields=['input_price_cny','output_price_cny','cache_write_price_cny','cache_read_price_cny','image_input_price_cny','image_output_price_cny','per_request_price_cny']
 function stringifyCostFields(value:any,fields:string[]){const copy={...value};fields.forEach(field=>copy[field]=String(copy[field]??0));return copy}
-async function savePlan(){try{if(planDialogMode.value==='edit'){await costManagementAPI.updatePlan(editingPlanId.value!,{name:planForm.name,fixed_category:planForm.fixed_category,note:planForm.note})}else{if(planForm.plan_type==='metered'){const models=planForm.prices.map((x:any)=>x.upstream_model.trim());if(models.some((x:string)=>!x)||new Set(models).size!==models.length)throw new Error('上游模型不能为空且不能重复');for(const price of planForm.prices){const error=validateTimePricing(price.time_pricing,key=>key);if(error)throw new Error(error)}}const input={...stringifyCostFields(planForm,['fixed_unit_cost_cny']),prices:planForm.prices.map((price:any)=>({...stringifyCostFields(price,priceCostFields),time_pricing:formTimePricingToAPI(price.time_pricing as TimePricingFormEntry)})),effective_from:new Date(planForm.effective_from).toISOString()};if(planDialogMode.value==='price')await costManagementAPI.changePlanPrice(pricingPlan.value!.id,{...input,subscription_unit_ids:priceSubscriptionUnitIDs.value,update_default:priceUpdateDefault.value});else await costManagementAPI.createPlan(input)}app.showSuccess(planDialogMode.value==='price'?'价格版本已创建':'成本方案已保存');planDialog.value=false;loadPlans()}catch(e:any){app.showError(e.message||'保存失败')}}
+async function savePlan(){if(planFormSubmitting.value)return;planFormSubmitting.value=true;try{if(planDialogMode.value==='edit'){await costManagementAPI.updatePlan(editingPlanId.value!,{name:planForm.name,fixed_category:planForm.fixed_category,note:planForm.note})}else{if(planForm.plan_type==='metered'){const models=planForm.prices.map((x:any)=>x.upstream_model.trim());if(models.some((x:string)=>!x)||new Set(models).size!==models.length)throw new Error('上游模型不能为空且不能重复');for(const price of planForm.prices){const error=validateTimePricing(price.time_pricing,key=>key);if(error)throw new Error(error)}}const input={...stringifyCostFields(planForm,['fixed_unit_cost_cny']),prices:planForm.prices.map((price:any)=>({...stringifyCostFields(price,priceCostFields),time_pricing:formTimePricingToAPI(price.time_pricing as TimePricingFormEntry)})),effective_from:new Date(planForm.effective_from).toISOString()};if(planDialogMode.value==='price')await costManagementAPI.changePlanPrice(pricingPlan.value!.id,{...input,subscription_unit_ids:priceSubscriptionUnitIDs.value,update_default:priceUpdateDefault.value});else await costManagementAPI.createPlan(input)}app.showSuccess(planDialogMode.value==='price'?'价格版本已创建':'成本方案已保存');planDialog.value=false;loadPlans()}catch(e:any){app.showError(e.message||'保存失败')}finally{planFormSubmitting.value=false}}
 async function disablePlan(x:CostPlan){if(!confirm(`确认停用“${x.name}”？`))return;try{await costManagementAPI.disablePlan(x.id);loadPlans()}catch(e:any){app.showError(e.message||'停用失败')}}
 const subscriptionManagerDialog=ref(false),managingPlan=ref<CostPlan>(),managedSubscriptionUnits=ref<CostSubscriptionUnit[]>([]),editingSubscriptionUnitId=ref<number>(),subscriptionUnitSubmitting=ref(false),endSubscriptionUnitTarget=ref<CostSubscriptionUnit>(),subscriptionUnitEndTime=ref(dateTimeLocal(new Date()))
 const subscriptionUnitForm=reactive({name:'',effective_from:dateTimeLocal(new Date()),billing_cycle:'monthly' as 'monthly'|'yearly',fixed_unit_cost_cny:'0'})

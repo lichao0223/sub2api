@@ -3,11 +3,11 @@ import { mount, flushPromises } from '@vue/test-utils'
 import DataAnalyticsView from '../DataAnalyticsView.vue'
 import type { AnalyticsQuery, AnalyticsReport, AnalyticsValues } from '@/api/admin/dataAnalytics'
 
-const api = vi.hoisted(()=>({report:vi.fn(),directory:vi.fn(),export:vi.fn()}))
+const api = vi.hoisted(()=>({report:vi.fn(),directory:vi.fn(),export:vi.fn(),chart:vi.fn()}))
 vi.mock('@/api/admin/dataAnalytics',()=>({dataAnalyticsAPI:api,analyticsTasksAPI:{status:vi.fn(),setEnabled:vi.fn()}}))
 vi.mock('@/stores/app',()=>({useAppStore:()=>({showError:vi.fn(),showSuccess:vi.fn()})}))
 vi.mock('../export',()=>({exportAnalytics:api.export}))
-vi.mock('chart.js/auto',()=>({Chart:class {destroy(){}}}))
+vi.mock('chart.js/auto',()=>({Chart:class {constructor(...args:unknown[]){api.chart(...args)}destroy(){}}}))
 const values:AnalyticsValues = {input:'1000000',output:'0',cache_write:'0',cache_read:'0',tokens:'1000000',requests:'1',metered:'1',fixed:'0',cost:'1',pending:'0',excluded_tokens:'0',input_cost:'1',output_cost:'0',write_cost:'0',read_cost:'0',image_cost:'0',request_cost:'0'}
 const person = {...values,user_id:7,name:'张三',person_id:'person-1',org_ids:['company','center','department'],org_names:['公司','研发中心','平台部'],model:'model',mode:'metered',source_id:1,source:'采购方案',issue:'',attribution:1}
 const orgs = ['company','center','department','team'].map((id,index)=>({
@@ -39,6 +39,38 @@ beforeEach(()=>{
 })
 afterEach(()=>{vi.useRealTimers();vi.clearAllMocks()})
 describe('prototype analytics workflow',()=>{
+  it('plots four token series and shows model breakdowns for the hovered bucket',async()=>{
+    const base=await api.report({year:2026,mode:'month',months:'11'}) as AnalyticsReport
+    api.report.mockResolvedValue({...base,trend:[{
+      bucket:'2026-11-01',tokens:'6000000',metered_tokens:'1000000',fixed_tokens:'2000000',excluded_tokens:'3000000',
+      models:[{model:'paid-model',mode:'metered',tokens:'1000000'},{model:'fixed-model',mode:'fixed',tokens:'2000000'},{model:'free-model',mode:'excluded',tokens:'3000000'}],
+    },{bucket:'2026-11-02',tokens:'1000000'}]})
+    const wrapper=mountView()
+    try{
+      await flushPromises()
+      const chart=api.chart.mock.lastCall![1]
+      expect(chart.type).toBe('line')
+      expect(chart.data.datasets.map((dataset:{label:string})=>dataset.label)).toEqual(['Token 总数','按量方案','固定成本','不纳入核算'])
+      expect(chart.data.datasets.map((dataset:{data:unknown[]})=>dataset.data[0])).toEqual([6000000,1000000,2000000,3000000])
+      expect(chart.data.datasets[1].data[1]).toBeNull()
+      const tooltip=chart.options.plugins.tooltip.external
+      tooltip({chart:{width:1000},tooltip:{opacity:1,caretX:200,dataPoints:[{dataIndex:0}]}})
+      await flushPromises()
+      const details=wrapper.get('[aria-label="Token 模型明细"]')
+      expect(details.text()).toContain('2026-11-01')
+      expect(details.findAll('.analytics-tooltip-model').map(row=>row.text())).toEqual(['paid-model1M','fixed-model2M','free-model3M'])
+      expect(details.findAll('.analytics-tooltip-group')[2]!.text()).toContain('固定成本2M')
+      tooltip({chart:{width:1000},tooltip:{opacity:1,caretX:800,dataPoints:[{dataIndex:1}]}})
+      await flushPromises()
+      expect(details.classes()).toContain('on-left')
+      expect(details.text()).toContain('待后台补算')
+      await wrapper.get('.analytics-chart').trigger('mouseleave')
+      expect(wrapper.find('[aria-label="Token 模型明细"]').exists()).toBe(false)
+      await wrapper.get('[aria-label="时间范围模式"]').findAll('button')[0]!.trigger('click')
+      await flushPromises()
+      expect(api.chart.mock.lastCall![1].data.datasets).toHaveLength(4)
+    }finally{wrapper.unmount()}
+  })
   it('restores the four tabs, organization tree and linked top-level year selection',async()=>{
     const wrapper=mountView()
     try{

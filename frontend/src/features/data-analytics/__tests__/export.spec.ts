@@ -15,7 +15,7 @@ const row = {...values,user_id:1,name:'=HYPERLINK("bad")',person_id:'private-per
 const report = {
   scope_org_id:'private-org-id',period:{year:2026,mode:'month',months:[11],keys:['2026-11-01'],grain:'day'},summary:values,
   people:[row],models:[row],departments:[{...values,id:'private-org-id',parent:'',name:'部门',level:1,users:1}],
-  trend:[{bucket:'2026-11-06',tokens:'1005000'},{bucket:'2026-11-07',tokens:'2500123'}],fixed_shares:[],
+  trend:[{bucket:'2026-11-06',tokens:'1005000',metered_tokens:'1000000',fixed_tokens:'5000',excluded_tokens:'0'},{bucket:'2026-11-07',tokens:'2500123'}],fixed_shares:[],
   public_cost:'0',users:1,versions:{'2026-11-01':1},coverage:{history_basis:'当前目录回溯',completed_days:6,expected_days:6,pending_requests:0,complete:true},
 } as unknown as AnalyticsReport
 const costs: AnalyticsExportCosts[] = [{
@@ -53,7 +53,8 @@ describe('analytics workbook', () => {
     const chart = zipText(zip,'xl/charts/chart1.xml')
     const doc = new DOMParser().parseFromString(chart,'application/xml')
     expect(doc.querySelector('parsererror')).toBeNull()
-    expect(doc.getElementsByTagNameNS('*',grain === 'day' ? 'lineChart' : 'barChart')).toHaveLength(1)
+    expect(doc.getElementsByTagNameNS('*','lineChart')).toHaveLength(1)
+    expect(doc.getElementsByTagNameNS('*','ser')).toHaveLength(4)
     expect(chart).toContain("'Token趋势'!$B$2:$B$3")
     expect(chart).toContain('<c:v>2500123</c:v>')
     for (const path of ['xl/worksheets/sheet6.xml','xl/worksheets/_rels/sheet6.xml.rels','xl/drawings/drawing1.xml','xl/drawings/_rels/drawing1.xml.rels','[Content_Types].xml']) {
@@ -66,6 +67,10 @@ describe('analytics workbook', () => {
     const book = XLSX.read(result.buffer,{type:'array'})
     expect(book.Sheets['Token趋势']!.B2).toMatchObject({t:'n',v:1005000})
     expect(book.Sheets['Token趋势']!.B3.v).toBe(2500123)
+    expect(book.Sheets['Token趋势']!.C2).toMatchObject({t:'n',v:1000000})
+    expect(book.Sheets['Token趋势']!.D2).toMatchObject({t:'n',v:5000})
+    expect(book.Sheets['Token趋势']!.E2).toMatchObject({t:'n',v:0})
+    expect(book.Sheets['Token趋势']!.C3.v).toBe('待补算')
   })
   it('exports an empty period without an invalid chart range', async () => {
     const result = await buildAnalyticsWorkbook({report:{...report,trend:[]},costs:[]})

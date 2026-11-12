@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strconv"
@@ -457,62 +458,103 @@ func analyticsReportTrend(ctx context.Context, tx *sql.Tx, q service.AnalyticsQu
 	}
 	loc, _ := time.LoadLocation("Asia/Shanghai")
 	now := time.Now().In(loc)
+	query := `SELECT bucket,SUM(tokens)::text,jsonb_agg(jsonb_build_object('model',model,'mode',mode,'tokens',tokens::text))
+		FROM (SELECT m.day::text bucket,m.model,m.mode,SUM(input::numeric+output+cache_write+cache_read) tokens
+			FROM analytics_monthly m LEFT JOIN analytics_assignments a ON a.id=m.attribution
+			WHERE m.day=ANY($1::date[]) AND m.generation=($2::jsonb->>m.day::text)::bigint
+			  AND ($3='' OR $3=ANY(a.org_ids) OR ($3='0' AND (a.id IS NULL OR CARDINALITY(a.org_ids)=0)))
+			GROUP BY m.day,m.model,m.mode) models GROUP BY bucket ORDER BY bucket`
+	args := []any{pq.Array(q.Period.Keys), service.AnalyticsJSON(report.Versions), q.OrgID}
 	if q.Period.Grain == "day" {
-		rows, err := tx.QueryContext(ctx, `SELECT day::text,SUM(tokens)::text FROM analytics_org_daily_versions
-			WHERE month=$1::date AND generation=$3 AND (($2='' AND level=1) OR org_id=$2) GROUP BY day ORDER BY day`, q.Period.Keys[0], q.OrgID, report.Versions[q.Period.Keys[0]])
-		if err != nil {
-			return err
+		scope := "level=1"
+		args = []any{q.Period.Keys[0], report.Versions[q.Period.Keys[0]]}
+		if q.OrgID != "" {
+			scope = "org_id=$3"
+			args = append(args, q.OrgID)
 		}
-		values := map[string]string{}
-		for rows.Next() {
-			var date, tokens string
-			if err := rows.Scan(&date, &tokens); err != nil {
-				_ = rows.Close()
-				return err
-			}
-			values[date] = tokens
-		}
-		err = rows.Err()
-		_ = rows.Close()
-		if err != nil {
-			return err
-		}
-		start := time.Date(q.Period.Year, time.Month(q.Period.Months[0]), 1, 0, 0, 0, 0, loc)
-		for d := start; d.Before(start.AddDate(0, 1, 0)) && !d.After(now); d = d.AddDate(0, 0, 1) {
-			value := values[d.Format("2006-01-02")]
-			if value == "" {
-				value = "0"
-			}
-			report.Trend = append(report.Trend, service.AnalyticsTrend{Bucket: d.Format("2006-01-02"), Tokens: value})
-		}
-		return nil
+		query = `SELECT day::text,SUM(tokens)::text,
+			CASE WHEN COUNT(model_tokens)=COUNT(*) THEN jsonb_path_query_array(jsonb_agg(model_tokens),'$[*][*]') END
+			FROM analytics_org_daily_versions
+			WHERE month=$1::date AND generation=$2 AND ` + scope + ` GROUP BY day ORDER BY day`
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT m.day::text,SUM(input+output+cache_write+cache_read)::text
-		FROM analytics_monthly m LEFT JOIN analytics_assignments a ON a.id=m.attribution LEFT JOIN users u ON u.id=m.user_id
-		WHERE m.day=ANY($1::date[]) AND m.generation=($2::jsonb->>m.day::text)::bigint
-		  AND ($3='' OR $3=ANY(a.org_ids) OR ($3='0' AND (a.id IS NULL OR CARDINALITY(a.org_ids)=0)))
-		  AND ($4::bigint=0 OR m.user_id=$4)
-		GROUP BY 1 ORDER BY 1`, pq.Array(q.Period.Keys), service.AnalyticsJSON(report.Versions), q.OrgID, q.UserID)
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = rows.Close() }()
-	values := map[string]string{}
+	values := map[string]service.AnalyticsTrend{}
 	for rows.Next() {
 		var key, value string
-		if err := rows.Scan(&key, &value); err != nil {
+		var raw []byte
+		if err := rows.Scan(&key, &value, &raw); err != nil {
 			return err
 		}
-		values[key] = value
-	}
-	for _, key := range q.Period.Keys {
-		value := values[key]
-		if value == "" {
-			value = "0"
+		var models []service.AnalyticsTrendModel
+		if raw != nil {
+			if err := json.Unmarshal(raw, &models); err != nil {
+				return err
+			}
 		}
-		report.Trend = append(report.Trend, service.AnalyticsTrend{Bucket: key[:7], Tokens: value})
+		point, err := analyticsTrendPoint(key, value, models)
+		if err != nil {
+			return err
+		}
+		values[key] = point
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	keys := q.Period.Keys
+	if q.Period.Grain == "day" {
+		keys = nil
+		start := time.Date(q.Period.Year, time.Month(q.Period.Months[0]), 1, 0, 0, 0, 0, loc)
+		for d := start; d.Before(start.AddDate(0, 1, 0)) && !d.After(now); d = d.AddDate(0, 0, 1) {
+			keys = append(keys, d.Format("2006-01-02"))
+		}
+	}
+	for _, key := range keys {
+		point, ok := values[key]
+		if !ok {
+			point = service.AnalyticsTrend{Tokens: "0", MeteredTokens: "0", FixedTokens: "0", ExcludedTokens: "0"}
+		}
+		point.Bucket = key
+		if q.Period.Grain != "day" {
+			point.Bucket = key[:7]
+		}
+		report.Trend = append(report.Trend, point)
+	}
+	return nil
+}
+
+func analyticsTrendPoint(bucket, tokens string, models []service.AnalyticsTrendModel) (service.AnalyticsTrend, error) {
+	point := service.AnalyticsTrend{Bucket: bucket, Tokens: tokens}
+	// Old publications have no breakdown; leave it absent until republished.
+	if models == nil {
+		return point, nil
+	}
+	totals := map[string]decimal.Decimal{}
+	byModel := map[[2]string]decimal.Decimal{}
+	for _, model := range models {
+		value, err := decimal.NewFromString(model.Tokens)
+		if err != nil {
+			return point, err
+		}
+		totals[model.Mode] = totals[model.Mode].Add(value)
+		key := [2]string{model.Mode, model.Model}
+		byModel[key] = byModel[key].Add(value)
+	}
+	point.MeteredTokens, point.FixedTokens, point.ExcludedTokens = totals["metered"].String(), totals["fixed"].String(), totals["excluded"].String()
+	for key, value := range byModel {
+		point.Models = append(point.Models, service.AnalyticsTrendModel{Mode: key[0], Model: key[1], Tokens: value.String()})
+	}
+	sort.Slice(point.Models, func(i, j int) bool {
+		a, b := point.Models[i], point.Models[j]
+		if a.Mode != b.Mode {
+			return a.Mode < b.Mode
+		}
+		return a.Model < b.Model
+	})
+	return point, nil
 }
 
 func analyticsUserIDs(users map[int64]bool) []int64 {

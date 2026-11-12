@@ -198,7 +198,17 @@ type AnalyticsDepartment struct {
 }
 
 type AnalyticsTrend struct {
-	Bucket string `json:"bucket"`
+	Bucket         string                `json:"bucket"`
+	Tokens         string                `json:"tokens"`
+	MeteredTokens  string                `json:"metered_tokens,omitempty"`
+	FixedTokens    string                `json:"fixed_tokens,omitempty"`
+	ExcludedTokens string                `json:"excluded_tokens,omitempty"`
+	Models         []AnalyticsTrendModel `json:"models,omitempty"`
+}
+
+type AnalyticsTrendModel struct {
+	Model  string `json:"model"`
+	Mode   string `json:"mode"`
 	Tokens string `json:"tokens"`
 }
 

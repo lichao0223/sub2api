@@ -46,8 +46,12 @@ export async function buildAnalyticsWorkbook({ report, costs }: AnalyticsExportD
   XLSX.utils.sheet_add_aoa(costSheet, [[], ['统计范围', '成本管理：全部账号/订阅实例，不按部门或人员分摊'],
     ['统计日期', costs.map(c => `${c.start_date} 至 ${c.end_date}`).join('；')],
     ['合计（CNY）', sumDecimalStrings(costs.map(c => c.total_cost_cny))]], { origin: -1 })
-  const trendSheet = append('Token趋势', report.trend.map(r => ({ '时间': r.bucket, 'Token总数': Number(r.tokens) })))
-  for (let i = 0; i < report.trend.length; i++) trendSheet[`B${i + 2}`].z = '#,##0'
+  const trendSheet = append('Token趋势', report.trend.map(r => ({ '时间': r.bucket, 'Token总数': Number(r.tokens),
+    '按量方案': r.metered_tokens === undefined ? '待补算' : Number(r.metered_tokens),
+    '固定成本': r.fixed_tokens === undefined ? '待补算' : Number(r.fixed_tokens),
+    '不纳入核算': r.excluded_tokens === undefined ? '待补算' : Number(r.excluded_tokens),
+  })))
+  for (let i = 0; i < report.trend.length; i++) for (const column of ['B','C','D','E']) trendSheet[`${column}${i + 2}`].z = '#,##0'
   append('统计口径', [
     { '项目': '时间范围', '内容': `${report.period.year}年 ${report.period.months.join('、')}月（北京时间）` },
     { '项目': '部门范围', '内容': report.scope_org_id ? report.departments.find(d => d.id === report.scope_org_id)?.name || '当前所选部门' : '全部部门（含待归属和公共成本）' },
