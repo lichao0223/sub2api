@@ -311,7 +311,7 @@ describe('CostManagementView', () => {
     await flushPromises()
 
     const callbacks = chartConfigs.at(-1).options.plugins.tooltip.callbacks
-    expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00 · 均价 ¥5.00/MTok'])
+    expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00 · 均价 ¥5.0000/MTok'])
     expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 1 }])).toEqual(['', 'Kimi 套餐 199: ¥199.00'])
     expect(callbacks.footer([{ dataIndex: 0 }])).toBe('总成本: ¥909.01')
   })
