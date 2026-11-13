@@ -592,16 +592,18 @@ func TestCostAnalysisIncludesPlanBreakdownByBucket(t *testing.T) {
 
 	mock.ExpectQuery("SELECT TO_CHAR").WillReturnRows(sqlmock.NewRows([]string{"bucket", "dynamic", "fixed", "total"}).
 		AddRow("2026-08-28", "710.014", "199", "909.014"))
-	mock.ExpectQuery("SELECT TO_CHAR").WillReturnRows(sqlmock.NewRows([]string{"bucket", "plan_id", "plan_name", "plan_type", "amount"}).
-		AddRow("2026-08-28", 1, "阿里云", "metered", "600").
-		AddRow("2026-08-28", 2, "Kimi 套餐 199", "fixed", "199"))
+	mock.ExpectQuery("SELECT TO_CHAR").WillReturnRows(sqlmock.NewRows([]string{"bucket", "plan_id", "plan_name", "plan_type", "amount", "tokens"}).
+		AddRow("2026-08-28", 1, "阿里云", "metered", "600", "120000000").
+		AddRow("2026-08-28", 2, "Kimi 套餐 199", "fixed", "199", "0"))
 	mock.ExpectQuery("SELECT p.id").WillReturnRows(sqlmock.NewRows([]string{"plan_id", "plan_name", "amount", "total"}))
 
 	analysis, err := (&costManagementRepository{db: db}).GetCostAnalysis(context.Background(), "day", time.Now())
 	require.NoError(t, err)
 	require.Equal(t, []service.CostPlanShare{
-		{PlanID: 1, PlanName: "阿里云", PlanType: "metered", AmountCNY: "600"},
+		{PlanID: 1, PlanName: "阿里云", PlanType: "metered", AmountCNY: "600", TokenCount: costPlanTestStringPtr("120000000")},
 		{PlanID: 2, PlanName: "Kimi 套餐 199", PlanType: "fixed", AmountCNY: "199"},
 	}, analysis.Trend[0].Plans)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func costPlanTestStringPtr(value string) *string { return &value }

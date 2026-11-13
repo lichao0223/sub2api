@@ -1102,7 +1102,7 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 	for i := range a.Trend {
 		byBucket[a.Trend[i].Bucket] = &a.Trend[i]
 	}
-	planRows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,d.bucket_date),$2),p.id,p.name,p.plan_type,SUM(d.amount_cny)::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $3::date AND d.bucket_date < $4::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY 1,p.id,p.name,p.plan_type ORDER BY 1,SUM(d.amount_cny) DESC`, trunc, format, start, end)
+	planRows, err := r.db.QueryContext(ctx, `SELECT TO_CHAR(DATE_TRUNC($1,d.bucket_date),$2),p.id,p.name,p.plan_type,SUM(d.amount_cny)::text,SUM(CASE WHEN d.aggregate_scope='usage' THEN COALESCE(d.input_tokens,0)+COALESCE(d.output_tokens,0)+COALESCE(d.cache_write_tokens,0)+COALESCE(d.cache_read_tokens,0)+COALESCE(d.image_input_tokens,0)+COALESCE(d.image_output_tokens,0) ELSE 0 END)::text FROM cost_daily_aggregates d JOIN cost_plans p ON p.id=d.plan_id WHERE d.bucket_date >= $3::date AND d.bucket_date < $4::date AND d.aggregate_scope IN('usage','fixed_plan_total') AND d.calculation_status='calculated' GROUP BY 1,p.id,p.name,p.plan_type ORDER BY 1,SUM(d.amount_cny) DESC`, trunc, format, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -1110,8 +1110,12 @@ func (r *costManagementRepository) GetCostAnalysis(ctx context.Context, period s
 	for planRows.Next() {
 		var bucket string
 		var plan service.CostPlanShare
-		if err = planRows.Scan(&bucket, &plan.PlanID, &plan.PlanName, &plan.PlanType, &plan.AmountCNY); err != nil {
+		var tokenCount string
+		if err = planRows.Scan(&bucket, &plan.PlanID, &plan.PlanName, &plan.PlanType, &plan.AmountCNY, &tokenCount); err != nil {
 			return nil, err
+		}
+		if plan.PlanType == "metered" && tokenCount != "0" {
+			plan.TokenCount = &tokenCount
 		}
 		if point := byBucket[bucket]; point != nil {
 			point.Plans = append(point.Plans, plan)

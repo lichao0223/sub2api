@@ -303,7 +303,7 @@ describe('CostManagementView', () => {
     api.analysis.mockResolvedValue({
       period: 'day', total_cost_cny: '909.014', top: [],
       trend: [{ bucket: '2026-08-28', dynamic_cost_cny: '710.014', fixed_cost_cny: '199', total_cost_cny: '909.014', plans: [
-        { plan_id: 1, plan_name: '阿里云', plan_type: 'metered', amount_cny: '600' },
+        { plan_id: 1, plan_name: '阿里云', plan_type: 'metered', amount_cny: '600', token_count: '120000000' },
         { plan_id: 2, plan_name: 'Kimi 套餐 199', plan_type: 'fixed', amount_cny: '199' },
       ] }],
     })
@@ -311,7 +311,7 @@ describe('CostManagementView', () => {
     await flushPromises()
 
     const callbacks = chartConfigs.at(-1).options.plugins.tooltip.callbacks
-    expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00'])
+    expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 0 }])).toEqual(['', '阿里云: ¥600.00 · 均价 ¥5.00/MTok'])
     expect(callbacks.afterBody([{ dataIndex: 0, datasetIndex: 1 }])).toEqual(['', 'Kimi 套餐 199: ¥199.00'])
     expect(callbacks.footer([{ dataIndex: 0 }])).toBe('总成本: ¥909.01')
   })
