@@ -39,6 +39,40 @@ beforeEach(()=>{
 })
 afterEach(()=>{vi.useRealTimers();vi.clearAllMocks()})
 describe('prototype analytics workflow',()=>{
+  it('shows every model in each category ordered by exact token usage without changing report data',async()=>{
+    const base=await api.report({year:2026,mode:'month',months:'11'}) as AnalyticsReport
+    const models=[
+      {model:'a-small',mode:'metered',tokens:'1000'},
+      {model:'a-large',mode:'metered',tokens:'9007199254740992'},
+      {model:'z-largest',mode:'metered',tokens:'9007199254740993'},
+      ...Array.from({length:6},(_,i)=>({model:`model-${i}`,mode:'metered',tokens:String((i+2)*1000)})),
+      {model:'fixed-small',mode:'fixed',tokens:'1000'},
+      {model:'fixed-large',mode:'fixed',tokens:'2000'},
+    ]
+    const original=[...models]
+    api.report.mockResolvedValue({...base,trend:[{
+      bucket:'2026-11-01',tokens:'18014398509512985',metered_tokens:'18014398509509985',fixed_tokens:'3000',excluded_tokens:'0',models,
+    }]})
+    const wrapper=mountView()
+    try{
+      await flushPromises()
+      api.chart.mock.lastCall![1].options.plugins.tooltip.external({chart:{width:1000},tooltip:{opacity:1,caretX:200,dataPoints:[{dataIndex:0}]}})
+      await flushPromises()
+      const details=wrapper.get('[aria-label="Token 模型明细"]')
+      expect(details.text()).toContain('11 项模型明细 · 按用量降序 · 可滚动查看全部')
+      expect(details.findAll('.analytics-tooltip-model').map(row=>row.find('span').text())).toEqual([
+        'z-largest','a-large','model-5','model-4','model-3','model-2','model-1','model-0','a-small',
+        'fixed-large','fixed-small',
+      ])
+      await wrapper.get('.analytics-chart').trigger('mouseleave')
+      api.chart.mock.lastCall![1].options.plugins.tooltip.external({chart:{width:1000},tooltip:{opacity:0,dataPoints:[]}})
+      await details.trigger('wheel')
+      expect(wrapper.find('[aria-label="Token 模型明细"]').exists()).toBe(true)
+      expect(models).toEqual(original)
+      await details.trigger('keydown',{key:'Escape'})
+      expect(wrapper.find('[aria-label="Token 模型明细"]').exists()).toBe(false)
+    }finally{wrapper.unmount()}
+  })
   it('plots four token series and shows model breakdowns for the hovered bucket',async()=>{
     const base=await api.report({year:2026,mode:'month',months:'11'}) as AnalyticsReport
     api.report.mockResolvedValue({...base,trend:[{
@@ -65,6 +99,8 @@ describe('prototype analytics workflow',()=>{
       expect(details.classes()).toContain('on-left')
       expect(details.text()).toContain('待后台补算')
       await wrapper.get('.analytics-chart').trigger('mouseleave')
+      expect(wrapper.find('[aria-label="Token 模型明细"]').exists()).toBe(true)
+      await details.get('[aria-label="关闭 Token 模型明细"]').trigger('click')
       expect(wrapper.find('[aria-label="Token 模型明细"]').exists()).toBe(false)
       await wrapper.get('[aria-label="时间范围模式"]').findAll('button')[0]!.trigger('click')
       await flushPromises()

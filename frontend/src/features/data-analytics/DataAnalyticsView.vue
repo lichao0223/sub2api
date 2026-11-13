@@ -61,13 +61,14 @@
         <section class="analytics-overview">
           <article class="analytics-panel analytics-trend">
             <div class="analytics-panel-heading"><h2>{{ mode==='month' ? '每日' : '每月' }} Token 使用趋势</h2><span>{{ rangeLabel }}</span></div>
-            <div v-if="hasTrend" class="analytics-chart" @mouseleave="hoveredTrend=undefined">
+            <div v-if="hasTrend" class="analytics-chart">
               <canvas ref="canvas" role="img" :aria-label="`${rangeLabel} Token使用趋势`"></canvas>
-              <div v-if="hoveredTrend" class="analytics-trend-tooltip" :class="{'on-left':tooltipOnLeft}" tabindex="0" role="region" aria-label="Token 模型明细">
-                <strong>{{ hoveredTrend.bucket }}</strong>
+              <div v-if="hoveredTrend" class="analytics-trend-tooltip" :class="{'on-left':tooltipOnLeft}" tabindex="0" role="region" aria-label="Token 模型明细" @keydown.esc.stop="hoveredTrend=undefined">
+                <div class="analytics-tooltip-row"><strong>{{ hoveredTrend.bucket }}</strong><button type="button" aria-label="关闭 Token 模型明细" @click="hoveredTrend=undefined"><Icon name="x" size="sm" /></button></div>
+                <p v-if="hoveredTrend.models?.length" class="analytics-tooltip-hint">{{ hoveredTrend.models.length }} 项模型明细 · 按用量降序 · 可滚动查看全部</p>
                 <div v-for="series in trendSeries" :key="series.key" class="analytics-tooltip-group">
                   <div class="analytics-tooltip-row"><span><i :style="{background:series.color}"></i>{{ series.label }}</span><strong>{{ hoveredTrend[series.key]===undefined ? '待补算' : tokenText(hoveredTrend[series.key]) }}</strong></div>
-                  <div v-for="model in hoveredTrend.models?.filter(model=>model.mode===series.mode)" :key="model.model" class="analytics-tooltip-row analytics-tooltip-model"><span>{{ model.model }}</span><span>{{ tokenText(model.tokens) }}</span></div>
+                  <div v-for="model in hoveredModels.filter(model=>model.mode===series.mode)" :key="model.model" class="analytics-tooltip-row analytics-tooltip-model"><span>{{ model.model }}</span><span>{{ tokenText(model.tokens) }}</span></div>
                 </div>
                 <p v-if="hoveredTrend.metered_tokens===undefined">分类与模型明细待后台补算</p>
               </div>
@@ -208,6 +209,10 @@ const loading = ref(false), exporting = ref(false), error = ref(''), selectedPer
 const monthPickerOpen = ref(false), draftMonths = ref<number[]>([])
 const rebuildStart = ref(''), rebuildEnd = ref(''), rebuilding = ref(false), canvas = ref<HTMLCanvasElement>()
 const hoveredTrend = shallowRef<AnalyticsTrend>(), tooltipOnLeft = ref(false)
+const hoveredModels = computed(() => [...(hoveredTrend.value?.models || [])].sort((a,b) => {
+  const first=BigInt(a.tokens), second=BigInt(b.tokens)
+  return first===second ? a.model.localeCompare(b.model) : first>second ? -1 : 1
+}))
 const trendSeries = [
   {key:'tokens',label:'Token 总数',color:'#0d9488',mode:''},
   {key:'metered_tokens',label:'按量方案',color:'#3b82f6',mode:'metered'},

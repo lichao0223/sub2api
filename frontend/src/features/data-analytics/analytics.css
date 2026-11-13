@@ -93,8 +93,9 @@
 .analytics-panel-heading > span { color: var(--analytics-muted); font-size: 11px; }
 .analytics-chart { position: relative; height: 248px; min-width: 0; padding: 20px 18px 14px; }
 .analytics-chart canvas { max-width: 100%; }
-.analytics-trend-tooltip { position: absolute; top: 48px; right: 20px; z-index: 10; width: min(360px,calc(100% - 40px)); max-height: 188px; overflow: auto; padding: 12px; border: 1px solid var(--analytics-line); border-radius: 8px; background: var(--analytics-surface); color: var(--analytics-ink); box-shadow: 0 4px 16px #0002; font-size: 11px; }
+.analytics-trend-tooltip { position: absolute; top: 48px; right: 20px; z-index: 10; width: min(360px,calc(100% - 40px)); max-height: min(480px,60vh); overflow: auto; overscroll-behavior: contain; padding: 12px; border: 1px solid var(--analytics-line); border-radius: 8px; background: var(--analytics-surface); color: var(--analytics-ink); box-shadow: 0 4px 16px #0002; font-size: 11px; }
 .analytics-trend-tooltip.on-left { left: 20px; right: auto; }
+.analytics-tooltip-hint { color: var(--analytics-muted); font-size: 10px; }
 .analytics-tooltip-group { margin-top: 8px; }
 .analytics-tooltip-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .analytics-tooltip-row > span:first-child { min-width: 0; overflow-wrap: anywhere; }
