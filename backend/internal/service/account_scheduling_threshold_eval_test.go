@@ -10,6 +10,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCNMonthlyThresholdPreservesVolcengineAndSupportsKimi(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(72 * time.Hour)
+	for _, provider := range []string{PlatformVolcengine, PlatformKimi, PlatformOpenCodeGo} {
+		t.Run(provider, func(t *testing.T) {
+			account := &Account{Platform: provider, Type: AccountTypeAPIKey, Extra: map[string]any{
+				cnExtraKey(provider, cnExtraSuffixMonthlyUsed):  96.0,
+				cnExtraKey(provider, cnExtraSuffixMonthlyReset): reset.Format(time.RFC3339),
+			}}
+			candidates := cnProviderThresholdCandidates(account, provider)
+			require.Len(t, candidates, 3)
+			monthly := candidates[2]
+			require.NotNil(t, monthly)
+			require.Equal(t, "monthly", monthly.window)
+			require.Equal(t, 96.0, monthly.usedPercent)
+			require.NotNil(t, monthly.until)
+			require.True(t, reset.Equal(*monthly.until))
+		})
+	}
+}
+
 func TestEvaluateAccountSchedulingThreshold_OpenAIChoosesLatestResetWindow(t *testing.T) {
 	t.Parallel()
 

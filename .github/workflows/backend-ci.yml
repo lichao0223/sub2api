@@ -39,9 +39,15 @@ jobs:
       - name: Unit tests
         working-directory: backend
         run: make test-unit
+      - name: Merge regression race checks
+        working-directory: backend
+        run: go test -race -tags=unit ./internal/service ./internal/repository -run 'TestAnalyticsPartition|TestCNMonthlyThreshold|TestUsageBillingLane'
       - name: Integration tests
         working-directory: backend
         run: make test-integration
+      - name: Analytics retention integration race checks
+        working-directory: backend
+        run: go test -race -tags=integration ./internal/repository -run 'TestAnalyticsPartitionRetention'
 
   frontend:
     runs-on: ubuntu-latest
