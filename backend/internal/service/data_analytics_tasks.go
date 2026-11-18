@@ -14,6 +14,8 @@ import (
 
 const AnalyticsTaskSettingKey = "data_analytics.tasks_enabled"
 
+const analyticsWorkerHeartbeatTimeout = 30 * time.Second
+
 var (
 	ErrAnalyticsTasksPaused     = errors.New("data analytics tasks are paused")
 	ErrAnalyticsControlConflict = errors.New("data analytics settings changed; refresh and try again")
@@ -274,7 +276,7 @@ func (s *AnalyticsTaskService) Status(ctx context.Context) (*AnalyticsTaskStatus
 	if control.Enabled {
 		status.State = "idle"
 	}
-	heartbeatCutoff := time.Now().Add(-15 * time.Second)
+	heartbeatCutoff := time.Now().Add(-analyticsWorkerHeartbeatTimeout)
 	staleRunning, unacknowledged := false, false
 	for _, worker := range workers {
 		if status.LastSeenAt == nil || worker.LastSeenAt.After(*status.LastSeenAt) {

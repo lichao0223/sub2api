@@ -296,6 +296,16 @@ func TestAnalyticsTasksStaleRunningHeartbeatIsUnknown(t *testing.T) {
 	require.Equal(t, "unknown", status.State)
 }
 
+func TestAnalyticsTasksRecentHeartbeatToleratesSchedulingJitter(t *testing.T) {
+	repo := newAnalyticsTaskMemoryRepo()
+	repo.control.Enabled = true
+	repo.workers["delayed"] = AnalyticsTaskWorker{InstanceID: "delayed", ObservedVersion: 1, LastSeenAt: time.Now().Add(-20 * time.Second)}
+	s := NewAnalyticsTaskService(repo, "a")
+	status, err := s.Status(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, "idle", status.State)
+}
+
 func TestAnalyticsTasksCanceledCallerDoesNotStartWork(t *testing.T) {
 	repo := newAnalyticsTaskMemoryRepo()
 	repo.control.Enabled = true
