@@ -826,10 +826,10 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
-		AddRow(int64(2), "beta@example.com", "beta", 12.5, int64(9), int64(900), 40.0, int64(30), int64(2600)).
-		AddRow(int64(1), "alpha@example.com", "alpha", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
-		AddRow(int64(3), "gamma@example.com", "", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
+	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "external_user_id", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens"}).
+		AddRow(int64(2), "beta@example.com", "beta", "EXT-BETA", 12.5, int64(9), int64(900), 40.0, int64(30), int64(2600)).
+		AddRow(int64(1), "alpha@example.com", "alpha", "EXT-ALPHA", 12.5, int64(8), int64(800), 40.0, int64(30), int64(2600)).
+		AddRow(int64(3), "gamma@example.com", "", "", 4.25, int64(5), int64(300), 40.0, int64(30), int64(2600))
 
 	mock.ExpectQuery("WITH usage_owner AS \\(").
 		WithArgs(start, end, 12).
@@ -839,8 +839,8 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.UserSpendingRankingResponse{
 		Ranking: []usagestats.UserSpendingRankingItem{
-			{UserID: 2, Email: "beta@example.com", Username: "beta", ActualCost: 12.5, Requests: 9, Tokens: 900},
-			{UserID: 1, Email: "alpha@example.com", Username: "alpha", ActualCost: 12.5, Requests: 8, Tokens: 800},
+			{UserID: 2, Email: "beta@example.com", Username: "beta", ExternalUserID: "EXT-BETA", ActualCost: 12.5, Requests: 9, Tokens: 900},
+			{UserID: 1, Email: "alpha@example.com", Username: "alpha", ExternalUserID: "EXT-ALPHA", ActualCost: 12.5, Requests: 8, Tokens: 800},
 			{UserID: 3, Email: "gamma@example.com", ActualCost: 4.25, Requests: 5, Tokens: 300},
 		},
 		TotalActualCost: 40.0,
@@ -857,11 +857,11 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 	start := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(24 * time.Hour)
 
-	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens", "zero_token_user_count"}).
-		AddRow(int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), 40.0, int64(30), int64(2600), int64(1)).
-		AddRow(int64(1), "alpha@example.com", "", 12.5, int64(8), int64(900), 40.0, int64(30), int64(2600), int64(1)).
-		AddRow(int64(3), "gamma@example.com", "Gamma", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600), int64(1)).
-		AddRow(int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600), int64(1))
+	rows := sqlmock.NewRows([]string{"user_id", "email", "username", "external_user_id", "actual_cost", "requests", "tokens", "total_actual_cost", "total_requests", "total_tokens", "zero_token_user_count"}).
+		AddRow(int64(2), "beta@example.com", "Beta", "EXT-BETA", 10.5, int64(7), int64(1200), 40.0, int64(30), int64(2600), int64(1)).
+		AddRow(int64(1), "alpha@example.com", "", "EXT-ALPHA", 12.5, int64(8), int64(900), 40.0, int64(30), int64(2600), int64(1)).
+		AddRow(int64(3), "gamma@example.com", "Gamma", "", 4.25, int64(5), int64(500), 40.0, int64(30), int64(2600), int64(1)).
+		AddRow(int64(4), "zero@example.com", "Zero", "", 0.0, int64(0), int64(0), 40.0, int64(30), int64(2600), int64(1))
 
 	mock.ExpectQuery("WITH usage_owner AS \\([\\s\\S]*TOKEN_RANKING_EXCLUDED_GROUP_IDS").
 		WithArgs(start, end, service.RoleAdmin, 12).
@@ -871,8 +871,8 @@ func TestUsageLogRepositoryGetUserTokenRanking(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.UserTokenRankingResponse{
 		Ranking: []usagestats.UserTokenRankingItem{
-			{UserID: 2, Email: "beta@example.com", Username: "Beta", ActualCost: 10.5, Requests: 7, Tokens: 1200},
-			{UserID: 1, Email: "alpha@example.com", ActualCost: 12.5, Requests: 8, Tokens: 900},
+			{UserID: 2, Email: "beta@example.com", Username: "Beta", ExternalUserID: "EXT-BETA", ActualCost: 10.5, Requests: 7, Tokens: 1200},
+			{UserID: 1, Email: "alpha@example.com", ExternalUserID: "EXT-ALPHA", ActualCost: 12.5, Requests: 8, Tokens: 900},
 			{UserID: 3, Email: "gamma@example.com", Username: "Gamma", ActualCost: 4.25, Requests: 5, Tokens: 500},
 			{UserID: 4, Email: "zero@example.com", Username: "Zero"},
 		},
@@ -909,6 +909,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		"user_id",
 		"email",
 		"username",
+		"external_user_id",
 		"actual_cost",
 		"requests",
 		"tokens",
@@ -926,10 +927,10 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 		"total_active_duration_ms",
 		"all_calendar_confirmed",
 	}).AddRow(
-		int64(2), "beta@example.com", "Beta", 10.5, int64(7), int64(1200), int64(1200), int64(360000), int64(240000), true,
+		int64(2), "beta@example.com", "Beta", "EXT-BETA", 10.5, int64(7), int64(1200), int64(1200), int64(360000), int64(240000), true,
 		40.0, int64(30), int64(2600), int64(1), int64(2600), int64(4000), 0.65, int64(900000), true,
 	).AddRow(
-		int64(4), "zero@example.com", "Zero", 0.0, int64(0), int64(0), int64(0), int64(0), int64(0), true,
+		int64(4), "zero@example.com", "Zero", "", 0.0, int64(0), int64(0), int64(0), int64(0), int64(0), true,
 		40.0, int64(30), int64(2600), int64(1), int64(2600), int64(4000), 0.65, int64(900000), true,
 	)
 
@@ -945,6 +946,7 @@ func TestUsageLogRepositoryGetUserNonworkTokenRanking(t *testing.T) {
 				UserID:            2,
 				Email:             "beta@example.com",
 				Username:          "Beta",
+				ExternalUserID:    "EXT-BETA",
 				ActualCost:        10.5,
 				Requests:          7,
 				Tokens:            1200,

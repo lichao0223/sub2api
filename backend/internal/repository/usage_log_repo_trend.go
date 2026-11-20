@@ -158,20 +158,28 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 				COALESCE(m.target_user_id, u.user_id) AS user_id,
 				COALESCE(us.email, '') as email,
 				COALESCE(us.username, '') as username,
+				COALESCE(ext.external_user_id, '') as external_user_id,
 				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
 				COUNT(*) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
 			FROM usage_logs u
 			LEFT JOIN usage_owner m ON m.source_user_id = u.user_id
 			LEFT JOIN users us ON COALESCE(m.target_user_id, u.user_id) = us.id
+			LEFT JOIN LATERAL (
+				SELECT CASE WHEN COUNT(DISTINCT eum.external_user_id) = 1 THEN MIN(eum.external_user_id) END AS external_user_id
+				FROM external_user_mappings eum
+				WHERE eum.user_id = us.id
+				  AND eum.deleted_at IS NULL
+			) ext ON TRUE
 			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY COALESCE(m.target_user_id, u.user_id), us.email, us.username
+			GROUP BY COALESCE(m.target_user_id, u.user_id), us.email, us.username, ext.external_user_id
 		),
 		ranked AS (
 			SELECT
 				user_id,
 				email,
 				username,
+				external_user_id,
 				actual_cost,
 				requests,
 				tokens,
@@ -186,6 +194,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 			user_id,
 			email,
 			username,
+			external_user_id,
 			actual_cost,
 			requests,
 			tokens,
@@ -213,7 +222,7 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	totalTokens := int64(0)
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ExternalUserID, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)

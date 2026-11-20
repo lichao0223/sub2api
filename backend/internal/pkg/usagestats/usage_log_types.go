@@ -149,12 +149,13 @@ type UserUsageTrendPoint struct {
 
 // UserSpendingRankingItem represents a user spending ranking row.
 type UserSpendingRankingItem struct {
-	UserID     int64   `json:"user_id"`
-	Email      string  `json:"email"`
-	Username   string  `json:"username"`
-	ActualCost float64 `json:"actual_cost"` // 实际扣除
-	Requests   int64   `json:"requests"`
-	Tokens     int64   `json:"tokens"`
+	UserID         int64   `json:"user_id"`
+	Email          string  `json:"email"`
+	Username       string  `json:"username"`
+	ExternalUserID string  `json:"external_user_id"` // 外部系统用户 ID，无映射或多重映射时为空
+	ActualCost     float64 `json:"actual_cost"`      // 实际扣除
+	Requests       int64   `json:"requests"`
+	Tokens         int64   `json:"tokens"`
 }
 
 // UserSpendingRankingResponse represents ranking rows plus total spend for the time range.
@@ -167,12 +168,13 @@ type UserSpendingRankingResponse struct {
 
 // UserTokenRankingItem represents a user token usage ranking row.
 type UserTokenRankingItem struct {
-	UserID     int64   `json:"user_id"`
-	Email      string  `json:"email"`
-	Username   string  `json:"username"`
-	ActualCost float64 `json:"actual_cost"`
-	Requests   int64   `json:"requests"`
-	Tokens     int64   `json:"tokens"`
+	UserID         int64   `json:"user_id"`
+	Email          string  `json:"email"`
+	Username       string  `json:"username"`
+	ExternalUserID string  `json:"external_user_id"` // 外部系统用户 ID，无映射或多重映射时为空
+	ActualCost     float64 `json:"actual_cost"`
+	Requests       int64   `json:"requests"`
+	Tokens         int64   `json:"tokens"`
 }
 
 // UserTokenRankingResponse represents token ranking rows plus totals for the time range.
@@ -200,6 +202,7 @@ type UserNonworkTokenRankingItem struct {
 	UserID            int64   `json:"user_id"`
 	Email             string  `json:"email"`
 	Username          string  `json:"username"`
+	ExternalUserID    string  `json:"external_user_id"` // 外部系统用户 ID，无映射或多重映射时为空
 	ActualCost        float64 `json:"actual_cost"`
 	Requests          int64   `json:"requests"`
 	Tokens            int64   `json:"tokens"`

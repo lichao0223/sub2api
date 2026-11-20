@@ -55,12 +55,19 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 				us.id as user_id,
 				COALESCE(us.email, '') as email,
 				COALESCE(us.username, '') as username,
+				COALESCE(ext.external_user_id, '') as external_user_id,
 				COALESCE(i.actual_cost, 0) + COALESCE(e.actual_cost, 0) as actual_cost,
 				COALESCE(i.requests, 0) + COALESCE(e.requests, 0) as requests,
 				COALESCE(i.tokens, 0) + COALESCE(e.tokens, 0) as tokens
 			FROM users us
 			LEFT JOIN internal_stats i ON i.user_id = us.id
 			LEFT JOIN external_stats e ON e.user_id = us.id
+			LEFT JOIN LATERAL (
+				SELECT CASE WHEN COUNT(DISTINCT eum.external_user_id) = 1 THEN MIN(eum.external_user_id) END AS external_user_id
+				FROM external_user_mappings eum
+				WHERE eum.user_id = us.id
+				  AND eum.deleted_at IS NULL
+			) ext ON TRUE
 			WHERE us.role <> $3
 			  AND (us.deleted_at IS NULL OR i.user_id IS NOT NULL OR e.user_id IS NOT NULL)
 		),
@@ -69,6 +76,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 				user_id,
 				email,
 				username,
+				external_user_id,
 				actual_cost,
 				requests,
 				tokens,
@@ -84,6 +92,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 			user_id,
 			email,
 			username,
+			external_user_id,
 			actual_cost,
 			requests,
 			tokens,
@@ -113,7 +122,7 @@ func (r *usageLogRepository) GetUserTokenRanking(ctx context.Context, startTime,
 	zeroTokenUserCount := int64(0)
 	for rows.Next() {
 		var row UserTokenRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens, &zeroTokenUserCount); err != nil {
+		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ExternalUserID, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens, &zeroTokenUserCount); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)
@@ -249,6 +258,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				u.id AS user_id,
 				COALESCE(u.email, '') AS email,
 				COALESCE(u.username, '') AS username,
+				COALESCE(ext.external_user_id, '') AS external_user_id,
 				COALESCE(s.actual_cost, 0) + COALESCE(e.actual_cost, 0) AS actual_cost,
 				COALESCE(s.requests, 0) + COALESCE(e.requests, 0) AS requests,
 				COALESCE(s.tokens, 0) + CASE WHEN $9 = 'nonwork' THEN COALESCE(e.nonwork_tokens, 0) ELSE COALESCE(e.tokens, 0) END AS tokens,
@@ -259,6 +269,12 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			FROM filtered_users u
 			LEFT JOIN stats s ON s.user_id = u.id
 			LEFT JOIN external_stats e ON e.user_id = u.id
+			LEFT JOIN LATERAL (
+				SELECT CASE WHEN COUNT(DISTINCT eum.external_user_id) = 1 THEN MIN(eum.external_user_id) END AS external_user_id
+				FROM external_user_mappings eum
+				WHERE eum.user_id = u.id
+				  AND eum.deleted_at IS NULL
+			) ext ON TRUE
 			WHERE u.deleted_at IS NULL OR s.user_id IS NOT NULL OR e.user_id IS NOT NULL
 		),
 		ranked AS (
@@ -266,6 +282,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 				m.user_id,
 				m.email,
 				m.username,
+				m.external_user_id,
 				m.actual_cost,
 				m.requests,
 				m.tokens,
@@ -295,6 +312,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			user_id,
 			email,
 			username,
+			external_user_id,
 			actual_cost,
 			requests,
 			tokens,
@@ -336,6 +354,7 @@ func (r *usageLogRepository) GetUserNonworkTokenRanking(ctx context.Context, sta
 			&row.UserID,
 			&row.Email,
 			&row.Username,
+			&row.ExternalUserID,
 			&row.ActualCost,
 			&row.Requests,
 			&row.Tokens,
