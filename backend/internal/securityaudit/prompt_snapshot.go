@@ -751,24 +751,53 @@ func RedactPreview(value string, maxRunes int) string {
 	return TrimRunes(redactSensitiveText(value), maxRunes)
 }
 
+// redactSensitiveText applies the fork's extended redaction pattern set.
+// ReplaceAllString copies even an unchanged input, and most prompts do not match
+// any pattern, so every replacement is guarded by MatchString to avoid the
+// allocation (upstream perf change) while keeping the replacement order and
+// complete-input matching semantics.
 func redactSensitiveText(value string) string {
-	value = privateBlockPattern.ReplaceAllString(value, "***PRIVATE_BLOCK***")
-	value = querySecretPattern.ReplaceAllString(value, "${1}***")
-	value = jsonSecretPattern.ReplaceAllString(value, "${1}***")
-	value = bearerPattern.ReplaceAllString(value, "Bearer ***")
-	value = jwtPattern.ReplaceAllString(value, "***JWT***")
-	value = longBase64Pattern.ReplaceAllString(value, "***BASE64***")
-	value = longTokenPattern.ReplaceAllString(value, "***TOKEN***")
-	value = apiKeyPattern.ReplaceAllStringFunc(value, func(match string) string {
-		if index := strings.IndexAny(match, ":= \t"); index >= 0 {
-			return match[:index+1] + "***"
-		}
-		return "***"
-	})
-	value = canaryPattern.ReplaceAllString(value, "${1}***")
-	value = emailPattern.ReplaceAllString(value, "***@***")
-	value = idCardPattern.ReplaceAllString(value, "***ID***")
-	value = phonePattern.ReplaceAllString(value, "***PHONE***")
+	if privateBlockPattern.MatchString(value) {
+		value = privateBlockPattern.ReplaceAllString(value, "***PRIVATE_BLOCK***")
+	}
+	if querySecretPattern.MatchString(value) {
+		value = querySecretPattern.ReplaceAllString(value, "${1}***")
+	}
+	if jsonSecretPattern.MatchString(value) {
+		value = jsonSecretPattern.ReplaceAllString(value, "${1}***")
+	}
+	if bearerPattern.MatchString(value) {
+		value = bearerPattern.ReplaceAllString(value, "Bearer ***")
+	}
+	if jwtPattern.MatchString(value) {
+		value = jwtPattern.ReplaceAllString(value, "***JWT***")
+	}
+	if longBase64Pattern.MatchString(value) {
+		value = longBase64Pattern.ReplaceAllString(value, "***BASE64***")
+	}
+	if longTokenPattern.MatchString(value) {
+		value = longTokenPattern.ReplaceAllString(value, "***TOKEN***")
+	}
+	if apiKeyPattern.MatchString(value) {
+		value = apiKeyPattern.ReplaceAllStringFunc(value, func(match string) string {
+			if index := strings.IndexAny(match, ":= \t"); index >= 0 {
+				return match[:index+1] + "***"
+			}
+			return "***"
+		})
+	}
+	if canaryPattern.MatchString(value) {
+		value = canaryPattern.ReplaceAllString(value, "${1}***")
+	}
+	if emailPattern.MatchString(value) {
+		value = emailPattern.ReplaceAllString(value, "***@***")
+	}
+	if idCardPattern.MatchString(value) {
+		value = idCardPattern.ReplaceAllString(value, "***ID***")
+	}
+	if phonePattern.MatchString(value) {
+		value = phonePattern.ReplaceAllString(value, "***PHONE***")
+	}
 	return value
 }
 
@@ -836,11 +865,21 @@ func TrimRunes(value string, limit int) string {
 	if limit <= 0 {
 		return ""
 	}
-	runes := []rune(value)
-	if len(runes) <= limit {
-		return value
+	count := 0
+	for index := range value {
+		if count == limit {
+			// Decode only the retained prefix. Converting the entire prompt to
+			// []rune just to keep 96/65536 runes allocates four bytes per rune.
+			// Keep the old replacement behavior for invalid UTF-8 prefixes.
+			prefix := value[:index]
+			if utf8.ValidString(prefix) {
+				return prefix + "…"
+			}
+			return string([]rune(prefix)) + "…"
+		}
+		count++
 	}
-	return string(runes[:limit]) + "…"
+	return value
 }
 
 func stringValue(value any) string {
