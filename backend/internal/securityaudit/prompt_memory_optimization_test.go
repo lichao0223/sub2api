@@ -111,7 +111,10 @@ func TestRedactPreviewPreservesCompleteInputReplacementOrder(t *testing.T) {
 		want = phonePattern.ReplaceAllString(want, "***PHONE***")
 		require.Equal(t, TrimRunes(want, 96), RedactPreview(value, 96))
 	}
-	value := strings.Repeat("x", 1<<20)
+	// 二开的长 base64 / 长 token 模式会命中整段 "xxxx…"，这种输入本来就要生成
+	// 替换结果，无法再断言「零拷贝」。这里改用 1 MB 的普通文本（任何模式都不匹配），
+	// 仍能守住上游的意图：无命中时不能整段复制。
+	value := strings.Repeat("lorem ipsum ", (1<<20)/len("lorem ipsum "))
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 	out := RedactPreview(value, 96)
