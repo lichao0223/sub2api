@@ -28,3 +28,26 @@ python -m pip install -r .github/release-tools/requirements-release.txt
 python -m unittest discover -s .github/release-tools -p 'test_release_matrix.py'
 bash -n .github/release-tools/release-images.sh
 ```
+
+## Release notes
+
+`generate_release_notes.py` builds the GitHub Release body from git history, so every release lists what actually changed instead of an empty section.
+
+```bash
+# 预览最近一个 tag 的发布说明
+python .github/release-tools/generate_release_notes.py --tag "$(git describe --tags --abbrev=0)"
+# 预览并指定对比基线
+python .github/release-tools/generate_release_notes.py --tag v0.2.68 --previous-tag v0.2.67
+# 等价写法
+make changelog TAG=v0.2.68 CHANGELOG_BASE=v0.2.67
+```
+
+Behaviour:
+
+- Commits are grouped by conventional-commit type: `feat` / `fix` / `perf` / `refactor` / `revert` / `docs`, with `build|ci|chore|style|test` folded into 维护 and anything unrecognised into 其他变更.
+- Version-bump and release-plumbing commits are filtered out.
+- Merges of `upstream/main` collapse into a single 上游同步 entry with the commit count, so a fork rebase does not dump hundreds of foreign commits into the notes.
+- An annotated tag body, if present, is kept above the generated sections for hand-written highlights.
+- `--max-items N` caps each section (default 30), `--no-tag-body` drops the tag body, `--previous-tag` overrides the baseline.
+
+The release workflow runs it in the `release` job and passes the result to GoReleaser as `TAG_MESSAGE`, which feeds both the Release body and the Telegram notification.

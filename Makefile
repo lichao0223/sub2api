@@ -1,4 +1,4 @@
-.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical
+.PHONY: build build-backend build-frontend test test-backend test-frontend test-frontend-critical changelog
 
 # MERGE KEEP: account modal specs protect local timezone/scheduling/provider/ticket/multimodal features.
 FRONTEND_CRITICAL_VITEST := \
@@ -61,3 +61,12 @@ test-frontend:
 
 test-frontend-critical:
 	@pnpm --dir frontend exec vitest run $(FRONTEND_CRITICAL_VITEST)
+
+# 预览某个 tag 的自动生成 release notes（默认取最近 tag）
+# 用法：make changelog            → 最近 tag
+#       make changelog TAG=v0.2.68 CHANGELOG_BASE=v0.2.67
+TAG ?= $(shell git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null)
+
+changelog:
+	@python3 .github/release-tools/generate_release_notes.py --tag $(TAG) \
+		$(if $(CHANGELOG_BASE),--previous-tag $(CHANGELOG_BASE),)

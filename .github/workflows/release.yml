@@ -252,10 +252,12 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME || 'skip' }}
         run: bash "$RUNNER_TEMP/release-tools/release-images.sh"
-      - name: Get annotated tag notes
+      - name: Build auto-generated release notes
         id: tag_message
         run: |
-          TAG_MESSAGE=$(git tag -l --format='%(contents:body)' "$RELEASE_TAG")
+          # 由 git 历史自动生成分类 changelog（feat/fix/perf/…），
+          # annotated tag 里手写的正文会保留在最前面。
+          TAG_MESSAGE=$(python "$RUNNER_TEMP/release-tools/generate_release_notes.py" --tag "$RELEASE_TAG")
           DELIMITER="TAG_MESSAGE_$(openssl rand -hex 16)"
           {
             echo "message<<$DELIMITER"
