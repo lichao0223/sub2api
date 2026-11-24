@@ -713,7 +713,6 @@ func lockAndMergeAccountProbeExtra(
 		currentOpenCodeSnapshot        []byte
 		currentGrokObservedModels      []byte
 		currentUpstreamModelMetadata   []byte
-		currentGroupSyncEnabled        []byte
 		currentExtra                   []byte
 	)
 	columns, err := rows.Columns()
