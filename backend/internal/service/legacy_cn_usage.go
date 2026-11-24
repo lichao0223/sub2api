@@ -94,7 +94,7 @@ func legacyCNGet(ctx context.Context, account *Account, url, apiKey string, bear
 		req.Header.Set("Accept-Language", "en-US,en")
 	}
 	req.Header.Set("Accept", "application/json")
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

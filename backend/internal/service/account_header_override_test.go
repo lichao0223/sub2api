@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -145,7 +146,7 @@ func TestApplyHeaderOverrides(t *testing.T) {
 	h["anthropic-beta"] = []string{"claude-code-20250219,oauth-2025-04-20"} // 非 canonical 原样 key
 	h.Set("Content-Type", "application/json")
 
-	acc.ApplyHeaderOverrides(h)
+	acc.ApplyHeaderOverrides(context.Background(), h)
 
 	// user-agent 覆盖且只有一个值（已知头恢复 wire casing）
 	require.Equal(t, []string{"override-agent/2.0"}, h["User-Agent"])
@@ -184,7 +185,7 @@ func TestApplyHeaderOverridesForContextResolvesClientIP(t *testing.T) {
 	}, acc.GetHeaderOverrides())
 	r := gin.New()
 	r.POST("/v1/responses", func(c *gin.Context) {
-		acc.ApplyHeaderOverridesForContext(h, c)
+		acc.ApplyHeaderOverridesForContext(context.Background(), h, c)
 	})
 	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.42")
@@ -201,7 +202,7 @@ func TestApplyHeaderOverridesSkipsClientIPVariableWithoutClientContext(t *testin
 	})
 	h := http.Header{}
 	h.Set("X-Forwarded-For", "stale")
-	acc.ApplyHeaderOverrides(h)
+	acc.ApplyHeaderOverrides(context.Background(), h)
 	require.Empty(t, h.Get("X-Forwarded-For"))
 }
 
@@ -211,7 +212,7 @@ func TestApplyHeaderOverridesForContextHandlesMissingRequest(t *testing.T) {
 		credKeyHeaderOverrides:       map[string]any{"X-Forwarded-For": "$client_ip"},
 	})
 	h := http.Header{}
-	acc.ApplyHeaderOverridesForContext(h, &gin.Context{})
+	acc.ApplyHeaderOverridesForContext(context.Background(), h, &gin.Context{})
 	require.Empty(t, h.Get("X-Forwarded-For"))
 }
 
@@ -228,7 +229,7 @@ func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {
 		credKeyHeaderOverrides:       map[string]any{"user-agent": "hacked"},
 	})
 	h := baseline()
-	oauth.ApplyHeaderOverrides(h)
+	oauth.ApplyHeaderOverrides(context.Background(), h)
 	require.Equal(t, "orig", h.Get("User-Agent"))
 
 	// 未启用开关
@@ -236,7 +237,7 @@ func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {
 		credKeyHeaderOverrides: map[string]any{"user-agent": "hacked"},
 	})
 	h = baseline()
-	off.ApplyHeaderOverrides(h)
+	off.ApplyHeaderOverrides(context.Background(), h)
 	require.Equal(t, "orig", h.Get("User-Agent"))
 
 	// 禁止覆写的头（authorization / x-api-key / host 等）不会被应用
@@ -251,13 +252,13 @@ func TestApplyHeaderOverridesNoOpPaths(t *testing.T) {
 	})
 	h = http.Header{}
 	h.Set("Authorization", "Bearer real-key")
-	blocked.ApplyHeaderOverrides(h)
+	blocked.ApplyHeaderOverrides(context.Background(), h)
 	require.Equal(t, "Bearer real-key", h.Get("Authorization"))
 	require.Empty(t, h.Get("X-Api-Key"))
 	require.Empty(t, h.Get("Host"))
 
 	// nil header 不 panic
-	blocked.ApplyHeaderOverrides(nil)
+	blocked.ApplyHeaderOverrides(context.Background(), nil)
 }
 
 func TestNormalizeHeaderOverrideCredentials(t *testing.T) {
