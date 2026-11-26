@@ -179,8 +179,15 @@ func BuildOpsRequestSnapshot(body []byte, maxRawBytes int) (OpsRequestSnapshotCa
 		limit = maxRawBytes
 		capture.Truncated = true
 	}
+	// 只有在整体是合法 UTF-8 文本时才做「不切断多字节字符」的收尾裁剪；
+	// 二进制正文（压缩体、protobuf 等）必须逐字节保真，否则下载回来的文件会损坏。
+	textual := utf8.Valid(body)
 	for {
-		compressed, err := compressOpsSnapshot(trimOpsSnapshotUTF8(body[:limit]))
+		chunk := body[:limit]
+		if textual {
+			chunk = trimOpsSnapshotUTF8(chunk)
+		}
+		compressed, err := compressOpsSnapshot(chunk)
 		if err != nil {
 			return OpsRequestSnapshotCapture{}, err
 		}
