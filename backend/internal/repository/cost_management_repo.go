@@ -1703,11 +1703,11 @@ func loadFixedCostUnits(ctx context.Context, tx *sql.Tx, bucket time.Time) ([]fi
 
 func insertFixedPlanTotals(ctx context.Context, tx *sql.Tx, bucket time.Time, units []fixedCostActiveUnit) error {
 	var sqlText strings.Builder
-	sqlText.WriteString(`INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,subscription_unit_id,subscription_unit_version_id,amount_cny) VALUES `)
+	_, _ = sqlText.WriteString(`INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,subscription_unit_id,subscription_unit_version_id,amount_cny) VALUES `)
 	args := make([]any, 0, len(units)*5)
 	for i, item := range units {
 		if i > 0 {
-			sqlText.WriteByte(',')
+			_ = sqlText.WriteByte(',')
 		}
 		n := len(args)
 		fmt.Fprintf(&sqlText, "($%d,'fixed_plan_total',$%d,$%d,$%d,$%d::numeric)", n+1, n+2, n+3, n+4, n+5)
@@ -1758,11 +1758,11 @@ func insertFixedAllocations(ctx context.Context, tx *sql.Tx, bucket time.Time, r
 			end = len(rows)
 		}
 		var sqlText strings.Builder
-		sqlText.WriteString(`INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,subscription_unit_id,subscription_unit_version_id,request_count,amount_cny) VALUES `)
+		_, _ = sqlText.WriteString(`INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,subscription_unit_id,subscription_unit_version_id,request_count,amount_cny) VALUES `)
 		args := make([]any, 0, (end-start)*8)
 		for i := start; i < end; i++ {
 			if i > start {
-				sqlText.WriteByte(',')
+				_ = sqlText.WriteByte(',')
 			}
 			row := rows[i]
 			n := len(args)
