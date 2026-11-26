@@ -5,14 +5,29 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
 	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 )
 
-type costManagementRepository struct{ db *sql.DB }
+type costManagementRepository struct {
+	db *sql.DB
+
+	// fixedCostMu guards the per-cycle dedupe state of fixed-cost day rebuilds.
+	fixedCostMu       sync.Mutex
+	fixedCostCycle    uint64
+	fixedCostHasCycle bool
+	fixedCostDays     map[string]struct{}
+	fixedConfigHash   string
+}
 
 func NewCostManagementRepository(db *sql.DB) service.CostManagementRepository {
 	return &costManagementRepository{db: db}
@@ -830,12 +845,20 @@ func (r *costManagementRepository) GetCostOverview(ctx context.Context, start, e
 		return nil, err
 	}
 	var last sql.NullTime
-	if err = r.db.QueryRowContext(ctx, `SELECT last_success_at FROM cost_jobs WHERE job_key='incremental'`).Scan(&last); err != nil && err != sql.ErrNoRows {
+	var jobStatus, lastError string
+	var backlogRows int64
+	if err = r.db.QueryRowContext(ctx, `
+		SELECT j.last_success_at,j.status,j.error_message,
+		       (SELECT COUNT(*) FROM (SELECT 1 FROM usage_logs ul WHERE ul.id > j.last_usage_log_id LIMIT 100001) backlog)
+		FROM cost_jobs j WHERE job_key='incremental'`).Scan(&last, &jobStatus, &lastError, &backlogRows); err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
 	if last.Valid {
 		o.LastSuccessAt = &last.Time
 	}
+	o.AggregationStatus = jobStatus
+	o.LastError = lastError
+	o.BacklogRows = backlogRows
 	previousStart, previousEnd := previousCostRange(start, end)
 	if err = r.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_cny) FILTER(WHERE aggregate_scope IN('usage','fixed_plan_total') AND calculation_status='calculated'),0)::text FROM cost_daily_aggregates WHERE bucket_date >= $1::date AND bucket_date < $2::date`, previousStart, previousEnd).Scan(&o.PreviousTotalCostCNY); err != nil {
 		return nil, err
@@ -1287,6 +1310,10 @@ func (r *costManagementRepository) CancelCostRecalculation(ctx context.Context, 
 }
 
 func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit int) (processed bool, runErr error) {
+	stage := "begin"
+	var checkpoint int64
+	var maxID sql.NullInt64
+	startedAt := time.Now()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -1294,17 +1321,30 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 	defer func() {
 		// Release transaction locks before writing retry status separately.
 		_ = tx.Rollback()
-		if runErr != nil && !errors.Is(runErr, service.ErrCostAggregationBusy) {
-			status, retry := recalculationFailureStatus(runErr)
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			if retry {
-				_, _ = r.db.ExecContext(cleanupCtx, `UPDATE cost_jobs SET status='queued',error_message='',updated_at=NOW() WHERE job_key='incremental'`)
-			} else {
-				_, _ = r.db.ExecContext(cleanupCtx, `UPDATE cost_jobs SET status=$2,error_message=$1,updated_at=NOW() WHERE job_key='incremental'`, runErr.Error(), status)
-			}
+		if runErr == nil {
+			return
+		}
+		if errors.Is(runErr, service.ErrCostAggregationBusy) {
+			return
+		}
+		status, retry := recalculationFailureStatus(runErr)
+		timeout := isCostAggregationTimeout(runErr)
+		logger.L().Warn("[CostManagement] incremental batch failed",
+			zap.String("stage", stage),
+			zap.Int64("checkpoint", checkpoint),
+			zap.Int64("batch_max_id", maxID.Int64),
+			zap.Bool("timeout", timeout),
+			zap.Duration("elapsed", time.Since(startedAt)),
+			zap.Error(runErr))
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if retry {
+			_, _ = r.db.ExecContext(cleanupCtx, `UPDATE cost_jobs SET status='queued',error_message='',updated_at=NOW() WHERE job_key='incremental'`)
+		} else {
+			_, _ = r.db.ExecContext(cleanupCtx, `UPDATE cost_jobs SET status=$2,error_message=$1,updated_at=NOW() WHERE job_key='incremental'`, runErr.Error(), status)
 		}
 	}()
+	stage = "advisory_lock"
 	var locked bool
 	if err = tx.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock(9072026)`).Scan(&locked); err != nil || !locked {
 		if err != nil {
@@ -1312,14 +1352,14 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		}
 		return false, service.ErrCostAggregationBusy
 	}
-	var checkpoint int64
+	stage = "checkpoint"
 	if err = tx.QueryRowContext(ctx, `SELECT last_usage_log_id FROM cost_jobs WHERE job_key='incremental' FOR UPDATE`).Scan(&checkpoint); err != nil {
 		return false, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE cost_jobs SET status='running',started_at=NOW(),updated_at=NOW() WHERE job_key='incremental'`); err != nil {
 		return false, err
 	}
-	var maxID sql.NullInt64
+	stage = "usage_batch"
 	err = tx.QueryRowContext(ctx, `
 		WITH batch AS (
 		  SELECT ul.*,COALESCE(NULLIF(BTRIM(ul.upstream_model),''),ul.model) AS final_model
@@ -1368,13 +1408,13 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 	if err != nil {
 		return false, err
 	}
+	stage = "dirty_days"
 	loc, err := time.LoadLocation("Asia/Shanghai")
 	if err != nil {
 		return false, err
 	}
+	r.enterFixedRebuildCycle(ctx)
 	days := map[string]time.Time{}
-	today := time.Now().In(loc)
-	days[today.Format("2006-01-02")] = today
 	if maxID.Valid {
 		rows, queryErr := tx.QueryContext(ctx, `SELECT DISTINCT(created_at AT TIME ZONE 'Asia/Shanghai')::date FROM usage_logs WHERE id>$1 AND id<=$2`, checkpoint, maxID.Int64)
 		if queryErr != nil {
@@ -1412,6 +1452,8 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		if queryErr != nil {
 			return false, queryErr
 		}
+		today := time.Now().In(loc)
+		today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
 		for rows.Next() {
 			var monthStart time.Time
 			if queryErr = rows.Scan(&monthStart); queryErr != nil {
@@ -1428,27 +1470,211 @@ func (r *costManagementRepository) RunCostIncremental(ctx context.Context, limit
 		}
 		_ = rows.Close()
 	}
+	// Today is no longer rebuilt on every batch: only when its fixed rows are
+	// still missing (first run of the day) or the fixed-cost configuration
+	// changed since the previous run.
+	today := time.Now().In(loc)
+	today = time.Date(today.Year(), today.Month(), today.Day(), 0, 0, 0, 0, loc)
+	needsToday, err := r.fixedDayNeedsRebuild(ctx, tx, today)
+	if err != nil {
+		return false, err
+	}
+	if needsToday {
+		days[today.Format("2006-01-02")] = today
+	}
+	ordered := make([]time.Time, 0, len(days))
 	for _, day := range days {
+		ordered = append(ordered, day)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Before(ordered[j]) })
+	for _, day := range ordered {
+		key := day.Format("2006-01-02")
+		if !r.claimFixedRebuildDay(key) {
+			continue
+		}
+		stage = "fixed_day:" + key
 		if err = r.rebuildFixedDay(ctx, tx, day); err != nil {
 			return false, err
 		}
 	}
+	stage = "publication"
 	if err = checkAnalyticsPublication(ctx, tx); err != nil {
 		return false, err
 	}
+	stage = "commit"
 	if err = tx.Commit(); err != nil {
 		return false, err
 	}
 	return maxID.Valid, nil
 }
 
+// isCostAggregationTimeout reports whether err came from the aggregation budget
+// running out (context deadline or a cancelled statement).
+func isCostAggregationTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) ||
+		strings.Contains(err.Error(), "canceling statement due to user request")
+}
+
+// enterFixedRebuildCycle resets the per-cycle fixed-day dedupe when a new
+// aggregation cycle starts. Without a cycle marker (tests, manual calls) every
+// call is treated as its own cycle, so behaviour stays unchanged.
+func (r *costManagementRepository) enterFixedRebuildCycle(ctx context.Context) {
+	cycle, hasCycle := service.CostAggregationCycle(ctx)
+	r.fixedCostMu.Lock()
+	defer r.fixedCostMu.Unlock()
+	if !hasCycle || !r.fixedCostHasCycle || r.fixedCostCycle != cycle {
+		r.fixedCostDays = make(map[string]struct{}, 8)
+	}
+	r.fixedCostCycle, r.fixedCostHasCycle = cycle, hasCycle
+}
+
+// claimFixedRebuildDay reports whether day still needs a rebuild in this cycle.
+func (r *costManagementRepository) claimFixedRebuildDay(key string) bool {
+	r.fixedCostMu.Lock()
+	defer r.fixedCostMu.Unlock()
+	if r.fixedCostDays == nil {
+		r.fixedCostDays = make(map[string]struct{}, 8)
+	}
+	if _, seen := r.fixedCostDays[key]; seen {
+		return false
+	}
+	r.fixedCostDays[key] = struct{}{}
+	return true
+}
+
+// fixedDayNeedsRebuild reports whether today's fixed rows must be rebuilt: the
+// day has no fixed_plan_total rows yet, or the fixed-cost configuration changed
+// since the previous aggregation cycle.
+func (r *costManagementRepository) fixedDayNeedsRebuild(ctx context.Context, tx *sql.Tx, day time.Time) (bool, error) {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM cost_daily_aggregates WHERE bucket_date=$1::date AND aggregate_scope='fixed_plan_total')`, day).Scan(&exists); err != nil {
+		return false, err
+	}
+	if !exists {
+		return true, nil
+	}
+	fingerprint, err := fixedCostFingerprint(ctx, tx)
+	if err != nil {
+		return false, err
+	}
+	r.fixedCostMu.Lock()
+	changed := r.fixedConfigHash != "" && r.fixedConfigHash != fingerprint
+	r.fixedConfigHash = fingerprint
+	r.fixedCostMu.Unlock()
+	return changed, nil
+}
+
+// fixedCostFingerprint is a cheap snapshot of the fixed-cost configuration;
+// when it changes, the current day is rebuilt even without new usage.
+func fixedCostFingerprint(ctx context.Context, tx *sql.Tx) (string, error) {
+	var unitsUpdated, configsUpdated string
+	var unitCount, versionCount int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE((SELECT MAX(updated_at)::text FROM cost_subscription_units),''),
+		       (SELECT COUNT(*) FROM cost_subscription_units),
+		       (SELECT COUNT(*) FROM cost_subscription_unit_versions),
+		       COALESCE((SELECT MAX(updated_at)::text FROM account_cost_configs),'')`).
+		Scan(&unitsUpdated, &unitCount, &versionCount, &configsUpdated)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s|%d|%d|%s", unitsUpdated, unitCount, versionCount, configsUpdated), nil
+}
+
+type fixedCostUnit struct {
+	unitID, planID, versionID int64
+	monthly                   string
+	unitFrom, effectiveFrom   time.Time
+	unitTo, effectiveTo       sql.NullTime
+}
+
+type fixedCostActiveUnit struct {
+	unit  fixedCostUnit
+	daily decimal.Decimal
+}
+
+type fixedDayWeight struct {
+	userID   int64
+	requests int64
+}
+
+type fixedAllocationRow struct {
+	userID    int64
+	planID    int64
+	unitID    int64
+	versionID int64
+	requests  int64
+	amount    string
+}
+
+// fixedCostAllocationChunk bounds the parameters of one bulk INSERT.
+const fixedCostAllocationChunk = 1000
+
 func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.Tx, day time.Time) error {
 	bucket := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, day.Location())
-	monthStart := time.Date(day.Year(), day.Month(), 1, 0, 0, 0, 0, day.Location())
-	monthEnd := monthStart.AddDate(0, 1, 0)
 	if _, err := tx.ExecContext(ctx, `DELETE FROM cost_daily_aggregates WHERE bucket_date=$1::date AND aggregate_scope IN ('fixed_plan_total','fixed_user_allocation')`, bucket); err != nil {
 		return err
 	}
+	units, err := loadFixedCostUnits(ctx, tx, bucket)
+	if err != nil {
+		return err
+	}
+	active := make([]fixedCostActiveUnit, 0, len(units))
+	unitIDs := make([]int64, 0, len(units))
+	for _, unit := range units {
+		monthly, parseErr := decimal.NewFromString(unit.monthly)
+		if parseErr != nil {
+			return parseErr
+		}
+		daily := fixedDailyCost(bucket, monthly, unit.unitFrom, unit.unitTo, unit.effectiveFrom, unit.effectiveTo)
+		if daily.IsZero() {
+			continue
+		}
+		active = append(active, fixedCostActiveUnit{unit: unit, daily: daily})
+		unitIDs = append(unitIDs, unit.unitID)
+	}
+	if len(active) == 0 {
+		return nil
+	}
+	if err = insertFixedPlanTotals(ctx, tx, bucket, active); err != nil {
+		return err
+	}
+	// One grouped scan of the day replaces the previous per-unit month-to-date
+	// scan, which dominated every aggregation cycle.
+	weights, err := loadFixedDayWeights(ctx, tx, bucket, unitIDs)
+	if err != nil {
+		return err
+	}
+	var allocations []fixedAllocationRow
+	for _, item := range active {
+		list := weights[item.unit.unitID]
+		if len(list) == 0 {
+			continue
+		}
+		equal := make([]decimal.Decimal, len(list))
+		for i := range equal {
+			equal[i] = decimal.NewFromInt(1)
+		}
+		shares := service.AllocateAnalyticsCost(item.daily.Round(12), equal)
+		for i, weight := range list {
+			allocations = append(allocations, fixedAllocationRow{
+				userID:    weight.userID,
+				planID:    item.unit.planID,
+				unitID:    item.unit.unitID,
+				versionID: item.unit.versionID,
+				requests:  weight.requests,
+				amount:    shares[i].String(),
+			})
+		}
+	}
+	return insertFixedAllocations(ctx, tx, bucket, allocations)
+}
+
+func loadFixedCostUnits(ctx context.Context, tx *sql.Tx, bucket time.Time) ([]fixedCostUnit, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT u.id,u.plan_id,v.id,v.monthly_unit_cost_cny::text,u.effective_from,u.effective_to,v.effective_from,v.effective_to
 		FROM cost_subscription_units u
@@ -1457,73 +1683,94 @@ func (r *costManagementRepository) rebuildFixedDay(ctx context.Context, tx *sql.
 		WHERE u.effective_from<$2 AND(u.effective_to IS NULL OR u.effective_to>$1)
 		`, bucket, bucket.AddDate(0, 0, 1))
 	if err != nil {
-		return err
+		return nil, err
 	}
-	type fixedUnit struct {
-		unitID, planID, versionID int64
-		monthly                   string
-		unitFrom, effectiveFrom   time.Time
-		unitTo, effectiveTo       sql.NullTime
-	}
-	var units []fixedUnit
+	var units []fixedCostUnit
 	for rows.Next() {
-		var unit fixedUnit
+		var unit fixedCostUnit
 		if err = rows.Scan(&unit.unitID, &unit.planID, &unit.versionID, &unit.monthly, &unit.unitFrom, &unit.unitTo, &unit.effectiveFrom, &unit.effectiveTo); err != nil {
 			_ = rows.Close()
-			return err
+			return nil, err
 		}
 		units = append(units, unit)
 	}
-	if err = rows.Close(); err != nil {
-		return err
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
 	}
-	for _, unit := range units {
-		monthly, err := decimal.NewFromString(unit.monthly)
-		if err != nil {
-			return err
+	return units, rows.Close()
+}
+
+func insertFixedPlanTotals(ctx context.Context, tx *sql.Tx, bucket time.Time, units []fixedCostActiveUnit) error {
+	var sqlText strings.Builder
+	sqlText.WriteString(`INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,subscription_unit_id,subscription_unit_version_id,amount_cny) VALUES `)
+	args := make([]any, 0, len(units)*5)
+	for i, item := range units {
+		if i > 0 {
+			sqlText.WriteByte(',')
 		}
-		daily := fixedDailyCost(bucket, monthly, unit.unitFrom, unit.unitTo, unit.effectiveFrom, unit.effectiveTo)
-		if daily.IsZero() {
-			continue
+		n := len(args)
+		fmt.Fprintf(&sqlText, "($%d,'fixed_plan_total',$%d,$%d,$%d,$%d::numeric)", n+1, n+2, n+3, n+4, n+5)
+		args = append(args, bucket, item.unit.planID, item.unit.unitID, item.unit.versionID, item.daily.String())
+	}
+	_, err := tx.ExecContext(ctx, sqlText.String(), args...)
+	return err
+}
+
+// loadFixedDayWeights scans a single day once and groups it by subscription unit
+// and user instead of scanning the whole month once per unit.
+func loadFixedDayWeights(ctx context.Context, tx *sql.Tx, bucket time.Time, unitIDs []int64) (map[int64][]fixedDayWeight, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT c.subscription_unit_id,COALESCE(m.target_user_id,ul.user_id),COUNT(*)::bigint
+		FROM usage_logs ul
+		JOIN account_cost_configs c ON c.account_id=ul.account_id AND c.cost_mode='fixed'
+		  AND c.subscription_unit_id=ANY($3::bigint[])
+		  AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
+		LEFT JOIN user_usage_migrations m ON m.source_user_id=ul.user_id
+		WHERE ul.created_at >= $1 AND ul.created_at < $2
+		  AND (ul.input_tokens::bigint+ul.output_tokens+ul.cache_creation_tokens+ul.cache_read_tokens>0
+		    OR COALESCE(ul.image_count,0)>0 OR COALESCE(ul.video_count,0)>0 OR ul.image_input_tokens>0 OR ul.image_output_tokens>0 OR ul.billing_mode IN('per_request','request','hybrid'))
+		GROUP BY 1,2 ORDER BY 1,2`, bucket, bucket.AddDate(0, 0, 1), pq.Array(unitIDs))
+	if err != nil {
+		return nil, err
+	}
+	weights := make(map[int64][]fixedDayWeight, len(unitIDs))
+	for rows.Next() {
+		var unitID int64
+		var weight fixedDayWeight
+		if err = rows.Scan(&unitID, &weight.userID, &weight.requests); err != nil {
+			_ = rows.Close()
+			return nil, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,plan_id,subscription_unit_id,subscription_unit_version_id,amount_cny) VALUES($1,'fixed_plan_total',$2,$3,$4,$5::numeric)`, bucket, unit.planID, unit.unitID, unit.versionID, daily.String()); err != nil {
-			return err
+		weights[unitID] = append(weights[unitID], weight)
+	}
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, err
+	}
+	return weights, rows.Close()
+}
+
+func insertFixedAllocations(ctx context.Context, tx *sql.Tx, bucket time.Time, rows []fixedAllocationRow) error {
+	for start := 0; start < len(rows); start += fixedCostAllocationChunk {
+		end := start + fixedCostAllocationChunk
+		if end > len(rows) {
+			end = len(rows)
 		}
-		weights, err := tx.QueryContext(ctx, `
-			SELECT COALESCE(m.target_user_id,ul.user_id),COUNT(*)::bigint,0::bigint
-			FROM usage_logs ul JOIN account_cost_configs c ON c.account_id=ul.account_id AND c.cost_mode='fixed' AND c.subscription_unit_id=$2
-			  AND c.effective_from<=ul.created_at AND(c.effective_to IS NULL OR c.effective_to>ul.created_at)
-            LEFT JOIN user_usage_migrations m ON m.source_user_id=ul.user_id
-			WHERE ul.created_at >= $1 AND ul.created_at < $3
-              AND (ul.input_tokens::bigint+ul.output_tokens+ul.cache_creation_tokens+ul.cache_read_tokens>0
-                OR COALESCE(ul.image_count,0)>0 OR COALESCE(ul.video_count,0)>0 OR ul.image_input_tokens>0 OR ul.image_output_tokens>0 OR ul.billing_mode IN('per_request','request','hybrid'))
-			GROUP BY COALESCE(m.target_user_id,ul.user_id) ORDER BY 1`, monthStart, unit.unitID, monthEnd)
-		if err != nil {
-			return err
-		}
-		type weight struct{ userID, requests, tokens int64 }
-		var list []weight
-		for weights.Next() {
-			var w weight
-			if err = weights.Scan(&w.userID, &w.requests, &w.tokens); err != nil {
-				_ = weights.Close()
-				return err
+		var sqlText strings.Builder
+		sqlText.WriteString(`INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,subscription_unit_id,subscription_unit_version_id,request_count,amount_cny) VALUES `)
+		args := make([]any, 0, (end-start)*8)
+		for i := start; i < end; i++ {
+			if i > start {
+				sqlText.WriteByte(',')
 			}
-			list = append(list, w)
+			row := rows[i]
+			n := len(args)
+			fmt.Fprintf(&sqlText, "($%d,'fixed_user_allocation',$%d,$%d,$%d,$%d,$%d,$%d::numeric)", n+1, n+2, n+3, n+4, n+5, n+6, n+7)
+			args = append(args, bucket, row.userID, row.planID, row.unitID, row.versionID, row.requests, row.amount)
 		}
-		if err = weights.Close(); err != nil {
+		if _, err := tx.ExecContext(ctx, sqlText.String(), args...); err != nil {
 			return err
-		}
-		equal := make([]decimal.Decimal, len(list))
-		for i := range equal {
-			equal[i] = decimal.NewFromInt(1)
-		}
-		shares := service.AllocateAnalyticsCost(daily.Round(12), equal)
-		for i, w := range list {
-			amount := shares[i]
-			if _, err = tx.ExecContext(ctx, `INSERT INTO cost_daily_aggregates(bucket_date,aggregate_scope,user_id,plan_id,subscription_unit_id,subscription_unit_version_id,request_count,amount_cny) VALUES($1,'fixed_user_allocation',$2,$3,$4,$5,$6,$7::numeric)`, bucket, w.userID, unit.planID, unit.unitID, unit.versionID, w.requests, amount.String()); err != nil {
-				return err
-			}
 		}
 	}
 	return nil

@@ -12,7 +12,7 @@
             <span class="text-sm font-medium">统计范围</span>
             <DateRangePicker v-model:start-date="range.start" v-model:end-date="range.end" period-mode period-day-only :max-range-days="31" @change="loadCostData" />
           </div>
-          <div class="flex items-center gap-3"><span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}</span><button class="btn btn-secondary btn-sm" @click="openRecalc">核算任务</button></div>
+          <div class="flex items-center gap-3"><span class="text-sm" :class="aggregationDelayed?'text-amber-600':'text-gray-500'" :title="overview.last_error||''">每 5 分钟聚合 · {{ aggregationDelayed?'数据更新延迟 · ':'' }}{{ lastUpdated }}<template v-if="overview.backlog_rows"> · 积压 {{ backlogText }} 行</template><template v-if="overview.last_error"> · 上次失败：{{ overview.last_error }}</template></span><button class="btn btn-secondary btn-sm" @click="openRecalc">核算任务</button></div>
         </div>
         <div class="grid gap-4 md:grid-cols-4" :class="isCurrentMonth?'xl:grid-cols-5':''">
           <button v-for="card in overviewCards" :key="card.label" type="button" class="card p-5 text-left transition" :class="card.key==='estimated'?'cursor-default':'hover:-translate-y-0.5 hover:shadow-md'" :disabled="card.key==='estimated'" @click="card.key==='pending'?openPendingDetails():card.key!=='estimated'&&openCostBreakdown(card.key)"><div class="text-sm text-gray-500">{{ card.label }}</div><div class="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{{ card.value }}</div><div class="mt-2 text-xs" :class="card.key==='estimated'?'text-gray-400':'text-primary-600'">{{ card.key==='estimated'?'整月固定成本 + 当前按量成本':'查看明细' }}</div></button>
@@ -169,6 +169,7 @@ const app=useAppStore(),tab=ref<'overview'|'accounts'|'plans'>('overview'),tabs=
 const today=formatDateLocalInput(new Date()),month=today.slice(0,7),range=reactive({start:month+'-01',end:today})
 const overview=reactive<CostOverview>({dynamic_cost_cny:'0',fixed_cost_cny:'0',total_cost_cny:'0',pending_count:0,error_count:0,eligible_count:0,calculated_count:0,coverage_complete:true,previous_coverage_complete:true,previous_total_cost_cny:'0'}),analysis=reactive<CostAnalysis>({period:'day',total_cost_cny:'0',trend:[],top:[]})
 const lastUpdated=computed(()=>overview.last_success_at?new Date(overview.last_success_at).toLocaleString():'尚未聚合')
+const backlogText=computed(()=>{const rows=overview.backlog_rows||0;return rows>100000?'100000+':String(rows)})
 const aggregationDelayed=computed(()=>!overview.last_success_at||Date.now()-new Date(overview.last_success_at).getTime()>10*60*1000)
 const money=(v:string|number)=>'¥'+Number(v||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
 const averagePrice=(v:number)=>'¥'+v.toLocaleString('zh-CN',{minimumFractionDigits:4,maximumFractionDigits:4})

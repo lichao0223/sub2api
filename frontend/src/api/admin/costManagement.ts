@@ -32,6 +32,7 @@ export interface CostOverview {
   dynamic_cost_cny:string;fixed_cost_cny:string;total_cost_cny:string;pending_count:number;error_count:number
   estimated_total_cost_cny?:string
   eligible_count:number;calculated_count:number;last_success_at?:string;coverage_start?:string;coverage_end?:string
+  aggregation_status?:string;last_error?:string;backlog_rows?:number
   coverage_complete:boolean;previous_coverage_complete:boolean;previous_total_cost_cny:string
 }
 export interface CostBreakdownItem {

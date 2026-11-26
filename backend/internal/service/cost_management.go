@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/shopspring/decimal"
+	"go.uber.org/zap"
 )
 
 const (
@@ -20,6 +21,49 @@ const (
 )
 
 var ErrCostAggregationBusy = errors.New("cost aggregation is already running")
+
+// costAggregationCycleKey marks one aggregation run so the repository can
+// rebuild each dirty fixed-cost day at most once across batches of that run.
+type costAggregationCycleKey struct{}
+
+var costAggregationCycleSeq atomic.Uint64
+
+// WithCostAggregationCycle tags ctx with a fresh aggregation cycle id.
+func WithCostAggregationCycle(ctx context.Context) context.Context {
+	return context.WithValue(ctx, costAggregationCycleKey{}, costAggregationCycleSeq.Add(1))
+}
+
+// CostAggregationCycle returns the aggregation cycle id carried by ctx.
+func CostAggregationCycle(ctx context.Context) (uint64, bool) {
+	id, ok := ctx.Value(costAggregationCycleKey{}).(uint64)
+	return id, ok
+}
+
+// costAggregationError names the stage that failed so timeouts are actionable.
+type costAggregationError struct {
+	stage string
+	err   error
+}
+
+func (e *costAggregationError) Error() string { return e.stage + ": " + e.err.Error() }
+func (e *costAggregationError) Unwrap() error { return e.err }
+
+func costAggregationStage(err error) string {
+	var staged *costAggregationError
+	if errors.As(err, &staged) {
+		return staged.stage
+	}
+	return "unknown"
+}
+
+func isCostAggregationTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled) ||
+		strings.Contains(err.Error(), "canceling statement due to user request")
+}
 
 type CostModelPrice struct {
 	UpstreamModel       string              `json:"upstream_model"`
@@ -244,6 +288,9 @@ type CostOverview struct {
 	EligibleCount            int64      `json:"eligible_count"`
 	CalculatedCount          int64      `json:"calculated_count"`
 	LastSuccessAt            *time.Time `json:"last_success_at"`
+	AggregationStatus        string     `json:"aggregation_status"`
+	LastError                string     `json:"last_error"`
+	BacklogRows              int64      `json:"backlog_rows"`
 	CoverageStart            *time.Time `json:"coverage_start"`
 	CoverageEnd              *time.Time `json:"coverage_end"`
 	CoverageComplete         bool       `json:"coverage_complete"`
@@ -439,6 +486,7 @@ func (s *CostManagementService) runAggregation() {
 		return
 	}
 	defer atomic.StoreInt32(&s.running, 0)
+	startedAt := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*costAggregationTimeout)
 	defer cancel()
 	var err error
@@ -448,12 +496,18 @@ func (s *CostManagementService) runAggregation() {
 		err = s.aggregate(ctx)
 	}
 	if err != nil && !errors.Is(err, ErrAnalyticsTasksPaused) && !errors.Is(err, context.Canceled) && !errors.Is(err, ErrCostAggregationBusy) {
-		logger.LegacyPrintf("service.cost_management", "[CostManagement] aggregation stopped: %v", err)
+		logger.L().Warn("[CostManagement] aggregation stopped",
+			zap.String("stage", costAggregationStage(err)),
+			zap.Bool("timeout", isCostAggregationTimeout(err)),
+			zap.Duration("elapsed", time.Since(startedAt)),
+			zap.Error(err))
 	}
 }
 
 func (s *CostManagementService) aggregate(parent context.Context) error {
-	ctx, cancel := context.WithTimeout(parent, costAggregationTimeout)
+	// Tag the run so the repository rebuilds each dirty fixed-cost day once
+	// instead of once per 2000-row batch.
+	ctx, cancel := context.WithTimeout(WithCostAggregationCycle(parent), costAggregationTimeout)
 	var incrementalErr error
 	for {
 		more, err := s.repo.RunCostIncremental(ctx, 2000)
@@ -462,7 +516,7 @@ func (s *CostManagementService) aggregate(parent context.Context) error {
 			if parent.Err() != nil || errors.Is(err, ErrAnalyticsTasksPaused) {
 				return err
 			}
-			incrementalErr = err
+			incrementalErr = &costAggregationError{stage: "incremental", err: err}
 			break
 		}
 		if !more {
@@ -478,7 +532,7 @@ func (s *CostManagementService) aggregate(parent context.Context) error {
 	for {
 		processed, err := s.repo.RunNextCostRecalculation(recalculationCtx)
 		if err != nil {
-			return err
+			return &costAggregationError{stage: "recalculation", err: err}
 		}
 		if !processed {
 			break

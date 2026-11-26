@@ -420,7 +420,7 @@ func TestCostOverviewPendingCountExcludesDeletedAccounts(t *testing.T) {
 
 	mock.ExpectQuery("SUM\\(pending_count\\) FILTER\\(WHERE calculation_status='pending' AND EXISTS\\(SELECT 1 FROM accounts a WHERE a.id=cost_daily_aggregates.account_id AND a.deleted_at IS NULL\\)\\)").
 		WillReturnRows(sqlmock.NewRows([]string{"dynamic", "fixed", "total", "pending", "errors", "eligible", "calculated"}).AddRow("0", "0", "0", 1445, 0, 3651, 0))
-	mock.ExpectQuery("SELECT last_success_at FROM cost_jobs").WillReturnRows(sqlmock.NewRows([]string{"last_success_at"}).AddRow(nil))
+	mock.ExpectQuery("SELECT j.last_success_at").WillReturnRows(sqlmock.NewRows([]string{"last_success_at", "status", "error_message", "backlog"}).AddRow(nil, "succeeded", "", int64(0)))
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(amount_cny\\)").WillReturnRows(sqlmock.NewRows([]string{"previous_total"}).AddRow("0"))
 	mock.ExpectQuery("SELECT MIN\\(ul.created_at\\),MAX\\(ul.created_at\\)").WillReturnRows(sqlmock.NewRows([]string{"min", "max", "exists"}).AddRow(nil, nil, false))
 
@@ -455,7 +455,7 @@ func TestCostOverviewEstimatesFullCurrentMonthFixedCost(t *testing.T) {
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(amount_cny\\)").
 		WithArgs(monthStart, today.AddDate(0, 0, 1)).
 		WillReturnRows(sqlmock.NewRows([]string{"dynamic", "fixed", "total", "pending", "errors", "eligible", "calculated"}).AddRow("100", "10", "110", 0, 0, 1, 1))
-	mock.ExpectQuery("SELECT last_success_at FROM cost_jobs").WillReturnRows(sqlmock.NewRows([]string{"last_success_at"}).AddRow(nil))
+	mock.ExpectQuery("SELECT j.last_success_at").WillReturnRows(sqlmock.NewRows([]string{"last_success_at", "status", "error_message", "backlog"}).AddRow(nil, "succeeded", "", int64(0)))
 	mock.ExpectQuery("SELECT COALESCE\\(SUM\\(amount_cny\\)").WillReturnRows(sqlmock.NewRows([]string{"previous_total"}).AddRow("0"))
 	mock.ExpectQuery("SELECT MIN\\(ul.created_at\\),MAX\\(ul.created_at\\)").WillReturnRows(sqlmock.NewRows([]string{"min", "max", "exists"}).AddRow(nil, nil, false))
 	mock.ExpectQuery("SELECT v.monthly_unit_cost_cny").
@@ -607,3 +607,173 @@ func TestCostAnalysisIncludesPlanBreakdownByBucket(t *testing.T) {
 }
 
 func costPlanTestStringPtr(value string) *string { return &value }
+
+func shanghaiDay(t *testing.T, offsetDays int) time.Time {
+	t.Helper()
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	require.NoError(t, err)
+	now := time.Now().In(loc).AddDate(0, 0, offsetDays)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+}
+
+func TestFixedRebuildCycleRebuildsEachDayOncePerCycle(t *testing.T) {
+	repo := &costManagementRepository{}
+
+	first := service.WithCostAggregationCycle(context.Background())
+	repo.enterFixedRebuildCycle(first)
+	require.True(t, repo.claimFixedRebuildDay("2026-11-24"))
+	require.False(t, repo.claimFixedRebuildDay("2026-11-24"), "same day must be rebuilt once per cycle")
+	require.True(t, repo.claimFixedRebuildDay("2026-11-25"))
+
+	second := service.WithCostAggregationCycle(context.Background())
+	repo.enterFixedRebuildCycle(second)
+	require.True(t, repo.claimFixedRebuildDay("2026-11-24"), "a new cycle rebuilds dirty days again")
+}
+
+func TestFixedRebuildWithoutCycleMarkerAlwaysRebuilds(t *testing.T) {
+	repo := &costManagementRepository{}
+	for i := 0; i < 2; i++ {
+		repo.enterFixedRebuildCycle(context.Background())
+		require.True(t, repo.claimFixedRebuildDay("2026-11-25"))
+	}
+}
+
+func TestFixedDayNeedsRebuildWhenTodayHasNoFixedRows(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &costManagementRepository{db: db}
+	day := shanghaiDay(t, 0)
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM cost_daily_aggregates").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(false))
+
+	needs, err := repo.fixedDayNeedsRebuild(context.Background(), tx, day)
+	require.NoError(t, err)
+	require.True(t, needs)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestFixedDayNeedsRebuildWhenFixedConfigurationChanged(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &costManagementRepository{db: db, fixedConfigHash: "old-fingerprint"}
+	day := shanghaiDay(t, 0)
+
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM cost_daily_aggregates").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(true))
+	mock.ExpectQuery("MAX\\(updated_at\\)::text FROM cost_subscription_units").
+		WillReturnRows(sqlmock.NewRows([]string{"units_updated", "unit_count", "version_count", "configs_updated"}).
+			AddRow("2026-11-25 10:00:00+08", int64(15), int64(16), "2026-11-25 10:00:00+08"))
+
+	needs, err := repo.fixedDayNeedsRebuild(context.Background(), tx, day)
+	require.NoError(t, err)
+	require.True(t, needs)
+	require.Equal(t, "2026-11-25 10:00:00+08|15|16|2026-11-25 10:00:00+08", repo.fixedConfigHash)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// expectIncrementalBatch programs the queries of one RunCostIncremental call.
+func expectIncrementalBatch(t *testing.T, mock sqlmock.Sqlmock, checkpoint, maxID int64, day time.Time, todayExists bool) {
+	t.Helper()
+	mock.ExpectBegin()
+	mock.ExpectQuery("pg_try_advisory_xact_lock").WillReturnRows(sqlmock.NewRows([]string{"locked"}).AddRow(true))
+	mock.ExpectQuery("SELECT last_usage_log_id FROM cost_jobs").WillReturnRows(sqlmock.NewRows([]string{"last"}).AddRow(checkpoint))
+	mock.ExpectExec("UPDATE cost_jobs SET status='running'").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("WITH batch AS").WithArgs(checkpoint, 2000).WillReturnRows(sqlmock.NewRows([]string{"max"}).AddRow(maxID))
+	mock.ExpectExec("UPDATE cost_jobs SET last_usage_log_id").WithArgs(maxID).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT DISTINCT\\(created_at").WithArgs(checkpoint, maxID).
+		WillReturnRows(sqlmock.NewRows([]string{"day"}).AddRow(day))
+	mock.ExpectQuery("SELECT DISTINCT DATE_TRUNC").WithArgs(checkpoint, maxID).
+		WillReturnRows(sqlmock.NewRows([]string{"month"}))
+	mock.ExpectQuery("SELECT EXISTS\\(SELECT 1 FROM cost_daily_aggregates").
+		WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(todayExists))
+	if todayExists {
+		mock.ExpectQuery("MAX\\(updated_at\\)::text FROM cost_subscription_units").
+			WillReturnRows(sqlmock.NewRows([]string{"units_updated", "unit_count", "version_count", "configs_updated"}).
+				AddRow("same", int64(1), int64(1), "same"))
+	}
+}
+
+func TestRunCostIncrementalAdvancesCheckpointAndRebuildsFixedDayOnce(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &costManagementRepository{db: db}
+	day := shanghaiDay(t, 0)
+	ctx := service.WithCostAggregationCycle(context.Background())
+
+	// Batch 1: rebuilds the touched day once.
+	expectIncrementalBatch(t, mock, 0, 100, day, true)
+	mock.ExpectExec("DELETE FROM cost_daily_aggregates WHERE bucket_date").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("FROM cost_subscription_units u").
+		WillReturnRows(sqlmock.NewRows([]string{"unit_id", "plan_id", "version_id", "monthly", "unit_from", "unit_to", "version_from", "version_to"}))
+	mock.ExpectCommit()
+
+	processed, err := repo.RunCostIncremental(ctx, 2000)
+	require.NoError(t, err)
+	require.True(t, processed)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// Batch 2 in the same cycle touches the same day: no second rebuild.
+	expectIncrementalBatch(t, mock, 100, 200, day, true)
+	mock.ExpectCommit()
+
+	processed, err = repo.RunCostIncremental(ctx, 2000)
+	require.NoError(t, err)
+	require.True(t, processed)
+	require.NoError(t, mock.ExpectationsWereMet())
+
+	// A new aggregation cycle rebuilds the dirty day again.
+	nextCtx := service.WithCostAggregationCycle(context.Background())
+	expectIncrementalBatch(t, mock, 200, 300, day, true)
+	mock.ExpectExec("DELETE FROM cost_daily_aggregates WHERE bucket_date").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("FROM cost_subscription_units u").
+		WillReturnRows(sqlmock.NewRows([]string{"unit_id", "plan_id", "version_id", "monthly", "unit_from", "unit_to", "version_from", "version_to"}))
+	mock.ExpectCommit()
+
+	processed, err = repo.RunCostIncremental(nextCtx, 2000)
+	require.NoError(t, err)
+	require.True(t, processed)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRunCostIncrementalSkipsUntouchedTodayWhenRowsExist(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &costManagementRepository{db: db}
+	yesterday := shanghaiDay(t, -1)
+	ctx := service.WithCostAggregationCycle(context.Background())
+
+	// The batch only touches yesterday; today already has fixed rows.
+	expectIncrementalBatch(t, mock, 0, 100, yesterday, true)
+	mock.ExpectExec("DELETE FROM cost_daily_aggregates WHERE bucket_date").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("FROM cost_subscription_units u").
+		WillReturnRows(sqlmock.NewRows([]string{"unit_id", "plan_id", "version_id", "monthly", "unit_from", "unit_to", "version_from", "version_to"}))
+	mock.ExpectCommit()
+
+	processed, err := repo.RunCostIncremental(ctx, 2000)
+	require.NoError(t, err)
+	require.True(t, processed)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestRunCostIncrementalRebuildsTodayWhenFixedRowsAreMissing(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &costManagementRepository{db: db}
+	yesterday := shanghaiDay(t, -1)
+	ctx := service.WithCostAggregationCycle(context.Background())
+
+	expectIncrementalBatch(t, mock, 0, 100, yesterday, false)
+	for range []int{0, 1} {
+		mock.ExpectExec("DELETE FROM cost_daily_aggregates WHERE bucket_date").WillReturnResult(sqlmock.NewResult(0, 0))
+		mock.ExpectQuery("FROM cost_subscription_units u").
+			WillReturnRows(sqlmock.NewRows([]string{"unit_id", "plan_id", "version_id", "monthly", "unit_from", "unit_to", "version_from", "version_to"}))
+	}
+	mock.ExpectCommit()
+
+	processed, err := repo.RunCostIncremental(ctx, 2000)
+	require.NoError(t, err)
+	require.True(t, processed)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

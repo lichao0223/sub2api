@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/zeromicro/go-zero/core/collection"
+	"go.uber.org/zap"
 )
 
 var newTimingWheel = collection.NewTimingWheel
@@ -56,10 +57,20 @@ func (s *TimingWheelService) Schedule(name string, delay time.Duration, fn func(
 func (s *TimingWheelService) ScheduleRecurring(name string, interval time.Duration, fn func()) {
 	var schedule func()
 	schedule = func() {
+		// Always re-arm the timer, even when fn panics: a single panic must not
+		// make the recurring task disappear for the lifetime of the process.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.L().Error("[TimingWheel] recurring task panicked",
+					zap.String("name", name),
+					zap.Any("panic", recovered),
+					zap.Stack("stack"))
+			}
+			if err := s.tw.SetTimer(name, schedule, interval); err != nil {
+				logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] recurring SetTimer failed for %q: %v", name, err)
+			}
+		}()
 		fn()
-		if err := s.tw.SetTimer(name, schedule, interval); err != nil {
-			logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] recurring SetTimer failed for %q: %v", name, err)
-		}
 	}
 	if err := s.tw.SetTimer(name, schedule, interval); err != nil {
 		logger.LegacyPrintf("service.timing_wheel", "[TimingWheel] initial SetTimer failed for %q: %v", name, err)

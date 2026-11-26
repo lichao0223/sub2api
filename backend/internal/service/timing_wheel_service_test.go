@@ -180,3 +180,33 @@ func TestTimingWheelService_ScheduleRecurring_ExecutesMultipleTimes(t *testing.T
 		t.Fatalf("期望周期任务至少执行 2 次，但只执行了 %d 次", atomic.LoadInt32(&count))
 	}
 }
+
+func TestTimingWheelService_ScheduleRecurring_SurvivesPanic(t *testing.T) {
+	original := newTimingWheel
+	t.Cleanup(func() { newTimingWheel = original })
+
+	newTimingWheel = func(_ time.Duration, _ int, execute collection.Execute) (*collection.TimingWheel, error) {
+		return original(10*time.Millisecond, 128, execute)
+	}
+
+	svc, err := NewTimingWheelService()
+	if err != nil {
+		t.Fatalf("期望 err 为 nil，但得到: %v", err)
+	}
+	defer svc.Stop()
+
+	var count int32
+	svc.ScheduleRecurring("panic-rec", 30*time.Millisecond, func() {
+		if atomic.AddInt32(&count, 1) == 1 {
+			panic("boom")
+		}
+	})
+
+	deadline := time.Now().Add(1 * time.Second)
+	for atomic.LoadInt32(&count) < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if atomic.LoadInt32(&count) < 2 {
+		t.Fatalf("panic 后周期任务未恢复执行，只执行了 %d 次", atomic.LoadInt32(&count))
+	}
+}

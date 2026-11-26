@@ -381,3 +381,52 @@ func TestAnalyticsTasksSharedCostPauseDoesNotStartRecalculation(t *testing.T) {
 		t.Fatal("cost aggregation did not stop")
 	}
 }
+
+func TestCostAggregationTagsEveryBatchWithOneCycle(t *testing.T) {
+	var cycles []uint64
+	repo := &controlledCostRepo{
+		incremental: func(ctx context.Context, _ int) (bool, error) {
+			id, ok := CostAggregationCycle(ctx)
+			require.True(t, ok, "aggregation ctx must carry a cycle marker")
+			cycles = append(cycles, id)
+			return len(cycles) < 3, nil
+		},
+		recalculate: func(context.Context) (bool, error) { return false, nil },
+	}
+	s := NewCostManagementService(repo, nil)
+	require.NoError(t, s.aggregate(context.Background()))
+	require.Len(t, cycles, 3)
+	require.Equal(t, cycles[0], cycles[1])
+	require.Equal(t, cycles[0], cycles[2])
+
+	repo.incremental = func(ctx context.Context, _ int) (bool, error) {
+		id, _ := CostAggregationCycle(ctx)
+		require.NotEqual(t, cycles[0], id, "each aggregation run gets a fresh cycle")
+		return false, nil
+	}
+	require.NoError(t, s.aggregate(context.Background()))
+}
+
+func TestCostAggregationReportsFailureStage(t *testing.T) {
+	repo := &controlledCostRepo{
+		incremental: func(context.Context, int) (bool, error) { return false, context.DeadlineExceeded },
+		recalculate: func(context.Context) (bool, error) { return false, nil },
+	}
+	s := NewCostManagementService(repo, nil)
+	err := s.aggregate(context.Background())
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, "incremental", costAggregationStage(err))
+	require.True(t, isCostAggregationTimeout(err))
+}
+
+func TestCostAggregationReportsRecalculationStage(t *testing.T) {
+	repo := &controlledCostRepo{
+		incremental: func(context.Context, int) (bool, error) { return false, nil },
+		recalculate: func(context.Context) (bool, error) { return false, errors.New("recalc boom") },
+	}
+	s := NewCostManagementService(repo, nil)
+	err := s.aggregate(context.Background())
+	require.Error(t, err)
+	require.Equal(t, "recalculation", costAggregationStage(err))
+	require.False(t, isCostAggregationTimeout(err))
+}
