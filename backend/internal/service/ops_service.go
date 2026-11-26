@@ -469,6 +469,7 @@ func (s *OpsService) prepareErrorLogInput(ctx context.Context, entry *OpsInsertE
 	if entry.StatusCode < 400 && entry.ErrorPhase == "upstream" {
 		entry.RequestSnapshotGzip = nil
 		entry.RequestSnapshotBytes = 0
+		entry.RequestSnapshotTruncated = false
 	}
 	if s.opsRepo == nil {
 		return nil, false, nil

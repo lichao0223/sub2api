@@ -324,6 +324,7 @@ export default {
           unavailable: '暂无请求正文（旧记录或请求体未完整读取）。',
           omitted: '请求正文未保存：超出存储限制或日志队列繁忙。',
           previewLimited: '页面仅预览前 64 KiB；下载文件包含完整正文。',
+          truncated: '该快照已按体积或级别策略截断，仅保存了原始请求的一部分。',
           loadFailed: '加载请求正文失败，记录可能已被清理。',
         },
         title: '错误详情',
@@ -745,6 +746,18 @@ export default {
         minuteMetricsRetentionDays: '分钟指标保留天数',
         hourlyMetricsRetentionDays: '小时指标保留天数',
         retentionDaysHint: '建议保留 7-90 天，过长会占用存储空间；填 0 表示每次定时清理时清空所有历史',
+        errorLogSnapshotMaxKb: '请求体快照上限（KB）',
+        errorLogSnapshotMaxKbHint:
+          '单条错误日志保存的请求原文上限，默认 1024 KB（1 MB），取值 16-8192；填 0 表示不再保存请求体快照。超出上限会截断并标记为不完整。',
+        errorLogSnapshotHours: '请求体快照保留（小时）',
+        errorLogSnapshotHoursHint:
+          '超过该时长的快照正文会被清空（错误记录本身仍按错误日志保留天数保留），默认 24 小时；填 0 表示不按小时清理。',
+        errorLogSnapshotMinSeverity: '保留完整正文的最低级别',
+        errorLogSnapshotMinSeverityHint:
+          '低于该级别的错误只保留 16 KB 请求体头部并标记为截断，默认 P3（全部保留完整正文）。',
+        errorLogSnapshotSeverityAll: 'P3（全部）',
+        errorLogSnapshotSeverityP2: 'P2 及以上',
+        errorLogSnapshotSeverityP1: 'P1 及以上',
         aggregation: '预聚合任务',
         enableAggregation: '启用预聚合任务',
         aggregationHint: '预聚合可提升长时间窗口查询性能',
@@ -783,7 +796,9 @@ export default {
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
           upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
-          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
+          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间',
+          snapshotMaxKbRange: '请求体快照上限必须为 0 或 16-8192 KB（0 = 不保存快照）',
+          snapshotHoursRange: '请求体快照保留小时数必须在 0-720 之间（0 = 不按小时清理）'
         }
       },
       concurrency: {

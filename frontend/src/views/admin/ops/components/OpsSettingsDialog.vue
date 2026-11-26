@@ -56,6 +56,19 @@ async function loadAllSettings() {
     if (advancedSettings.value && !advancedSettings.value.openai_account_quota_auto_pause) {
       advancedSettings.value.openai_account_quota_auto_pause = { default_threshold_5h: 0, default_threshold_7d: 0 }
     }
+    // 请求体快照参数（旧 payload 缺省时回填后端默认值）
+    if (advancedSettings.value?.data_retention) {
+      const retention = advancedSettings.value.data_retention
+      if (retention.error_log_snapshot_max_bytes === undefined || retention.error_log_snapshot_max_bytes === null) {
+        retention.error_log_snapshot_max_bytes = 1048576
+      }
+      if (retention.error_log_snapshot_hours === undefined || retention.error_log_snapshot_hours === null) {
+        retention.error_log_snapshot_hours = 24
+      }
+      if (!retention.error_log_snapshot_min_severity) {
+        retention.error_log_snapshot_min_severity = 'P3'
+      }
+    }
     // 如果后端返回了阈值，使用后端的值；否则保持默认值
     if (thresholds && Object.keys(thresholds).length > 0) {
         metricThresholds.value = {
@@ -126,6 +139,37 @@ function removeRecipient(target: 'alert' | 'report', email: string) {
   if (idx >= 0) list.splice(idx, 1)
 }
 
+// 请求体快照原文上限在 UI 上按 KB 展示，后端存储字节数。
+const snapshotMaxKb = computed<number>({
+  get() {
+    const bytes = advancedSettings.value?.data_retention?.error_log_snapshot_max_bytes
+    return bytes == null ? 1024 : Math.round(bytes / 1024)
+  },
+  set(val: number | string) {
+    const retention = advancedSettings.value?.data_retention
+    if (!retention) return
+    if (val === '') return
+    const kb = typeof val === 'number' ? val : Number(val)
+    if (!Number.isFinite(kb)) return
+    retention.error_log_snapshot_max_bytes = Math.round(kb) * 1024
+  }
+})
+
+// 请求体快照保留小时数：空输入不写回，避免把字符串提交给后端。
+const snapshotHours = computed<number>({
+  get() {
+    const hours = advancedSettings.value?.data_retention?.error_log_snapshot_hours
+    return hours == null ? 24 : hours
+  },
+  set(val: number | string) {
+    const retention = advancedSettings.value?.data_retention
+    if (!retention || val === '') return
+    const hours = typeof val === 'number' ? val : Number(val)
+    if (!Number.isFinite(hours)) return
+    retention.error_log_snapshot_hours = Math.round(hours)
+  }
+})
+
 // OpenAI 账号配额自动暂停：后端按 0~1 分数存储，UI 按百分比(0~100)展示
 const quotaAutoPause5hPercent = computed<number | null>({
   get() {
@@ -173,6 +217,15 @@ const validation = computed(() => {
     }
     if (hourly_metrics_retention_days < 0 || hourly_metrics_retention_days > 365) {
       errors.push(t('admin.ops.settings.validation.retentionDaysRange'))
+    }
+
+    const snapshotMaxKbValue = snapshotMaxKb.value
+    if (snapshotMaxKbValue !== 0 && (snapshotMaxKbValue < 16 || snapshotMaxKbValue > 8192)) {
+      errors.push(t('admin.ops.settings.validation.snapshotMaxKbRange'))
+    }
+    const snapshotHoursValue = snapshotHours.value
+    if (!Number.isFinite(snapshotHoursValue) || snapshotHoursValue < 0 || snapshotHoursValue > 720) {
+      errors.push(t('admin.ops.settings.validation.snapshotHoursRange'))
     }
 
     const { default_threshold_5h, default_threshold_7d } = advancedSettings.value.openai_account_quota_auto_pause
@@ -493,6 +546,28 @@ async function saveAllSettings() {
               </div>
             </div>
             <p class="text-xs text-gray-500">{{ t('admin.ops.settings.retentionDaysHint') }}</p>
+
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.errorLogSnapshotMaxKb') }}</label>
+                <input v-model.number="snapshotMaxKb" type="number" min="0" max="8192" step="16" class="input" />
+                <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.errorLogSnapshotMaxKbHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.errorLogSnapshotHours') }}</label>
+                <input v-model.number="snapshotHours" type="number" min="0" max="720" class="input" />
+                <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.errorLogSnapshotHoursHint') }}</p>
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.ops.settings.errorLogSnapshotMinSeverity') }}</label>
+                <select v-model="advancedSettings.data_retention.error_log_snapshot_min_severity" class="input">
+                  <option value="P3">{{ t('admin.ops.settings.errorLogSnapshotSeverityAll') }}</option>
+                  <option value="P2">{{ t('admin.ops.settings.errorLogSnapshotSeverityP2') }}</option>
+                  <option value="P1">{{ t('admin.ops.settings.errorLogSnapshotSeverityP1') }}</option>
+                </select>
+                <p class="mt-1 text-xs text-gray-500">{{ t('admin.ops.settings.errorLogSnapshotMinSeverityHint') }}</p>
+              </div>
+            </div>
           </div>
 
           <!-- 预聚合任务 -->

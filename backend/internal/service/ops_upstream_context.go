@@ -215,6 +215,8 @@ type OpsStreamError struct {
 	NonStream            bool
 	RequestSnapshotGzip  []byte
 	RequestSnapshotBytes int64
+	// RequestSnapshotTruncated marks a snapshot shorter than the client body.
+	RequestSnapshotTruncated bool
 }
 
 const maxOpsStreamErrorsPerRequest = 64
@@ -293,8 +295,14 @@ func markOpsStreamError(c *gin.Context, streamErr OpsStreamError) {
 		if c.GetBool(OpsCaptureRequestSnapshotKey) && !streamErr.SkipMonitoring {
 			if value, ok := c.Get(OpsRequestSnapshotBodyKey); ok {
 				body, _ := value.([]byte)
-				streamErr.RequestSnapshotBytes = int64(len(body))
-				streamErr.RequestSnapshotGzip, _ = CompressOpsRequestSnapshot(body)
+				policy := OpsRequestSnapshotPolicyFromContext(c)
+				if policy.Enabled {
+					if capture, err := BuildOpsRequestSnapshot(body, policy.MaxBytes); err == nil {
+						streamErr.RequestSnapshotBytes = capture.OriginalBytes
+						streamErr.RequestSnapshotGzip = capture.Gzip
+						streamErr.RequestSnapshotTruncated = capture.Truncated
+					}
+				}
 			}
 		}
 		errorsForRequest = append(errorsForRequest, streamErr)

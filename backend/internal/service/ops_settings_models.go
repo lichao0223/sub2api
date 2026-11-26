@@ -123,6 +123,19 @@ type OpsDataRetentionSettings struct {
 	ErrorLogRetentionDays      int    `json:"error_log_retention_days"`
 	MinuteMetricsRetentionDays int    `json:"minute_metrics_retention_days"`
 	HourlyMetricsRetentionDays int    `json:"hourly_metrics_retention_days"`
+
+	// ErrorLogSnapshotMaxBytes caps the raw request body stored per error log.
+	// nil / absent -> default 1MB; 0 -> stop capturing request bodies;
+	// 16KB..8MB -> explicit cap. Over-cap bodies are truncated and flagged.
+	ErrorLogSnapshotMaxBytes *int `json:"error_log_snapshot_max_bytes"`
+	// ErrorLogSnapshotHours bounds how long snapshot payloads are kept.
+	// nil / absent -> default 24h; 0 -> keep until the row itself is trimmed;
+	// 1..720 -> hours. The cleanup job only NULLs the payload, never the row.
+	ErrorLogSnapshotHours *int `json:"error_log_snapshot_hours"`
+	// ErrorLogSnapshotMinSeverity is the loosest severity that keeps a full body:
+	// "P3" (default, all), "P2" or "P1". Lower severities keep only a body head
+	// and are flagged truncated.
+	ErrorLogSnapshotMinSeverity string `json:"error_log_snapshot_min_severity"`
 }
 
 type OpsAggregationSettings struct {

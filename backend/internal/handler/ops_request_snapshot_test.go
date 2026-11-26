@@ -100,3 +100,60 @@ func TestOpsRequestSnapshotQueueBudgetRetainsErrorWithoutPayload(t *testing.T) {
 	require.Empty(t, queued.RequestSnapshotGzip)
 	require.EqualValues(t, 4096, queued.RequestSnapshotBytes)
 }
+
+func TestOpsRequestSnapshotTruncatesOversizedBody(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 1)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/messages", func(c *gin.Context) {
+		_, err := readLenientJSONRequestBodyWithPrealloc(c.Request, nil)
+		require.NoError(t, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"type": "invalid_request_error", "message": "too large"}})
+	})
+	body := `{"messages":[{"role":"tool","content":"` + strings.Repeat("worker output ", 120000) + `"}]}`
+	require.Greater(t, len(body), service.OpsRequestSnapshotMaxBytes)
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body)))
+
+	entry := (<-opsErrorLogQueue).entry
+	require.EqualValues(t, len(body), entry.RequestSnapshotBytes)
+	require.True(t, entry.RequestSnapshotTruncated)
+	stored := decodeRequestSnapshot(t, entry.RequestSnapshotGzip)
+	require.LessOrEqual(t, len(stored), service.OpsRequestSnapshotMaxBytes)
+	require.True(t, strings.HasPrefix(body, stored))
+}
+
+func TestAttachOpsRequestSnapshotHonoursDisabledPolicy(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set(service.OpsCaptureRequestSnapshotKey, true)
+	c.Set(service.OpsRequestSnapshotPolicyKey, service.OpsRequestSnapshotPolicy{Enabled: false, MinSeverity: service.OpsSnapshotSeverityP3})
+	c.Set(service.OpsRequestSnapshotBodyKey, []byte(`{"input":"body"}`))
+	entry := &service.OpsInsertErrorLogInput{Severity: service.OpsSnapshotSeverityP1}
+
+	attachOpsRequestSnapshot(c, entry)
+
+	require.Empty(t, entry.RequestSnapshotGzip)
+	require.Zero(t, entry.RequestSnapshotBytes)
+	require.False(t, entry.RequestSnapshotTruncated)
+}
+
+func TestAttachOpsRequestSnapshotKeepsHeadBelowSeverityFloor(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set(service.OpsCaptureRequestSnapshotKey, true)
+	c.Set(service.OpsRequestSnapshotPolicyKey, service.OpsRequestSnapshotPolicy{
+		Enabled:     true,
+		MaxBytes:    service.OpsRequestSnapshotMaxBytes,
+		MinSeverity: service.OpsSnapshotSeverityP1,
+	})
+	body := strings.Repeat("noise ", 100000)
+	c.Set(service.OpsRequestSnapshotBodyKey, []byte(body))
+	entry := &service.OpsInsertErrorLogInput{Severity: service.OpsSnapshotSeverityP3}
+
+	attachOpsRequestSnapshot(c, entry)
+
+	require.True(t, entry.RequestSnapshotTruncated)
+	require.EqualValues(t, len(body), entry.RequestSnapshotBytes)
+	stored := decodeRequestSnapshot(t, entry.RequestSnapshotGzip)
+	require.LessOrEqual(t, len(stored), service.OpsRequestSnapshotHeadBytes)
+	require.True(t, strings.HasPrefix(body, stored))
+}

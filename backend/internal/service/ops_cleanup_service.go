@@ -66,6 +66,9 @@ type OpsCleanupService struct {
 type opsCleanupEffectiveConfig struct {
 	config.OpsCleanupConfig
 	SystemLogRetentionDays int
+	// ErrorLogSnapshotHours trims request-snapshot payloads older than N hours;
+	// 0 keeps the payload until the error row itself is deleted.
+	ErrorLogSnapshotHours int
 }
 
 func NewOpsCleanupService(
@@ -170,12 +173,13 @@ func (s *OpsCleanupService) applyScheduleLocked(ctx context.Context) error {
 	c.Start()
 	s.cron = c
 	logger.LegacyPrintf("service.ops_cleanup",
-		"[OpsCleanup] scheduled (schedule=%q tz=%s retention_days=err:%d/system:%d/min:%d/hour:%d)",
+		"[OpsCleanup] scheduled (schedule=%q tz=%s retention_days=err:%d/system:%d/min:%d/hour:%d snapshot_hours=%d)",
 		schedule, loc.String(),
 		s.effective.ErrorLogRetentionDays,
 		s.effective.SystemLogRetentionDays,
 		s.effective.MinuteMetricsRetentionDays,
 		s.effective.HourlyMetricsRetentionDays,
+		s.effective.ErrorLogSnapshotHours,
 	)
 	return nil
 }
@@ -208,6 +212,7 @@ func (s *OpsCleanupService) Reload(ctx context.Context) error {
 func (s *OpsCleanupService) computeEffectiveLocked(ctx context.Context) {
 	base := opsCleanupEffectiveConfig{
 		SystemLogRetentionDays: defaultOpsRuntimeLogConfig(s.cfg).RetentionDays,
+		ErrorLogSnapshotHours:  OpsRequestSnapshotDefaultRetentionHours,
 	}
 	if s.cfg != nil {
 		base.OpsCleanupConfig = s.cfg.Ops.Cleanup
@@ -248,6 +253,13 @@ func (s *OpsCleanupService) computeEffectiveLocked(ctx context.Context) {
 			}
 			if dr.HourlyMetricsRetentionDays >= 0 {
 				base.HourlyMetricsRetentionDays = dr.HourlyMetricsRetentionDays
+			}
+			if hours := dr.ErrorLogSnapshotHours; hours != nil {
+				if *hours < 0 {
+					base.ErrorLogSnapshotHours = 0
+				} else {
+					base.ErrorLogSnapshotHours = *hours
+				}
 			}
 		}
 	}
@@ -346,6 +358,17 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 			return out, err
 		}
 		*t.counter = n
+	}
+
+	// 请求体快照按小时保留：只清空正文，错误行本身仍按 error_log_retention_days 保留。
+	// 与库侧 ops_error_logs_trim.sh 的兜底清理目标一致（脚本可继续保留）。
+	if effective.ErrorLogSnapshotHours > 0 {
+		cutoff := now.Add(-time.Duration(effective.ErrorLogSnapshotHours) * time.Hour)
+		n, err := purgeOldErrorSnapshots(ctx, s.db, cutoff, opsCleanupBatchSize)
+		if err != nil {
+			return out, err
+		}
+		out.errorSnapshots = n
 	}
 
 	// Channel monitor 每日维护（聚合昨日明细 + 软删过期明细/聚合）。

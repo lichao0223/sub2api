@@ -139,6 +139,9 @@
           <span v-if="snapshotLoading" role="status" class="text-sm text-gray-500">{{ t('common.loading') }}</span>
         </div>
         <p v-else class="mt-3 text-sm text-gray-500 dark:text-gray-400">{{ t(detail.request_snapshot_bytes ? 'admin.ops.errorDetail.requestSnapshot.omitted' : 'admin.ops.errorDetail.requestSnapshot.unavailable') }}</p>
+        <p v-if="detail.has_request_snapshot && detail.request_snapshot_truncated" class="mt-2 text-xs text-amber-700 dark:text-amber-300" data-testid="request-snapshot-truncated">
+          {{ t('admin.ops.errorDetail.requestSnapshot.truncated') }}
+        </p>
         <template v-if="snapshotPreview">
           <p v-if="snapshotPreviewTruncated" class="mt-3 text-xs text-amber-700 dark:text-amber-300">{{ t('admin.ops.errorDetail.requestSnapshot.previewLimited') }}</p>
           <pre class="mt-3 max-h-[520px] whitespace-pre-wrap break-words overflow-auto rounded-xl border border-gray-200 bg-white p-4 text-xs text-gray-800 dark:border-dark-700 dark:bg-dark-800 dark:text-gray-100"><code>{{ snapshotPreview }}</code></pre>

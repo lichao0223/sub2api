@@ -201,7 +201,14 @@ func TestInputTokenLimitRejectsWithoutAuditConfiguredAndLogsHTTPError(t *testing
 	require.Contains(t, entry.ErrorBody, inputTokenLimitErrorCode)
 	require.Contains(t, entry.ErrorMessage, "300000")
 	require.NotContains(t, entry.ErrorBody, strings.Repeat(" the", 25))
-	require.Equal(t, string(inputLimitBody(t, strings.Repeat(" the", 300001))), decodeRequestSnapshot(t, entry.RequestSnapshotGzip))
+	// The 1.2MB body exceeds the snapshot cap: keep the head, flag it truncated,
+	// and still record the original size.
+	fullBody := string(inputLimitBody(t, strings.Repeat(" the", 300001)))
+	require.EqualValues(t, len(fullBody), entry.RequestSnapshotBytes)
+	require.True(t, entry.RequestSnapshotTruncated)
+	snapshot := decodeRequestSnapshot(t, entry.RequestSnapshotGzip)
+	require.Len(t, snapshot, service.OpsRequestSnapshotMaxBytes)
+	require.True(t, strings.HasPrefix(fullBody, snapshot))
 }
 
 func TestInputTokenLimitWebSocketErrorIsRecordedAfterUpgrade(t *testing.T) {

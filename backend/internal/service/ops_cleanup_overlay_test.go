@@ -45,7 +45,7 @@ func TestComputeEffective_FallbackToCfgWhenSettingsAbsent(t *testing.T) {
 
 	svc.computeEffectiveLocked(context.Background())
 
-	want := opsCleanupEffectiveConfig{OpsCleanupConfig: base, SystemLogRetentionDays: 30}
+	want := opsCleanupEffectiveConfig{OpsCleanupConfig: base, SystemLogRetentionDays: 30, ErrorLogSnapshotHours: 24}
 	if svc.effective != want {
 		t.Fatalf("expected effective == cfg base, got %#v", svc.effective)
 	}
@@ -80,6 +80,7 @@ func TestComputeEffective_SettingsOverridesAll(t *testing.T) {
 			HourlyMetricsRetentionDays: 14,
 		},
 		SystemLogRetentionDays: 30,
+		ErrorLogSnapshotHours:  24,
 	}
 	if svc.effective != want {
 		t.Fatalf("effective mismatch:\nwant %#v\n got %#v", want, svc.effective)
@@ -160,9 +161,48 @@ func TestComputeEffective_BadJSONFallsBackToCfg(t *testing.T) {
 
 	svc.computeEffectiveLocked(context.Background())
 
-	want := opsCleanupEffectiveConfig{OpsCleanupConfig: base, SystemLogRetentionDays: 30}
+	want := opsCleanupEffectiveConfig{OpsCleanupConfig: base, SystemLogRetentionDays: 30, ErrorLogSnapshotHours: 24}
 	if svc.effective != want {
 		t.Fatalf("expected fallback to cfg on bad JSON, got %#v", svc.effective)
+	}
+}
+
+func TestComputeEffective_SnapshotHoursOverride(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	snapshotHours := 6
+	snapshotMax := 512 << 10
+	writeAdvancedSettings(t, repo, OpsDataRetentionSettings{
+		CleanupEnabled:              true,
+		CleanupSchedule:             "0 2 * * *",
+		ErrorLogRetentionDays:       30,
+		ErrorLogSnapshotHours:       &snapshotHours,
+		ErrorLogSnapshotMaxBytes:    &snapshotMax,
+		ErrorLogSnapshotMinSeverity: OpsSnapshotSeverityP2,
+	})
+	svc := makeOverlayService(repo, config.OpsCleanupConfig{ErrorLogRetentionDays: 30})
+
+	svc.computeEffectiveLocked(context.Background())
+
+	if svc.effective.ErrorLogSnapshotHours != 6 {
+		t.Fatalf("snapshot hours = %d, want 6", svc.effective.ErrorLogSnapshotHours)
+	}
+}
+
+func TestComputeEffective_SnapshotHoursZeroDisablesHourlyTrim(t *testing.T) {
+	repo := newRuntimeSettingRepoStub()
+	zero := 0
+	writeAdvancedSettings(t, repo, OpsDataRetentionSettings{
+		CleanupEnabled:        true,
+		CleanupSchedule:       "0 2 * * *",
+		ErrorLogRetentionDays: 30,
+		ErrorLogSnapshotHours: &zero,
+	})
+	svc := makeOverlayService(repo, config.OpsCleanupConfig{ErrorLogRetentionDays: 30})
+
+	svc.computeEffectiveLocked(context.Background())
+
+	if svc.effective.ErrorLogSnapshotHours != 0 {
+		t.Fatalf("snapshot hours = %d, want 0 (disabled)", svc.effective.ErrorLogSnapshotHours)
 	}
 }
 

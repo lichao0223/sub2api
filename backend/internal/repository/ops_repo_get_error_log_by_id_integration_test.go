@@ -32,8 +32,9 @@ func TestGetErrorLogByID_APIKeyPrefixAndUpstreamStatus(t *testing.T) {
 	require.False(t, plain.HasRequestSnapshot)
 
 	body := []byte(`{"messages":[],"tools":[]}`)
-	snapshot, err := service.CompressOpsRequestSnapshot(body)
+	capture, err := service.BuildOpsRequestSnapshot(body, service.OpsRequestSnapshotMaxBytes)
 	require.NoError(t, err)
+	snapshot := capture.Gzip
 	validID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{
 		ErrorPhase:           "request",
 		ErrorType:            "api_error",

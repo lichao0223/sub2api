@@ -817,6 +817,12 @@ export interface OpsDataRetentionSettings {
   error_log_retention_days: number
   minute_metrics_retention_days: number
   hourly_metrics_retention_days: number
+  /** 单条错误日志请求体快照的原文上限（字节）；0 = 不再抓取快照；缺省 = 默认 1MB */
+  error_log_snapshot_max_bytes?: number
+  /** 请求体快照保留小时数；0 = 不按小时清理（跟随错误日志保留天数）；缺省 = 24h */
+  error_log_snapshot_hours?: number
+  /** 保留完整正文的最低严重级别：P3（默认，全部）/ P2 / P1 */
+  error_log_snapshot_min_severity?: string
 }
 
 export interface OpsAggregationSettings {
@@ -955,6 +961,7 @@ export interface OpsErrorDetail extends OpsErrorLog {
   error_body: string
   has_request_snapshot?: boolean
   request_snapshot_bytes?: number
+  request_snapshot_truncated?: boolean
 
   // Upstream context (optional; enriched by gateway services)
   upstream_status_code?: number | null
