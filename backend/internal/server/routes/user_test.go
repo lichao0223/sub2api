@@ -16,7 +16,7 @@ func TestTokenRankingNonworkRouteSupportsJWTOrAdminAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(gin.Recovery())
-	h := &handler.Handlers{Usage: handler.NewUsageHandler(nil, nil, nil, nil)}
+	h := &handler.Handlers{Usage: handler.NewUsageHandler(nil, nil, nil, nil, nil)}
 
 	v1 := router.Group("/api/v1")
 	RegisterUserRoutes(
