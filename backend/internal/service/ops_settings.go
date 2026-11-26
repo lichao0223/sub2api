@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -360,6 +361,8 @@ func (s *OpsService) UpdateOpsAlertRuntimeSettings(ctx context.Context, cfg *Ops
 // =========================
 
 func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
+	snapshotMaxBytes := OpsRequestSnapshotMaxBytes
+	snapshotHours := OpsRequestSnapshotDefaultRetentionHours
 	return &OpsAdvancedSettings{
 		DataRetention: OpsDataRetentionSettings{
 			// Keep the DB-backed default aligned with ops.cleanup.enabled so a
@@ -369,6 +372,11 @@ func defaultOpsAdvancedSettings() *OpsAdvancedSettings {
 			ErrorLogRetentionDays:      30,
 			MinuteMetricsRetentionDays: 30,
 			HourlyMetricsRetentionDays: 30,
+			// Request snapshots are diagnostic aids: keep at most 1MB of raw body
+			// and only for the last 24h by default.
+			ErrorLogSnapshotMaxBytes:    &snapshotMaxBytes,
+			ErrorLogSnapshotHours:       &snapshotHours,
+			ErrorLogSnapshotMinSeverity: OpsSnapshotSeverityP3,
 		},
 		Aggregation: OpsAggregationSettings{
 			AggregationEnabled: false,
@@ -419,10 +427,39 @@ func normalizeOpsAdvancedSettings(cfg *OpsAdvancedSettings) {
 	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 {
 		cfg.DataRetention.HourlyMetricsRetentionDays = 30
 	}
+	normalizeOpsSnapshotRetention(&cfg.DataRetention)
 	// Normalize auto refresh interval (default 30 seconds)
 	if cfg.AutoRefreshIntervalSec <= 0 {
 		cfg.AutoRefreshIntervalSec = 30
 	}
+}
+
+// normalizeOpsSnapshotRetention fills the request-snapshot knobs so older stored
+// settings (written before the knobs existed) keep capturing with the defaults.
+func normalizeOpsSnapshotRetention(dr *OpsDataRetentionSettings) {
+	if dr == nil {
+		return
+	}
+	if dr.ErrorLogSnapshotMaxBytes == nil {
+		value := OpsRequestSnapshotMaxBytes
+		dr.ErrorLogSnapshotMaxBytes = &value
+	} else if *dr.ErrorLogSnapshotMaxBytes != 0 {
+		if *dr.ErrorLogSnapshotMaxBytes < OpsRequestSnapshotMinMaxBytes {
+			*dr.ErrorLogSnapshotMaxBytes = OpsRequestSnapshotMinMaxBytes
+		}
+		if *dr.ErrorLogSnapshotMaxBytes > OpsRequestSnapshotHardMaxBytes {
+			*dr.ErrorLogSnapshotMaxBytes = OpsRequestSnapshotHardMaxBytes
+		}
+	}
+	if dr.ErrorLogSnapshotHours == nil {
+		value := OpsRequestSnapshotDefaultRetentionHours
+		dr.ErrorLogSnapshotHours = &value
+	} else if *dr.ErrorLogSnapshotHours < 0 {
+		*dr.ErrorLogSnapshotHours = OpsRequestSnapshotDefaultRetentionHours
+	} else if *dr.ErrorLogSnapshotHours > OpsRequestSnapshotMaxRetentionHours {
+		*dr.ErrorLogSnapshotHours = OpsRequestSnapshotMaxRetentionHours
+	}
+	dr.ErrorLogSnapshotMinSeverity = normalizeOpsSnapshotSeverity(dr.ErrorLogSnapshotMinSeverity)
 }
 
 func clampOpsQuotaAutoPauseThreshold(value float64) float64 {
@@ -448,6 +485,18 @@ func validateOpsAdvancedSettings(cfg *OpsAdvancedSettings) error {
 	}
 	if cfg.DataRetention.HourlyMetricsRetentionDays < 0 || cfg.DataRetention.HourlyMetricsRetentionDays > 365 {
 		return errors.New("hourly_metrics_retention_days must be between 0 and 365")
+	}
+	if v := cfg.DataRetention.ErrorLogSnapshotMaxBytes; v != nil && *v != 0 &&
+		(*v < OpsRequestSnapshotMinMaxBytes || *v > OpsRequestSnapshotHardMaxBytes) {
+		return fmt.Errorf("error_log_snapshot_max_bytes must be 0 or between %d and %d",
+			OpsRequestSnapshotMinMaxBytes, OpsRequestSnapshotHardMaxBytes)
+	}
+	if v := cfg.DataRetention.ErrorLogSnapshotHours; v != nil &&
+		(*v < 0 || *v > OpsRequestSnapshotMaxRetentionHours) {
+		return fmt.Errorf("error_log_snapshot_hours must be between 0 and %d", OpsRequestSnapshotMaxRetentionHours)
+	}
+	if !IsValidOpsSnapshotSeverity(cfg.DataRetention.ErrorLogSnapshotMinSeverity) {
+		return errors.New("error_log_snapshot_min_severity must be one of P1, P2, P3")
 	}
 	if cfg.AutoRefreshIntervalSec < 15 || cfg.AutoRefreshIntervalSec > 300 {
 		return errors.New("auto_refresh_interval_seconds must be between 15 and 300")

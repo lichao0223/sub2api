@@ -24,9 +24,9 @@ func (r *adminOpsSnapshotRepo) GetErrorRequestSnapshot(context.Context, int64) (
 
 func TestDownloadErrorRequestSnapshot(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"full request"}],"tools":[],"id":9007199254740993}`)
-	compressed, err := service.CompressOpsRequestSnapshot(body)
+	capture, err := service.BuildOpsRequestSnapshot(body, service.OpsRequestSnapshotMaxBytes)
 	require.NoError(t, err)
-	repo := &adminOpsSnapshotRepo{data: compressed}
+	repo := &adminOpsSnapshotRepo{data: capture.Gzip}
 	ops := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	router := gin.New()
 	router.GET("/errors/:id/request-body", NewOpsHandler(ops).DownloadErrorRequestSnapshot)
@@ -61,8 +61,9 @@ func TestDownloadErrorRequestSnapshot(t *testing.T) {
 		{"invalid JSON", `{"messages":[`, `{"messages":[`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			repo.data, err = service.CompressOpsRequestSnapshot([]byte(tt.body))
+			capture, err := service.BuildOpsRequestSnapshot([]byte(tt.body), service.OpsRequestSnapshotMaxBytes)
 			require.NoError(t, err)
+			repo.data = capture.Gzip
 			w := request("42")
 			require.Equal(t, 200, w.Code)
 			require.Equal(t, tt.want, w.Body.String())

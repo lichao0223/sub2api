@@ -57,9 +57,10 @@ INSERT INTO ops_error_logs (
   created_at,
   api_key_prefix,
   request_snapshot_gzip,
-  request_snapshot_bytes
+  request_snapshot_bytes,
+  request_snapshot_truncated
 ) VALUES (
-  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40
+  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40,$41
 )`
 
 func NewOpsRepository(db *sql.DB) service.OpsRepository {
@@ -180,6 +181,7 @@ func opsInsertErrorLogArgs(input *service.OpsInsertErrorLogInput) []any {
 		opsNullString(input.APIKeyPrefix),
 		input.RequestSnapshotGzip,
 		input.RequestSnapshotBytes,
+		input.RequestSnapshotTruncated,
 	}
 }
 
@@ -469,7 +471,8 @@ SELECT
   COALESCE(ak.name, ''),
   ak.deleted_at,
   e.request_snapshot_gzip IS NOT NULL,
-  e.request_snapshot_bytes
+  e.request_snapshot_bytes,
+  e.request_snapshot_truncated
 FROM ops_error_logs e
 LEFT JOIN users u ON e.user_id = u.id
 LEFT JOIN accounts a ON e.account_id = a.id
@@ -548,6 +551,7 @@ LIMIT 1`
 		&detailAPIKeyDeletedAt,
 		&out.HasRequestSnapshot,
 		&out.RequestSnapshotBytes,
+		&out.RequestSnapshotTruncated,
 	)
 	if err != nil {
 		return nil, err

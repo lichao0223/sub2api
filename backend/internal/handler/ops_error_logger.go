@@ -1082,7 +1082,13 @@ func (state *opsCaptureWriterState) shouldCapture() bool {
 func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if ops != nil && ops.IsMonitoringEnabled(c.Request.Context()) {
-			c.Set(service.OpsCaptureRequestSnapshotKey, true)
+			// Resolve the snapshot policy once per request: capture may be disabled
+			// outright, capped by bytes, or limited to a severity floor.
+			policy := ops.OpsRequestSnapshotPolicy()
+			if policy.Enabled {
+				c.Set(service.OpsCaptureRequestSnapshotKey, true)
+				c.Set(service.OpsRequestSnapshotPolicyKey, policy)
+			}
 		}
 		originalWriter := c.Writer
 		w := acquireOpsCaptureWriter(originalWriter)
@@ -1606,6 +1612,7 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 	if len(streamErr.RequestSnapshotGzip) > 0 || streamErr.RequestSnapshotBytes > 0 {
 		entry.RequestSnapshotGzip = streamErr.RequestSnapshotGzip
 		entry.RequestSnapshotBytes = streamErr.RequestSnapshotBytes
+		entry.RequestSnapshotTruncated = streamErr.RequestSnapshotTruncated
 	} else if streamErr.Turn == 0 {
 		attachOpsRequestSnapshot(c, entry)
 	}

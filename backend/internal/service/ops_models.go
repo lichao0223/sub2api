@@ -80,9 +80,10 @@ type OpsErrorLog struct {
 type OpsErrorLogDetail struct {
 	OpsErrorLog
 
-	ErrorBody            string `json:"error_body"`
-	HasRequestSnapshot   bool   `json:"has_request_snapshot"`
-	RequestSnapshotBytes int64  `json:"request_snapshot_bytes"`
+	ErrorBody                string `json:"error_body"`
+	HasRequestSnapshot       bool   `json:"has_request_snapshot"`
+	RequestSnapshotBytes     int64  `json:"request_snapshot_bytes"`
+	RequestSnapshotTruncated bool   `json:"request_snapshot_truncated"`
 
 	// Upstream context (optional)
 	UpstreamStatusCode   *int   `json:"upstream_status_code,omitempty"`

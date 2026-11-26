@@ -116,6 +116,7 @@ func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	opsErrorLogStopping = false
 
 	opsErrorLogQueueLen.Store(0)
+	opsErrorLogQueueBytes.Store(0)
 	opsErrorLogEnqueued.Store(0)
 	opsErrorLogDropped.Store(0)
 	opsErrorLogProcessed.Store(0)

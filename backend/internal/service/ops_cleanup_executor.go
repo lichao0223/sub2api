@@ -33,11 +33,12 @@ type opsCleanupDeletedCounts struct {
 	systemMetrics  int64
 	hourlyPreagg   int64
 	dailyPreagg    int64
+	errorSnapshots int64
 }
 
 func (c opsCleanupDeletedCounts) String() string {
 	return fmt.Sprintf(
-		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d",
+		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d error_snapshots=%d",
 		c.errorLogs,
 		c.ingressRejects,
 		c.alertEvents,
@@ -46,6 +47,7 @@ func (c opsCleanupDeletedCounts) String() string {
 		c.systemMetrics,
 		c.hourlyPreagg,
 		c.dailyPreagg,
+		c.errorSnapshots,
 	)
 }
 
@@ -153,6 +155,46 @@ func truncateOpsTable(ctx context.Context, db *sql.DB, table string) (int64, err
 		return 0, fmt.Errorf("truncate %s: %w", table, err)
 	}
 	return count, nil
+}
+
+// purgeOldErrorSnapshots 把超过保留窗口的请求体快照正文置空（只清正文，保留错误行）。
+// 分批执行，避免长时间持锁；重复执行幂等。
+func purgeOldErrorSnapshots(ctx context.Context, db *sql.DB, cutoff time.Time, batchSize int) (int64, error) {
+	if db == nil {
+		return 0, nil
+	}
+	if batchSize <= 0 {
+		batchSize = opsCleanupBatchSize
+	}
+	const q = `
+WITH batch AS (
+  SELECT id FROM ops_error_logs
+  WHERE created_at < $1 AND request_snapshot_gzip IS NOT NULL
+  ORDER BY id
+  LIMIT $2
+)
+UPDATE ops_error_logs SET request_snapshot_gzip = NULL
+WHERE id IN (SELECT id FROM batch)
+`
+	var total int64
+	for {
+		res, err := db.ExecContext(ctx, q, cutoff, batchSize)
+		if err != nil {
+			if isMissingRelationError(err) {
+				return total, nil
+			}
+			return total, err
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return total, err
+		}
+		total += affected
+		if affected == 0 {
+			break
+		}
+	}
+	return total, nil
 }
 
 func isMissingRelationError(err error) bool {

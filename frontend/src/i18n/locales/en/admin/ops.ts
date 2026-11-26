@@ -324,6 +324,7 @@ export default {
           unavailable: 'No request body available (older record or body not fully read).',
           omitted: 'Request body not saved: storage limit exceeded or log queue busy.',
           previewLimited: 'Preview limited to 64 KiB; download includes the full body.',
+          truncated: 'This snapshot was truncated by the size or severity policy; only part of the original request was kept.',
           loadFailed: 'Failed to load request body. The record may have been cleaned up.',
         },
         title: 'Error Detail',
@@ -745,6 +746,18 @@ export default {
         minuteMetricsRetentionDays: 'Minute Metrics Retention Days',
         hourlyMetricsRetentionDays: 'Hourly Metrics Retention Days',
         retentionDaysHint: 'Recommended 7-90 days; longer periods consume more storage. Set to 0 to wipe all history on every scheduled cleanup',
+        errorLogSnapshotMaxKb: 'Request snapshot cap (KB)',
+        errorLogSnapshotMaxKbHint:
+          'Raw request body kept per error log. Default 1024 KB (1 MB), range 16-8192; 0 disables request snapshots. Bodies over the cap are truncated and flagged.',
+        errorLogSnapshotHours: 'Request snapshot retention (hours)',
+        errorLogSnapshotHoursHint:
+          'Snapshot payloads older than this are cleared (the error row keeps its own retention). Default 24 hours; 0 keeps payloads until the row is trimmed.',
+        errorLogSnapshotMinSeverity: 'Full body minimum severity',
+        errorLogSnapshotMinSeverityHint:
+          'Errors below this severity keep only a 16 KB body head and are flagged truncated. Default P3 (keep full bodies for everything).',
+        errorLogSnapshotSeverityAll: 'P3 (all)',
+        errorLogSnapshotSeverityP2: 'P2 and above',
+        errorLogSnapshotSeverityP1: 'P1 and above',
         aggregation: 'Pre-aggregation Tasks',
         enableAggregation: 'Enable Pre-aggregation',
         aggregationHint: 'Pre-aggregation improves query performance for long time windows',
@@ -782,7 +795,9 @@ export default {
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
           upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
-          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100'
+          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100',
+          snapshotMaxKbRange: 'Request snapshot cap must be 0 or between 16 and 8192 KB (0 disables snapshots)',
+          snapshotHoursRange: 'Request snapshot retention must be between 0 and 720 hours (0 disables hourly trimming)'
         }
       },
       concurrency: {

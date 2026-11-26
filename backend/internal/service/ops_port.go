@@ -126,6 +126,9 @@ type OpsInsertErrorLogInput struct {
 	// Error-only inbound body, gzip-compressed before entering the bounded queue.
 	RequestSnapshotGzip  []byte
 	RequestSnapshotBytes int64
+	// RequestSnapshotTruncated marks a snapshot that lost part of the original body
+	// because of the size cap or the severity policy.
+	RequestSnapshotTruncated bool
 }
 
 type OpsInsertSystemMetricsInput struct {

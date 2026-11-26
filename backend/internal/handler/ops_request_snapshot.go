@@ -6,8 +6,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// attachOpsRequestSnapshot stores a size-capped, gzip-compressed copy of the
+// failed request body. The capture policy (enable flag, byte cap, minimum
+// severity) comes from ops_advanced_settings.data_retention.
 func attachOpsRequestSnapshot(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
 	if c == nil || entry == nil || !c.GetBool(service.OpsCaptureRequestSnapshotKey) {
+		return
+	}
+	policy := service.OpsRequestSnapshotPolicyFromContext(c)
+	maxBytes := policy.MaxBytesForSeverity(entry.Severity)
+	if maxBytes <= 0 {
 		return
 	}
 	var body []byte
@@ -24,6 +32,11 @@ func attachOpsRequestSnapshot(c *gin.Context, entry *service.OpsInsertErrorLogIn
 			body, _ = value.([]byte)
 		}
 	}
-	entry.RequestSnapshotBytes = int64(len(body))
-	entry.RequestSnapshotGzip, _ = service.CompressOpsRequestSnapshot(body)
+	capture, err := service.BuildOpsRequestSnapshot(body, maxBytes)
+	if err != nil {
+		return
+	}
+	entry.RequestSnapshotBytes = capture.OriginalBytes
+	entry.RequestSnapshotGzip = capture.Gzip
+	entry.RequestSnapshotTruncated = capture.Truncated
 }

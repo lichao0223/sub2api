@@ -17,7 +17,7 @@ func TestOpsInsertErrorLogArgsPreservesExplicitZeroUpstreamStatus(t *testing.T) 
 	zero := 0
 	args := opsInsertErrorLogArgs(&service.OpsInsertErrorLogInput{UpstreamStatusCode: &zero})
 
-	require.Len(t, args, 40)
+	require.Len(t, args, 41)
 	encoded, ok := args[27].(sql.NullInt64)
 	require.True(t, ok)
 	require.True(t, encoded.Valid)
@@ -41,9 +41,12 @@ func TestOpsNullableIntPointerDistinguishesNilZeroAndStatus(t *testing.T) {
 
 func TestOpsInsertErrorLogArgsIncludesCompressedSnapshot(t *testing.T) {
 	body := []byte("gzip snapshot")
-	args := opsInsertErrorLogArgs(&service.OpsInsertErrorLogInput{RequestSnapshotGzip: body, RequestSnapshotBytes: 50000})
+	args := opsInsertErrorLogArgs(&service.OpsInsertErrorLogInput{
+		RequestSnapshotGzip: body, RequestSnapshotBytes: 50000, RequestSnapshotTruncated: true,
+	})
 	require.Equal(t, body, args[38])
 	require.EqualValues(t, 50000, args[39])
+	require.Equal(t, true, args[40])
 }
 
 func TestOpsRequestSnapshotRepositoryRead(t *testing.T) {
